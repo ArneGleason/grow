@@ -119,7 +119,7 @@ This is slower but makes review easier.
 
 ### Byte 1: Space + One Pulse Player
 
-Status: implemented.
+Status: implemented and approved.
 
 Review focus:
 
@@ -230,7 +230,7 @@ Implementation notes:
 
 ### Byte 3b: Pre-Taste Listening + State Cleanup
 
-Status: implemented.
+Status: implemented and approved.
 
 Small cleanup byte before subjective taste consumes runtime state.
 
@@ -255,16 +255,36 @@ Implementation notes:
 - `window.listening.getFrame()` derives fresh read-only player state for the returned frame without clearing ledgers or mutating transition state.
 - `silenceRatio` now measures the union of active intervals, avoiding overlap double-counting.
 - `GrowWorldState` carries default tonal context: `C mixolydian` with scale `C D E F G A Bb`.
+- Claude's Byte 3b review approved the cleanup. The review found one visible-deliverable gap: the note-on flash currently drives Pixi alpha above 1.0, which is clamped and therefore effectively invisible on already-opaque performing players.
+
+### Byte 3c: Visible Flash + Tonal Wiring Prep
+
+Status: planned next.
+
+Small follow-up before Byte 4 taste.
+
+Scope:
+
+- Make note-on flash visibly render by using a property with headroom, such as halo scale, tint, and/or a sub-1.0 resting halo alpha.
+- Share the 8-beat listening/posture window constant so `listening.ts` and `world-state.ts` cannot drift.
+- Start wiring player pitch choices to `GrowWorldState.tonalContext.scale` so tonal context becomes authoritative before taste uses it.
+- Keep behavior deterministic, with no producer proxy, Ollama, persistence, or new session modes.
+
+Review focus:
+
+- whether note-on flash is visible without reintroducing posture flicker,
+- whether tonal context is becoming source data rather than inspector-only decoration,
+- whether constants and helpers land in a natural place without creating premature composition machinery.
 
 ### Byte 4: Subjective Taste, Still Rule-Based
 
-Status: planned after Byte 3b cleanup.
+Status: planned after Byte 3c follow-up.
 
 Give each player a small deterministic taste profile.
 
 Scope:
 
-- First land the Byte 3b cleanup items below so taste reads stable player posture rather than note articulation.
+- First land the Byte 3c follow-up so taste reads stable player posture, visible note-on activity, and authoritative tonal context.
 - Add simple taste values such as density preference, repetition preference, brightness preference, rhythmic stability preference, and novelty preference.
 - Add a player evaluation object that explains a reaction to the current listening frame.
 - Let taste influence tiny choices: rest, support, contrast, simplify, repeat, or vary.
