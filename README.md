@@ -10,15 +10,28 @@ The repo is initialized with the Studio Pattern so future work has a clear place
 - Studio Pattern scaffold added.
 - Initial vision and phased plan added in `docs/vision-and-plan.md`.
 - GitHub setup notes prepared.
-- Product scope, runtime stack, and repository visibility are still to be decided.
+- Byte 1 app scaffold added: bounded PixiJS terrarium, one pulse player, Tone.js start/stop, and transport status hooks.
 
 ## First Work
 
-1. Define the product shape for Grow.
-2. Choose the runtime stack and app structure.
-3. Confirm the GitHub repo slug and visibility.
-4. Add the implementation scaffold.
-5. Wire GitHub access using the least-privileged credential model for the job.
+1. Install dependencies with `npm install`.
+2. Run the first byte with `npm run dev`.
+3. Verify repeated start/stop does not duplicate the beat.
+4. Review Byte 1 before adding movement or more players.
+5. Wire any future GitHub app/API access using the least-privileged credential model for the job.
+
+## Run
+
+```sh
+npm install
+npm run dev
+```
+
+Default URL:
+
+```txt
+http://127.0.0.1:5173
+```
 
 ## Repository Map
 

@@ -21,35 +21,37 @@ Machine handles are assigned by the human owner. Do not treat OS hostname, usern
 
 ## Setup
 
-No runtime stack has been selected yet.
+Install pinned dependencies:
 
 ```sh
-# TBD
+npm install
 ```
 
 ## Run
 
 ```sh
-# TBD
+npm run dev
 ```
 
 Default URL:
 
 ```txt
-TBD
+http://127.0.0.1:5173
 ```
 
 ## Validate
 
 ```sh
-git status --short
-find . -path ./.git -prune -o -maxdepth 3 -type f -print | sort
+npm audit
+npm run build
+git status --short --branch
+git ls-files --cached --others --exclude-standard | sort
 ```
 
 ## Test
 
 ```sh
-# TBD
+npm run build
 ```
 
 ## GitHub Repo Setup
@@ -83,11 +85,11 @@ See `docs/github-setup.md` before adding tokens, OAuth credentials, webhook secr
 
 For software projects, record the testing conventions that future agents should preserve:
 
-- Stable selectors or test IDs: TBD.
+- Stable selectors or test IDs: Byte 1 exposes `transport-toggle`, `transport-status`, `terrarium-container`, `terrarium-canvas`, `player-name`, `player-role`, `player-sound`, and `player-state`.
 - E2E state setup and teardown: TBD.
-- Page readiness and realtime waits: TBD.
+- Page readiness and realtime waits: wait for `window.transport.getState()` before transport assertions.
 - Shared fixtures/helpers: TBD.
-- Visual regression entry points: TBD.
+- Visual regression entry points: capture the Vite root page at `http://127.0.0.1:5173/`; the terrarium canvas should show one stationary `pulse` player.
 
 ## Studio Pattern Commands
 
@@ -119,7 +121,14 @@ Resume work:
 
 - GitHub remote is configured as `origin` and tracks `main`.
 - No committed secrets should be added. Use `.env.local` for local-only credentials.
+- Byte 1 pins PixiJS, Tone.js, Vite, and TypeScript directly in `package.json`.
+- The first transport implementation exposes `window.transport.getState()` for dev inspection.
+- Tone.js audio must start from a user gesture in normal browsers.
+- Vite dev HMR can leave audio objects alive if cleanup regresses; preserve transport disposal hooks.
+- Byte 1 validation passed with `npm run build`, `npm audit`, and a Playwright smoke check for repeated start/stop cleanup.
+- Use `git ls-files --cached --others --exclude-standard | sort` for the file inventory now that ignored `node_modules/` and `dist/` trees exist.
 
 ## Known Gotchas
 
-- Runtime stack, package manager, ports, deployment target, and GitHub integration model are still undecided.
+- Browser autoplay policy can block audio if start is not triggered by a click/tap.
+- Repeated start/stop should not increase `scheduledEventCount` above 1 while playing.

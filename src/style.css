@@ -1,0 +1,184 @@
+:root {
+  color-scheme: dark;
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  background: #11140f;
+  color: #eef3e5;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 20% 0%, rgba(78, 107, 70, 0.26), transparent 34rem),
+    linear-gradient(135deg, #11140f 0%, #171914 45%, #0e1212 100%);
+}
+
+button {
+  font: inherit;
+}
+
+.app-shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: 16px;
+  padding: 18px;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.brand {
+  display: grid;
+  gap: 3px;
+}
+
+.brand__title {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 700;
+}
+
+.brand__subtitle {
+  margin: 0;
+  color: #aeb7a5;
+  font-size: 0.92rem;
+}
+
+.transport-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.transport-button {
+  min-width: 104px;
+  min-height: 42px;
+  border: 1px solid #8fae75;
+  border-radius: 8px;
+  background: #d9f7a7;
+  color: #171914;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.transport-button:hover {
+  background: #e8ffbe;
+}
+
+.transport-button:focus-visible {
+  outline: 3px solid #f6cc6b;
+  outline-offset: 3px;
+}
+
+.status-line {
+  min-width: 240px;
+  border: 1px solid rgba(174, 183, 165, 0.26);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: rgba(10, 14, 12, 0.72);
+  color: #d7dfcf;
+  font-variant-numeric: tabular-nums;
+}
+
+.stage {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  gap: 16px;
+  align-items: stretch;
+  min-height: 0;
+}
+
+.terrarium-panel {
+  min-height: 520px;
+  border: 1px solid rgba(174, 183, 165, 0.24);
+  border-radius: 8px;
+  background: rgba(13, 17, 14, 0.68);
+  padding: 12px;
+}
+
+.terrarium-canvas {
+  width: 100%;
+  height: 100%;
+  min-height: 496px;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.terrarium-canvas canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.inspector {
+  border: 1px solid rgba(174, 183, 165, 0.24);
+  border-radius: 8px;
+  background: rgba(10, 14, 12, 0.72);
+  padding: 14px;
+}
+
+.inspector h2 {
+  margin: 0 0 12px;
+  font-size: 1rem;
+}
+
+.inspector dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 9px 12px;
+  margin: 0;
+}
+
+.inspector dt {
+  color: #aeb7a5;
+}
+
+.inspector dd {
+  margin: 0;
+  color: #eef3e5;
+}
+
+@media (max-width: 820px) {
+  .app-shell {
+    padding: 14px;
+  }
+
+  .topbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .transport-controls {
+    justify-content: flex-start;
+  }
+
+  .stage {
+    grid-template-columns: 1fr;
+  }
+
+  .terrarium-panel {
+    min-height: 420px;
+  }
+
+  .terrarium-canvas {
+    min-height: 396px;
+  }
+}

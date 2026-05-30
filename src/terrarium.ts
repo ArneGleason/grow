@@ -1,0 +1,118 @@
+import {
+  Application,
+  Container,
+  Graphics,
+  Text,
+  TextStyle,
+} from "pixi.js";
+
+const TERRARIUM_WIDTH = 960;
+const TERRARIUM_HEIGHT = 560;
+const PLAYER_COLOR = 0x8f1d20;
+const PLAYER_LABEL = "pulse";
+
+export interface TerrariumView {
+  app: Application;
+  setPlaying(isPlaying: boolean): void;
+  destroy(): void;
+}
+
+export async function createTerrariumView(container: HTMLElement): Promise<TerrariumView> {
+  const app = new Application();
+  await app.init({
+    width: TERRARIUM_WIDTH,
+    height: TERRARIUM_HEIGHT,
+    antialias: true,
+    autoDensity: true,
+    backgroundAlpha: 0,
+    resolution: window.devicePixelRatio || 1,
+  });
+
+  app.canvas.setAttribute("data-testid", "terrarium-canvas");
+  container.appendChild(app.canvas);
+
+  const world = new Container();
+  app.stage.addChild(world);
+
+  const background = drawBackground();
+  world.addChild(background);
+
+  const player = drawPulsePlayer();
+  player.x = TERRARIUM_WIDTH / 2;
+  player.y = TERRARIUM_HEIGHT / 2;
+  world.addChild(player);
+
+  const renderer = app.renderer;
+  const resizeObserver = new ResizeObserver((entries) => {
+    const entry = entries[0];
+    if (!entry) return;
+    const { width, height } = entry.contentRect;
+    const scale = Math.min(width / TERRARIUM_WIDTH, height / TERRARIUM_HEIGHT);
+    world.scale.set(scale);
+    world.x = Math.max(0, (width - TERRARIUM_WIDTH * scale) / 2);
+    world.y = Math.max(0, (height - TERRARIUM_HEIGHT * scale) / 2);
+    renderer.resize(width, height);
+  });
+  resizeObserver.observe(container);
+
+  return {
+    app,
+    setPlaying(isPlaying: boolean): void {
+      player.alpha = isPlaying ? 1 : 0.82;
+      player.scale.set(isPlaying ? 1.05 : 1);
+    },
+    destroy(): void {
+      resizeObserver.disconnect();
+      app.destroy(true);
+    },
+  };
+}
+
+function drawBackground(): Container {
+  const layer = new Container();
+  const bed = new Graphics()
+    .roundRect(0, 0, TERRARIUM_WIDTH, TERRARIUM_HEIGHT, 18)
+    .fill({ color: 0x182017 })
+    .stroke({ color: 0xb8c7a6, alpha: 0.72, width: 3 });
+
+  const inner = new Graphics()
+    .roundRect(18, 18, TERRARIUM_WIDTH - 36, TERRARIUM_HEIGHT - 36, 12)
+    .stroke({ color: 0x6f8069, alpha: 0.34, width: 1 });
+
+  const center = new Graphics()
+    .circle(TERRARIUM_WIDTH / 2, TERRARIUM_HEIGHT / 2, 116)
+    .fill({ color: 0xe7f5bb, alpha: 0.035 })
+    .stroke({ color: 0xe7f5bb, alpha: 0.08, width: 1 });
+
+  layer.addChild(bed, inner, center);
+  return layer;
+}
+
+function drawPulsePlayer(): Container {
+  const player = new Container();
+
+  const halo = new Graphics()
+    .circle(0, 0, 28)
+    .fill({ color: PLAYER_COLOR, alpha: 0.18 })
+    .stroke({ color: 0xffd6a2, alpha: 0.34, width: 2 });
+
+  const body = new Graphics()
+    .circle(0, 0, 17)
+    .fill({ color: PLAYER_COLOR })
+    .stroke({ color: 0xffd6a2, alpha: 0.9, width: 2 });
+
+  const label = new Text({
+    text: PLAYER_LABEL,
+    style: new TextStyle({
+      fill: "#f4eddb",
+      fontFamily: "Inter, system-ui, sans-serif",
+      fontSize: 16,
+      fontWeight: "700",
+    }),
+  });
+  label.anchor.set(0.5, 0);
+  label.y = 26;
+
+  player.addChild(halo, body, label);
+  return player;
+}

@@ -53,11 +53,13 @@ Studio Pattern source:
 Before handoff or review, run the project's normal checks:
 
 ```sh
-git status --short
-find . -path ./.git -prune -o -maxdepth 3 -type f -print | sort
+npm audit
+npm run build
+git status --short --branch
+git ls-files --cached --others --exclude-standard | sort
 ```
 
-When an app stack exists, replace this with the normal install, lint, test, and build commands.
+This replaced the initial scaffold `find` check because the app stack now creates ignored `node_modules/` and `dist/` trees.
 
 ## GitHub Safety
 
