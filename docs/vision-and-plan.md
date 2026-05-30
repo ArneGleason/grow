@@ -20,6 +20,7 @@ The project is exploratory. Drift is allowed. The repo should keep enough memory
 - First implementation slice: rule-based PixiJS/Tone.js terrarium with three simple musical players; no Ollama, SQLite, producer avatar, forks, or capture UI until the audio/visual core feels alive.
 - Time model: not hard real-time. Players can think ahead, commit material into a lookahead buffer, and perform it later in time with the transport.
 - Session model: not nonstop generation. Grow has breaks, solo practice, rehearsals, performances, reflection, and constructed pieces.
+- Scope model: solo local instrument first; future architecture may allow multiple terrariums/bands that can observe or react to each other.
 
 ## Product Feel
 
@@ -247,6 +248,8 @@ Session modes should keep breaks, solo practice, rehearsal, performance, and ref
 
 The human-facing avatar should be a producer proxy that interprets natural-language prompts into in-world actions. See `docs/producer-proxy.md`.
 
+Future architecture should avoid assuming that only one terrarium or band can ever exist. See `docs/future-multi-terrarium.md`.
+
 ## First Implementation Slice
 
 Build the smallest playable thing that can answer whether Grow feels alive:
@@ -263,6 +266,7 @@ Build the smallest playable thing that can answer whether Grow feels alive:
 - No forks/checkpoints UI.
 - No instrument invention or effects routing.
 - No full session-state machine yet, but avoid designing the first loop as endless ambience.
+- No multi-terrarium or band exchange behavior.
 
 What this tests:
 
@@ -366,6 +370,14 @@ Use the Studio Pattern deliberately:
 - If product integration is needed, prefer a GitHub App or OAuth app over a long-lived personal token.
 - Add repo export, session publishing, issue creation, or versioned experiment logs only after the core local loop exists.
 
+### Later: Multi-Terrarium / Band Exchange
+
+- Bank between two terrarium spaces or bands.
+- Let one band act as audience for another.
+- Let players draw inspiration from another group's session.
+- Allow responses such as applause, critique, imitation, heckling, or musical counterpoint.
+- Treat as a later experiment after the solo terrarium is fun.
+
 ## Research Notes
 
 - Ollama has a local chat API at `/api/chat` with tool-call and JSON-format support, plus official JavaScript/TypeScript library support.
@@ -386,7 +398,6 @@ Use the Studio Pattern deliberately:
 - Should the terrarium keep ambient memory between sessions or start fresh by default?
 - Should the producer move by keyboard, click-to-move, or another input model?
 - What should the producer proxy's first visual identity be: dot with halo, ring, cursor-like marker, or another simple sign?
-- Is Grow ultimately a solo instrument only, or should session artifacts become portable/shareable?
 - What first lookahead target feels right: 4 bars, 8 bars, or about 20 seconds?
 - What should the user see when the lookahead buffer runs thin: pause, visible rehearsing, fallback groove, or a mix?
 - What should a saved piece contain first: motifs, role assignments, cue points, mode/key/tempo, or all of these?

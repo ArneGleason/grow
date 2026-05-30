@@ -15,7 +15,6 @@ Use this file for known risks, open questions, and review focus. Keep entries sh
 - Should the terrarium keep ambient memory between sessions or start fresh by default?
 - Should producer movement be keyboard-based, click-to-move, or another input model?
 - What should the producer proxy's first visual identity be: dot with halo, ring, cursor-like marker, or another simple sign?
-- Should session artifacts eventually be portable/shareable, or is Grow strictly a solo local instrument?
 - What first lookahead target feels right: 4 bars, 8 bars, or about 20 seconds?
 - What should the user see when the lookahead buffer runs thin: pause, visible rehearsing, fallback groove, or a mix?
 - What should a saved piece contain first: motifs, role assignments, cue points, mode/key/tempo, or all of these?
@@ -34,3 +33,4 @@ Use this file for known risks, open questions, and review focus. Keep entries sh
 - Time-model guidance from Arne: Grow can use a delayed-now/lookahead buffer; players may think non-real-time and commit upcoming material rather than producing every audible moment on the sample clock.
 - Session-mode guidance from Arne: Grow is not a nonstop ambience generator; it should support breaks, solo practice, rehearsals, bounded performances, reflection, constructed pieces, and meaningful silence.
 - Producer-proxy guidance from Arne: the human should be able to type natural-language prompts, and an interpreter should carry them into the world as movement, speech, cues, and negotiated requests rather than requiring structured controls.
+- Scope guidance from Arne: keep Grow solo for now, but leave a future hook for multiple terrariums/bands that can observe, inspire, or react to each other.

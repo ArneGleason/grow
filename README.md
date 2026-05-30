@@ -31,6 +31,7 @@ The repo is initialized with the Studio Pattern so future work has a clear place
 - `docs/time-and-lookahead.md`: delayed-now and lookahead-buffer model for player thinking and playback.
 - `docs/session-modes.md`: explicit break, solo practice, rehearsal, performance, reflection, and piece model.
 - `docs/producer-proxy.md`: language-driven human avatar that interprets prompts into in-world actions.
+- `docs/future-multi-terrarium.md`: future-only notes for multiple spaces/bands and audience/exchange behavior.
 - `docs/persistence-checkpoints.md`: proposed SQLite event-log, snapshot, and fork design.
 - `docs/github-setup.md`: GitHub repo and integration setup notes.
 - `.env.example`: non-secret environment variable template.
