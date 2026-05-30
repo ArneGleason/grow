@@ -87,13 +87,12 @@ See `docs/github-setup.md` before adding tokens, OAuth credentials, webhook secr
 
 For software projects, record the testing conventions that future agents should preserve:
 
-- Stable selectors or test IDs: Byte 2 exposes `transport-toggle`, `transport-status`, `terrarium-container`, `terrarium-canvas`, `player-list`, `player-pulse-name`, `player-pulse-role`, `player-pulse-sound`, `player-pulse-state`, `listening-event-count`, `listening-window`, and `listening-latest-event`.
-- Legacy first-player selectors `player-name`, `player-role`, `player-sound`, and `player-state` are still present for continuity, but new tests should prefer player-id-specific selectors.
+- Stable selectors or test IDs: Byte 3 exposes `transport-toggle`, `transport-status`, `terrarium-container`, `terrarium-canvas`, `player-list`, `player-pulse-*`, `player-bass-*`, `player-melody-*`, `listening-event-count`, `listening-window`, and `listening-latest-event`.
 - E2E state setup and teardown: TBD.
 - E2E smoke command: `npm run smoke`; Playwright starts or reuses Vite at `http://127.0.0.1:5173/`.
 - Page readiness and realtime waits: wait for `window.transport.getState()` before transport assertions and `window.listening.getFrame()` before listening-frame assertions.
 - Shared fixtures/helpers: TBD.
-- Visual regression entry points: capture the Vite root page at `http://127.0.0.1:5173/`; the terrarium canvas should show one stationary `pulse` player.
+- Visual regression entry points: capture the Vite root page at `http://127.0.0.1:5173/`; the terrarium canvas should show three gently drifting players: `pulse`, `bass`, and `melody`.
 
 ## Studio Pattern Commands
 
@@ -128,16 +127,19 @@ Resume work:
 - Byte 1 pins PixiJS, Tone.js, Vite, and TypeScript directly in `package.json`.
 - Byte 2a adds `src/players.ts`; renderers and inspectors should consume player registry data instead of hardcoding visible players.
 - Byte 2 adds `src/listening.ts` and `src/world-state.ts`. Static player data belongs in the registry; transient state such as `waiting`, `performing`, `thinking`, and `resting` belongs in `GrowWorldState`.
+- Byte 3 schedules three Tone.js sequences. While playing, `scheduledEventCount` should be `3`; after stop it should return to `0`.
+- Musical events should be stamped from scheduled transport time and snapped to the current pattern grid, not from live `Transport.position`.
+- The inspector DOM is built only when the player registry changes; state/listening values update on a browser render cadence.
 - The first transport implementation exposes `window.transport.getState()` for dev inspection.
 - Byte 2 exposes `window.listening.getFrame()` and `window.listening.getEvents()` for dev inspection.
 - Tone.js audio must start from a user gesture in normal browsers.
 - Playwright smoke tests pass Chromium `--autoplay-policy=no-user-gesture-required` so the test can focus on lifecycle cleanup rather than browser audio policy.
 - Vite dev HMR can leave audio objects alive if cleanup regresses; preserve transport disposal hooks.
 - Byte 1 validation passed with `npm run build`, `npm audit`, and a Playwright smoke check for repeated start/stop cleanup.
-- Byte 2 validation should include confirming the listening event count returns to zero after stop and repeated start/stop cycles keep `scheduledEventCount` at 1 while playing and 0 while stopped.
+- Byte 3 validation should include confirming all three player IDs appear in the listening frame and repeated start/stop cycles keep `scheduledEventCount` at 3 while playing and 0 while stopped.
 - Use `git ls-files --cached --others --exclude-standard | sort` for the file inventory now that ignored `node_modules/` and `dist/` trees exist.
 
 ## Known Gotchas
 
 - Browser autoplay policy can block audio if start is not triggered by a click/tap.
-- Repeated start/stop should not increase `scheduledEventCount` above 1 while playing.
+- Repeated start/stop should not increase `scheduledEventCount` above 3 while playing.

@@ -103,7 +103,7 @@ export class MusicalEventLedger {
       meter: options.meter,
       mix: {
         loudness: 0,
-        silenceRatio: recentEvents.length === 0 ? 1 : 0,
+        silenceRatio: calculateSilenceRatio(recentEvents, fromBeat, toBeat),
         lowEnergy: 0,
         midEnergy: 0,
         highEnergy: 0,
@@ -134,3 +134,18 @@ function inferRegister(tags: readonly string[]): "low" | "mid" | "high" {
   return "mid";
 }
 
+function calculateSilenceRatio(
+  events: readonly MusicalEvent[],
+  fromBeat: number,
+  toBeat: number,
+): number {
+  const windowLength = Math.max(0, toBeat - fromBeat);
+  if (windowLength === 0) return events.length === 0 ? 1 : 0;
+  const activeBeats = events.reduce((total, event) => {
+    const eventStart = Math.max(fromBeat, event.absoluteBeat);
+    const eventEnd = Math.min(toBeat, event.absoluteBeat + event.durationBeats);
+    return total + Math.max(0, eventEnd - eventStart);
+  }, 0);
+
+  return Math.max(0, Math.min(1, 1 - activeBeats / windowLength));
+}

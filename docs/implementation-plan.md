@@ -194,6 +194,8 @@ Implementation notes:
 
 ### Byte 3: Three Rule-Based Players
 
+Status: implemented.
+
 Add pulse, bass, and melody players.
 
 Scope:
@@ -217,6 +219,14 @@ Review focus:
 - does adding a player stay easy,
 - does the listening frame help prevent every player from acting like a separate metronome.
 - whether event timing, rendering cadence, and listening-window timing are ready to scale beyond one player.
+
+Implementation notes:
+
+- `src/players.ts` now has `pulse`, `bass`, and `melody` registry entries with distinct roles, positions, colors, and tags.
+- `src/transport.ts` schedules three deterministic Tone.js sequences and emits events using scheduled callback time plus snapped transport ticks.
+- `src/main.ts` records musical events without rendering synchronously from the event callback; UI rendering is coalesced through `requestAnimationFrame`.
+- `src/terrarium.ts` adds a small deterministic visual drift around each player's anchor point.
+- `window.listening.getFrame()` now passes `currentBeat` so the listening window can represent live time and silence.
 
 ### Byte 4: Subjective Taste, Still Rule-Based
 

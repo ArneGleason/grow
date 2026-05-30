@@ -43,7 +43,45 @@ export const PULSE_PLAYER: Player = {
   tags: ["low", "steady", "quarter-note"],
 };
 
-export const PLAYER_REGISTRY: readonly Player[] = [PULSE_PLAYER];
+export const BASS_PLAYER: Player = {
+  id: "bass",
+  displayName: "bass",
+  role: "bass",
+  soundLabel: "modal bass",
+  instrumentId: "mono-bass",
+  position: { x: 335, y: 350 },
+  visual: {
+    color: 0x2f7f8f,
+    accentColor: 0xc8f7ff,
+    haloRadius: 30,
+    bodyRadius: 18,
+    labelOffsetY: 28,
+  },
+  tags: ["low", "support", "modal"],
+};
+
+export const MELODY_PLAYER: Player = {
+  id: "melody",
+  displayName: "melody",
+  role: "melody",
+  soundLabel: "modal line",
+  instrumentId: "simple-melody",
+  position: { x: 625, y: 220 },
+  visual: {
+    color: 0xd5ae3c,
+    accentColor: 0xfff1a6,
+    haloRadius: 26,
+    bodyRadius: 15,
+    labelOffsetY: 25,
+  },
+  tags: ["mid", "motif", "modal"],
+};
+
+export const PLAYER_REGISTRY: readonly Player[] = [
+  PULSE_PLAYER,
+  BASS_PLAYER,
+  MELODY_PLAYER,
+];
 
 export function getPlayerById(playerId: string): Player | undefined {
   return PLAYER_REGISTRY.find((player) => player.id === playerId);

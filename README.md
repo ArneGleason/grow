@@ -13,13 +13,14 @@ The repo is initialized with the Studio Pattern so future work has a clear place
 - Byte 1 app scaffold added: bounded PixiJS terrarium, one pulse player, Tone.js start/stop, and transport status hooks.
 - Byte 2a player registry added: the existing `pulse` participant is now rendered from shared player data.
 - Byte 2 listening foundation added: the pulse emits structured musical events into an in-memory ledger, the app exposes a minimum listening frame, and per-player runtime state lives in world state.
+- Byte 3 rule-based trio added: pulse, bass, and melody now play deterministic patterns into the shared listening frame with simple visual drift.
 
 ## First Work
 
 1. Install dependencies with `npm install`.
 2. Run the first byte with `npm run dev`.
 3. Verify repeated start/stop does not duplicate the beat or event subscription.
-4. Review Byte 2 before adding more players.
+4. Review Byte 3 before adding subjective taste, player evaluations, or Ollama.
 5. Wire any future GitHub app/API access using the least-privileged credential model for the job.
 
 ## Run
@@ -59,7 +60,7 @@ npm run smoke
 - `docs/future-multi-terrarium.md`: future-only notes for multiple spaces/bands and audience/exchange behavior.
 - `docs/persistence-checkpoints.md`: proposed SQLite event-log, snapshot, and fork design.
 - `docs/github-setup.md`: GitHub repo and integration setup notes.
-- `src/players.ts`: player data types and the initial `pulse` registry entry.
+- `src/players.ts`: player data types and the initial `pulse`, `bass`, and `melody` registry entries.
 - `src/world-state.ts`: in-memory runtime state owner for players and the musical event ledger.
 - `src/listening.ts`: musical event and listening-frame types plus the recent-event summarizer.
 - `.env.example`: non-secret environment variable template.

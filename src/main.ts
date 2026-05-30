@@ -1,6 +1,6 @@
 import "./style.css";
 import type { ListeningFrame, MusicalEvent } from "./listening";
-import { PLAYER_REGISTRY, type PlayerRuntimeState } from "./players";
+import { PLAYER_REGISTRY } from "./players";
 import { createTerrariumView, type TerrariumView } from "./terrarium";
 import {
   getState,
@@ -23,11 +23,11 @@ const app = requireElement<HTMLDivElement>("#app");
 const world = new GrowWorldState(PLAYER_REGISTRY);
 
 app.innerHTML = `
-  <section class="app-shell" aria-label="Grow Byte 2">
+  <section class="app-shell" aria-label="Grow Byte 3">
     <header class="topbar">
       <div class="brand">
         <h1 class="brand__title">Grow</h1>
-        <p class="brand__subtitle">Byte 2: pulse events and a minimum listening frame</p>
+        <p class="brand__subtitle">Byte 3: three rule-based players sharing a listening frame</p>
       </div>
       <div class="transport-controls">
         <button
@@ -89,22 +89,21 @@ const listeningLatestEvent = requireElement<HTMLElement>("[data-testid='listenin
 
 let terrarium: TerrariumView | null = null;
 let previousTransportStatus = getState().status;
+let renderedPlayerIds = "";
+let renderFrameId: number | null = null;
+const playerStateNodes = new Map<string, HTMLElement>();
 
 function createDefinition(
   term: string,
   value: string,
-  options: { legacyTestId?: string; testId: string },
+  testId: string,
 ): HTMLElement[] {
   const dt = document.createElement("dt");
   dt.textContent = term;
 
   const dd = document.createElement("dd");
-  if (options.legacyTestId) {
-    dd.dataset.testid = options.legacyTestId;
-  }
-
   const valueNode = document.createElement("span");
-  valueNode.dataset.testid = options.testId;
+  valueNode.dataset.testid = testId;
   valueNode.textContent = value;
   dd.append(valueNode);
 
@@ -112,37 +111,41 @@ function createDefinition(
 }
 
 function renderPlayerInspector(players: readonly RuntimePlayer[]): void {
-  const cards = players.map(({ player, state }, index) => {
-    const card = document.createElement("article");
-    card.className = "player-inspector";
-    card.dataset.testid = `player-card-${player.id}`;
+  const nextPlayerIds = players.map(({ player }) => player.id).join("|");
 
-    const dl = document.createElement("dl");
-    const legacy = (field: string): string | undefined => (index === 0 ? `player-${field}` : undefined);
-    dl.append(
-      ...createDefinition("Name", player.displayName, {
-        legacyTestId: legacy("name"),
-        testId: `player-${player.id}-name`,
-      }),
-      ...createDefinition("Role", player.role, {
-        legacyTestId: legacy("role"),
-        testId: `player-${player.id}-role`,
-      }),
-      ...createDefinition("Sound", player.soundLabel, {
-        legacyTestId: legacy("sound"),
-        testId: `player-${player.id}-sound`,
-      }),
-      ...createDefinition("State", state, {
-        legacyTestId: legacy("state"),
-        testId: `player-${player.id}-state`,
-      }),
-    );
+  if (renderedPlayerIds !== nextPlayerIds) {
+    playerStateNodes.clear();
+    const cards = players.map(({ player, state }) => {
+      const card = document.createElement("article");
+      card.className = "player-inspector";
+      card.dataset.testid = `player-card-${player.id}`;
 
-    card.append(dl);
-    return card;
-  });
+      const dl = document.createElement("dl");
+      dl.append(
+        ...createDefinition("Name", player.displayName, `player-${player.id}-name`),
+        ...createDefinition("Role", player.role, `player-${player.id}-role`),
+        ...createDefinition("Sound", player.soundLabel, `player-${player.id}-sound`),
+        ...createDefinition("State", state, `player-${player.id}-state`),
+      );
 
-  playerList.replaceChildren(...cards);
+      card.append(dl);
+      const stateNode = dl.querySelector<HTMLElement>(`[data-testid='player-${player.id}-state']`);
+      if (stateNode) {
+        playerStateNodes.set(player.id, stateNode);
+      }
+      return card;
+    });
+
+    playerList.replaceChildren(...cards);
+    renderedPlayerIds = nextPlayerIds;
+  }
+
+  for (const { player, state } of players) {
+    const stateNode = playerStateNodes.get(player.id);
+    if (stateNode) {
+      stateNode.textContent = state;
+    }
+  }
 }
 
 function renderListening(frame: ListeningFrame): void {
@@ -156,14 +159,19 @@ function renderListening(frame: ListeningFrame): void {
 
 function renderStatus(state: GrowTransportState): void {
   button.textContent = state.status === "playing" ? "Stop" : "Start";
-  status.value = `${state.status} | ${state.bpm} BPM | bar ${state.bar} | scheduled ${state.scheduledEventCount}`;
+  status.value = `${state.status} | ${state.bpm} BPM | bar ${state.bar} | beat ${state.currentBeat.toFixed(1)} | scheduled ${state.scheduledEventCount}`;
 }
 
 function renderWorld(state: GrowTransportState = getState()): void {
+  syncWorldFromTransport(state);
   renderStatus(state);
   const players = world.getPlayers();
   renderPlayerInspector(players);
-  renderListening(world.getListeningFrame({ tempo: state.bpm, meter: [4, 4] }));
+  renderListening(world.getListeningFrame({
+    tempo: state.bpm,
+    meter: [4, 4],
+    currentBeat: state.currentBeat,
+  }));
   for (const { player, state: playerState } of players) {
     terrarium?.setPlayerState(player.id, playerState);
   }
@@ -174,24 +182,31 @@ function syncWorldFromTransport(state: GrowTransportState): void {
     world.clearMusicalEvents();
   }
 
-  const pulseState: PlayerRuntimeState = state.status === "playing" ? "performing" : "waiting";
-  world.setPlayerState("pulse", pulseState);
+  world.syncPlayerStates(state.status, state.currentBeat);
 
   if (state.status === "stopped" && previousTransportStatus === "playing") {
     world.clearMusicalEvents();
+    world.syncPlayerStates(state.status, state.currentBeat);
   }
 
   previousTransportStatus = state.status;
 }
 
-function handleTransportState(state: GrowTransportState): void {
-  syncWorldFromTransport(state);
-  renderWorld(state);
+function handleTransportState(): void {
+  queueRender();
 }
 
 function handleMusicalEvent(event: MusicalEvent): void {
   world.recordMusicalEvent(event);
-  renderWorld();
+  queueRender();
+}
+
+function queueRender(): void {
+  if (renderFrameId !== null) return;
+  renderFrameId = requestAnimationFrame(() => {
+    renderFrameId = null;
+    renderWorld();
+  });
 }
 
 initTransport({
@@ -231,12 +246,23 @@ declare global {
 }
 
 window.listening = {
-  getFrame: () => world.getListeningFrame({ tempo: getState().bpm, meter: [4, 4] }),
+  getFrame: () => {
+    const state = getState();
+    syncWorldFromTransport(state);
+    return world.getListeningFrame({
+      tempo: state.bpm,
+      meter: [4, 4],
+      currentBeat: state.currentBeat,
+    });
+  },
   getEvents: () => world.getMusicalEvents(),
 };
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
+    if (renderFrameId !== null) {
+      cancelAnimationFrame(renderFrameId);
+    }
     terrarium?.destroy();
     terrarium = null;
     window.listening = undefined;

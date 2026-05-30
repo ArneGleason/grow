@@ -36,4 +36,4 @@ Use this file for known risks, open questions, and review focus. Keep entries sh
 - Scope guidance from Arne: keep Grow solo for now, but leave a future hook for multiple terrariums/bands that can observe, inspire, or react to each other.
 - Claude reviewed `docs/implementation-plan.md`; current Byte 1 guidance is stationary pulse player + percussive beat + explicit Tone.js lifecycle cleanup before adding movement or more players.
 - First implementation review should pay special attention to repeated start/stop cycles and whether scheduled Tone.js objects are disposed rather than stacked.
-- Current Claude Code/Mac Mini assignment: Byte 2 approved. Next review should focus on Byte 3's three-player behavior, scheduled-time event stamping, UI render cadence outside scheduled/audio callbacks, and whether the listening frame tracks live transport beat well enough for silence/rest.
+- Current Claude Code/Mac Mini assignment: review Byte 3's three-player behavior, scheduled-time event stamping, UI render cadence outside scheduled/audio callbacks, listening-frame `currentBeat` handling, and whether the trio sounds/reads well enough before subjective taste is added.

@@ -11,6 +11,14 @@ import type { RuntimePlayer } from "./world-state";
 const TERRARIUM_WIDTH = 960;
 const TERRARIUM_HEIGHT = 560;
 
+interface RenderedPlayer {
+  container: Container;
+  anchor: { x: number; y: number };
+  phase: number;
+  radius: number;
+  speed: number;
+}
+
 export interface TerrariumView {
   app: Application;
   setPlayerState(playerId: string, state: PlayerRuntimeState): void;
@@ -40,15 +48,33 @@ export async function createTerrariumView(
   const background = drawBackground();
   world.addChild(background);
 
-  const renderedPlayers = new Map<string, Container>();
-  for (const { player, state } of players) {
+  const renderedPlayers = new Map<string, RenderedPlayer>();
+  players.forEach(({ player, state }, index) => {
     const renderedPlayer = drawPlayer(player);
     renderedPlayer.x = player.position.x;
     renderedPlayer.y = player.position.y;
     applyVisualState(renderedPlayer, state);
-    renderedPlayers.set(player.id, renderedPlayer);
+    renderedPlayers.set(player.id, {
+      container: renderedPlayer,
+      anchor: player.position,
+      phase: index * 2.1,
+      radius: 5 + index * 2,
+      speed: 0.24 + index * 0.05,
+    });
     world.addChild(renderedPlayer);
-  }
+  });
+
+  app.ticker.add(() => {
+    const now = performance.now() / 1000;
+    for (const renderedPlayer of renderedPlayers.values()) {
+      renderedPlayer.container.x =
+        renderedPlayer.anchor.x +
+        Math.cos(now * renderedPlayer.speed + renderedPlayer.phase) * renderedPlayer.radius;
+      renderedPlayer.container.y =
+        renderedPlayer.anchor.y +
+        Math.sin(now * renderedPlayer.speed * 0.8 + renderedPlayer.phase) * renderedPlayer.radius;
+    }
+  });
 
   const renderer = app.renderer;
   const resizeObserver = new ResizeObserver((entries) => {
@@ -68,7 +94,7 @@ export async function createTerrariumView(
     setPlayerState(playerId: string, state: PlayerRuntimeState): void {
       const renderedPlayer = renderedPlayers.get(playerId);
       if (!renderedPlayer) return;
-      applyVisualState(renderedPlayer, state);
+      applyVisualState(renderedPlayer.container, state);
     },
     destroy(): void {
       resizeObserver.disconnect();

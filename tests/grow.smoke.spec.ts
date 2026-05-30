@@ -4,12 +4,18 @@ type TransportState = {
   status: "stopped" | "playing";
   bpm: number;
   bar: number;
+  currentBeat: number;
   scheduledEventCount: number;
 };
 
 type ListeningFrame = {
   eventCount: number;
-  recentEvents: Array<{ playerId: string; kind: string; pitch?: string }>;
+  recentEvents: Array<{
+    playerId: string;
+    kind: string;
+    pitch?: string;
+    absoluteBeat: number;
+  }>;
   players: Array<{ id: string; state: string; recentEvents: unknown[] }>;
 };
 
@@ -43,7 +49,7 @@ async function getListeningFrame(page: Page): Promise<ListeningFrame> {
   return frame;
 }
 
-test("Grow starts, hears pulse events, and cleans up the transport", async ({ page }) => {
+test("Grow starts three players, hears events, and cleans up the transport", async ({ page }) => {
   const consoleErrors: string[] = [];
   const pageErrors: string[] = [];
 
@@ -63,15 +69,23 @@ test("Grow starts, hears pulse events, and cleans up the transport", async ({ pa
   const canvas = page.getByTestId("terrarium-canvas");
 
   await expect(page.locator(".brand__subtitle")).toHaveText(
-    "Byte 2: pulse events and a minimum listening frame",
+    "Byte 3: three rule-based players sharing a listening frame",
   );
   await expect(button).toHaveText("Start");
-  await expect(status).toContainText("stopped | 90 BPM | bar 1 | scheduled 0");
+  await expect(status).toContainText("stopped | 90 BPM | bar 1 | beat 0.0 | scheduled 0");
   await expect(canvas).toBeVisible();
   await expect(page.getByTestId("player-pulse-name")).toHaveText("pulse");
   await expect(page.getByTestId("player-pulse-role")).toHaveText("pulse");
   await expect(page.getByTestId("player-pulse-sound")).toHaveText("C2 beat");
   await expect(page.getByTestId("player-pulse-state")).toHaveText("waiting");
+  await expect(page.getByTestId("player-bass-name")).toHaveText("bass");
+  await expect(page.getByTestId("player-bass-role")).toHaveText("bass");
+  await expect(page.getByTestId("player-bass-sound")).toHaveText("modal bass");
+  await expect(page.getByTestId("player-bass-state")).toHaveText("waiting");
+  await expect(page.getByTestId("player-melody-name")).toHaveText("melody");
+  await expect(page.getByTestId("player-melody-role")).toHaveText("melody");
+  await expect(page.getByTestId("player-melody-sound")).toHaveText("modal line");
+  await expect(page.getByTestId("player-melody-state")).toHaveText("waiting");
   await expect(page.getByTestId("listening-event-count")).toHaveText("0");
 
   const box = await canvas.boundingBox();
@@ -81,19 +95,35 @@ test("Grow starts, hears pulse events, and cleans up the transport", async ({ pa
 
   await button.click();
   await expect(button).toHaveText("Stop");
-  await expect(page.getByTestId("player-pulse-state")).toHaveText("performing");
   await expect
     .poll(async () => (await getTransportState(page)).scheduledEventCount)
-    .toBe(1);
+    .toBe(3);
   await expect.poll(async () => (await getListeningFrame(page)).eventCount).toBeGreaterThan(0);
-  await expect(page.getByTestId("listening-latest-event")).toContainText("pulse note C2");
+  await expect(page.getByTestId("listening-latest-event")).toContainText("note");
+  await expect
+    .poll(async () => {
+      const frame = await getListeningFrame(page);
+      return [...new Set(frame.recentEvents.map((event) => event.playerId))].sort().join(",");
+    })
+    .toBe("bass,melody,pulse");
 
   const frame = await getListeningFrame(page);
+  expect(frame.players.map((player) => player.id).sort()).toEqual(["bass", "melody", "pulse"]);
   expect(frame.players.find((player) => player.id === "pulse")?.recentEvents.length).toBeGreaterThan(0);
+  expect(frame.players.find((player) => player.id === "bass")?.recentEvents.length).toBeGreaterThan(0);
+  expect(frame.players.find((player) => player.id === "melody")?.recentEvents.length).toBeGreaterThan(0);
+  expect(
+    frame.recentEvents.every((event) => {
+      const snappedHalfBeat = event.absoluteBeat * 2;
+      return Math.abs(snappedHalfBeat - Math.round(snappedHalfBeat)) < 0.000001;
+    }),
+  ).toBe(true);
 
   await button.click();
   await expect(button).toHaveText("Start");
   await expect(page.getByTestId("player-pulse-state")).toHaveText("waiting");
+  await expect(page.getByTestId("player-bass-state")).toHaveText("waiting");
+  await expect(page.getByTestId("player-melody-state")).toHaveText("waiting");
   await expect
     .poll(async () => (await getTransportState(page)).scheduledEventCount)
     .toBe(0);
@@ -102,22 +132,23 @@ test("Grow starts, hears pulse events, and cleans up the transport", async ({ pa
   for (let index = 0; index < 10; index += 1) {
     await button.click();
     await expect(button).toHaveText("Stop");
-    await expect(page.getByTestId("player-pulse-state")).toHaveText("performing");
     await expect
       .poll(async () => (await getTransportState(page)).scheduledEventCount)
-      .toBe(1);
+      .toBe(3);
 
     await page.waitForTimeout(150);
 
     await button.click();
     await expect(button).toHaveText("Start");
     await expect(page.getByTestId("player-pulse-state")).toHaveText("waiting");
+    await expect(page.getByTestId("player-bass-state")).toHaveText("waiting");
+    await expect(page.getByTestId("player-melody-state")).toHaveText("waiting");
     await expect
       .poll(async () => (await getTransportState(page)).scheduledEventCount)
       .toBe(0);
   }
 
-  await expect(status).toContainText("stopped | 90 BPM | bar 1 | scheduled 0");
+  await expect(status).toContainText("stopped | 90 BPM | bar 1 | beat 0.0 | scheduled 0");
   await expect.poll(async () => (await getTransportState(page)).status).toBe("stopped");
   expect(consoleErrors).toEqual([]);
   expect(pageErrors).toEqual([]);
