@@ -23,6 +23,7 @@ Start with:
 - Tone.js for sound and transport.
 - Plain TypeScript modules for the first byte, with no React unless the UI becomes complex enough to justify it.
 - Playwright or a simple browser smoke check once the app exists.
+- Pinned PixiJS and Tone.js package versions once dependencies are added.
 
 Keep the app browser-first. Do not add Tauri yet.
 
@@ -35,6 +36,7 @@ Keep the app browser-first. Do not add Tauri yet.
 - Keep state in memory until persistence becomes necessary.
 - Keep UI controls plain and inspectable.
 - Add stable test hooks early, even if tests are minimal.
+- Give every interactive or inspectable element a stable `data-testid` or `id` from day one.
 - Do not add local database files, generated media, or secrets to git.
 
 ## First Byte Candidate
@@ -57,10 +59,12 @@ Include:
 - Vite/TypeScript app scaffold.
 - A bounded top-down terrarium area.
 - One player marker with a role label, probably `pulse`.
-- A small deterministic movement loop.
 - A start/stop control.
-- A simple Tone.js sound, such as a short pulse every beat.
-- A visible status readout: stopped, playing, audio ready, beat/bar, player state.
+- A simple Tone.js percussive sound, such as one short pulse every beat at 90 BPM.
+- A visible status readout: stopped/playing, BPM, and bar.
+- Stable test hooks for the canvas container, start/stop button, and status line.
+- A transport module with explicit `init()`, `start()`, `stop()`, `dispose()`, and `getState()` functions.
+- Vite HMR cleanup that stops/cancels/disposes Tone.js state during development reloads.
 - Minimal styling that makes the first scene readable.
 
 Exclude:
@@ -75,27 +79,33 @@ Exclude:
 - Forks/checkpoints.
 - Instrument invention.
 - Effects routing.
+- Player movement.
+- Player internal state display beyond role label.
+- Distinct `audio ready` status.
+- React.
 
 ### Acceptance Criteria
 
 - `npm run dev` starts the app.
 - The browser shows a bounded terrarium.
 - The player marker is visible and labeled.
-- The player moves without leaving the bounds.
 - Start begins audio after a user gesture.
-- Stop silences audio and stops/pauses transport cleanly.
-- Restart does not duplicate scheduled notes.
-- A visual beat or status indicator changes while playing.
+- Stop silences audio within one beat and stops/pauses transport cleanly.
+- Restart does not duplicate scheduled notes after at least five start/stop cycles.
+- A visual beat, bar, or status indicator changes while playing.
+- The status line documents whether restart resumes from bar 1 or a paused position.
+- `window.transport.getState()` or an equivalent dev hook exposes `{ status, bar, scheduledEventCount }`.
 - There are no console errors during basic start/stop/restart.
+- No `AudioContext was not allowed to start` warning after user gesture.
 
 ## Smaller Alternative
 
 If the first byte above feels too large, split it:
 
 1. App scaffold and bounded terrarium only.
-2. Add one moving player.
+2. Add one stationary player.
 3. Add Tone.js start/stop and one pulse.
-4. Couple the player state to the pulse.
+4. Couple the status/bar readout to the pulse.
 
 This is slower but makes review easier.
 
@@ -111,7 +121,9 @@ Review focus:
 - visual clarity,
 - start/stop reliability,
 - sound/visual coupling,
-- whether vanilla TypeScript remains comfortable.
+- whether vanilla TypeScript remains comfortable,
+- whether Tone.js scheduled objects are disposed correctly,
+- whether repeated start/stop cannot duplicate the beat.
 
 ### Byte 2: Three Rule-Based Players
 
@@ -124,6 +136,7 @@ Scope:
 - Shared tempo and scale.
 - Basic mix balancing.
 - Keep all state in memory.
+- Add simple movement now that the lifecycle is stable.
 
 Review focus:
 
@@ -215,13 +228,6 @@ Review focus:
 
 ## First Review Request
 
-Before coding Byte 1, ask Claude to review this implementation plan and specifically answer:
+Claude reviewed the first implementation plan in `.agent/reviews/2026-05-30-claude-byte-1-plan-review.md`.
 
-- Is Byte 1 still too large?
-- Should we split space/player/audio into separate bytes?
-- Is vanilla Vite TypeScript better than React for the first byte?
-- What should the first player look/sound like?
-- What is the smallest acceptance test that proves start/stop does not duplicate audio?
-- What should be deferred even from Byte 1?
-
-Use `.agent/handoffs/2026-05-30-copy-paste-claude-implementation-plan-review.md`.
+Adopted result: build Byte 1 as one stationary pulse player with one percussive beat, explicit Tone.js lifecycle ownership, stable test hooks, and no React.
