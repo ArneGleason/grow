@@ -45,6 +45,8 @@ test("Byte 1 starts, stops, and cleans up the pulse transport", async ({ page })
   await expect(status).toContainText("stopped | 90 BPM | bar 1 | scheduled 0");
   await expect(canvas).toBeVisible();
   await expect(page.getByTestId("player-name")).toHaveText("pulse");
+  await expect(page.getByTestId("player-role")).toHaveText("pulse");
+  await expect(page.getByTestId("player-sound")).toHaveText("C2 beat");
   await expect(page.getByTestId("player-state")).toHaveText("waiting");
 
   const box = await canvas.boundingBox();
@@ -75,4 +77,3 @@ test("Byte 1 starts, stops, and cleans up the pulse transport", async ({ page })
   expect(consoleErrors).toEqual([]);
   expect(pageErrors).toEqual([]);
 });
-

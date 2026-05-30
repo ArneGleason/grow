@@ -131,6 +131,26 @@ Review focus:
 - whether Tone.js scheduled objects are disposed correctly,
 - whether repeated start/stop cannot duplicate the beat.
 
+### Byte 2a: Player Data Object
+
+Status: implemented.
+
+Make the existing `pulse` participant a data-backed player before adding more behavior.
+
+Scope:
+
+- Define a shared `Player` type.
+- Move `pulse` metadata into a player registry.
+- Render the terrarium marker from player data.
+- Render the inspector from the same player data.
+- Keep sound, transport, movement, and listening behavior unchanged.
+
+Review focus:
+
+- whether the player shape is enough for the event/listening layer,
+- whether adding bass and melody later can be registry entries,
+- whether the renderer avoids hardcoding a single player.
+
 ### Byte 2: Musical Event Ledger + Minimum Listening Frame
 
 Add the foundation for hearing before adding more players.

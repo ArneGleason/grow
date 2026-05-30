@@ -1,4 +1,5 @@
 import "./style.css";
+import { PLAYER_REGISTRY, type Player, type PlayerRuntimeState } from "./players";
 import { createTerrariumView, type TerrariumView } from "./terrarium";
 import {
   getState,
@@ -17,13 +18,28 @@ function requireElement<T extends Element>(selector: string): T {
 }
 
 const app = requireElement<HTMLDivElement>("#app");
+const players = PLAYER_REGISTRY;
+const primaryPlayer = players[0];
+
+function renderInspectorPlayer(player: Player): string {
+  return `
+    <dt>Name</dt>
+    <dd data-testid="player-name">${player.displayName}</dd>
+    <dt>Role</dt>
+    <dd data-testid="player-role">${player.role}</dd>
+    <dt>Sound</dt>
+    <dd data-testid="player-sound">${player.soundLabel}</dd>
+    <dt>State</dt>
+    <dd data-testid="player-state">${player.state}</dd>
+  `;
+}
 
 app.innerHTML = `
-  <section class="app-shell" aria-label="Grow Byte 1">
+  <section class="app-shell" aria-label="Grow Byte 2a">
     <header class="topbar">
       <div class="brand">
         <h1 class="brand__title">Grow</h1>
-        <p class="brand__subtitle">Byte 1: one pulse player in a bounded terrarium</p>
+        <p class="brand__subtitle">Byte 2a: one data-backed player in a bounded terrarium</p>
       </div>
       <div class="transport-controls">
         <button
@@ -56,14 +72,7 @@ app.innerHTML = `
       <aside class="inspector" aria-label="Player inspector">
         <h2>Player</h2>
         <dl>
-          <dt>Name</dt>
-          <dd data-testid="player-name">pulse</dd>
-          <dt>Role</dt>
-          <dd data-testid="player-role">pulse</dd>
-          <dt>Sound</dt>
-          <dd data-testid="player-sound">C2 beat</dd>
-          <dt>State</dt>
-          <dd data-testid="player-state">waiting</dd>
+          ${renderInspectorPlayer(primaryPlayer)}
         </dl>
       </aside>
     </section>
@@ -78,10 +87,11 @@ const playerState = requireElement<HTMLElement>("[data-testid='player-state']");
 let terrarium: TerrariumView | null = null;
 
 function renderStatus(state: GrowTransportState = getState()): void {
+  const primaryPlayerState: PlayerRuntimeState = state.status === "playing" ? "performing" : "waiting";
   button.textContent = state.status === "playing" ? "Stop" : "Start";
   status.value = `${state.status} | ${state.bpm} BPM | bar ${state.bar} | scheduled ${state.scheduledEventCount}`;
-  playerState.textContent = state.status === "playing" ? "performing" : "waiting";
-  terrarium?.setPlaying(state.status === "playing");
+  playerState.textContent = primaryPlayerState;
+  terrarium?.setPlayerState(primaryPlayer.id, primaryPlayerState);
 }
 
 initTransport(renderStatus);
@@ -105,7 +115,7 @@ button.addEventListener("click", async () => {
   }
 });
 
-terrarium = await createTerrariumView(container);
+terrarium = await createTerrariumView(container, players);
 renderStatus();
 
 if (import.meta.hot) {

@@ -5,19 +5,21 @@ import {
   Text,
   TextStyle,
 } from "pixi.js";
+import type { Player, PlayerRuntimeState } from "./players";
 
 const TERRARIUM_WIDTH = 960;
 const TERRARIUM_HEIGHT = 560;
-const PLAYER_COLOR = 0x8f1d20;
-const PLAYER_LABEL = "pulse";
 
 export interface TerrariumView {
   app: Application;
-  setPlaying(isPlaying: boolean): void;
+  setPlayerState(playerId: string, state: PlayerRuntimeState): void;
   destroy(): void;
 }
 
-export async function createTerrariumView(container: HTMLElement): Promise<TerrariumView> {
+export async function createTerrariumView(
+  container: HTMLElement,
+  players: readonly Player[],
+): Promise<TerrariumView> {
   const app = new Application();
   await app.init({
     width: TERRARIUM_WIDTH,
@@ -37,10 +39,16 @@ export async function createTerrariumView(container: HTMLElement): Promise<Terra
   const background = drawBackground();
   world.addChild(background);
 
-  const player = drawPulsePlayer();
-  player.x = TERRARIUM_WIDTH / 2;
-  player.y = TERRARIUM_HEIGHT / 2;
-  world.addChild(player);
+  const renderedPlayers = new Map<string, Container>();
+  for (const player of players) {
+    const renderedPlayer = drawPlayer(player);
+    renderedPlayer.x = player.position.x;
+    renderedPlayer.y = player.position.y;
+    renderedPlayer.alpha = player.state === "performing" ? 1 : 0.82;
+    renderedPlayer.scale.set(player.state === "performing" ? 1.05 : 1);
+    renderedPlayers.set(player.id, renderedPlayer);
+    world.addChild(renderedPlayer);
+  }
 
   const renderer = app.renderer;
   const resizeObserver = new ResizeObserver((entries) => {
@@ -57,9 +65,11 @@ export async function createTerrariumView(container: HTMLElement): Promise<Terra
 
   return {
     app,
-    setPlaying(isPlaying: boolean): void {
-      player.alpha = isPlaying ? 1 : 0.82;
-      player.scale.set(isPlaying ? 1.05 : 1);
+    setPlayerState(playerId: string, state: PlayerRuntimeState): void {
+      const renderedPlayer = renderedPlayers.get(playerId);
+      if (!renderedPlayer) return;
+      renderedPlayer.alpha = state === "performing" ? 1 : 0.82;
+      renderedPlayer.scale.set(state === "performing" ? 1.05 : 1);
     },
     destroy(): void {
       resizeObserver.disconnect();
@@ -88,21 +98,21 @@ function drawBackground(): Container {
   return layer;
 }
 
-function drawPulsePlayer(): Container {
+function drawPlayer(playerData: Player): Container {
   const player = new Container();
 
   const halo = new Graphics()
-    .circle(0, 0, 28)
-    .fill({ color: PLAYER_COLOR, alpha: 0.18 })
-    .stroke({ color: 0xffd6a2, alpha: 0.34, width: 2 });
+    .circle(0, 0, playerData.visual.haloRadius)
+    .fill({ color: playerData.visual.color, alpha: 0.18 })
+    .stroke({ color: playerData.visual.accentColor, alpha: 0.34, width: 2 });
 
   const body = new Graphics()
-    .circle(0, 0, 17)
-    .fill({ color: PLAYER_COLOR })
-    .stroke({ color: 0xffd6a2, alpha: 0.9, width: 2 });
+    .circle(0, 0, playerData.visual.bodyRadius)
+    .fill({ color: playerData.visual.color })
+    .stroke({ color: playerData.visual.accentColor, alpha: 0.9, width: 2 });
 
   const label = new Text({
-    text: PLAYER_LABEL,
+    text: playerData.displayName,
     style: new TextStyle({
       fill: "#f4eddb",
       fontFamily: "Inter, system-ui, sans-serif",
@@ -111,7 +121,7 @@ function drawPulsePlayer(): Container {
     }),
   });
   label.anchor.set(0.5, 0);
-  label.y = 26;
+  label.y = playerData.visual.labelOffsetY;
 
   player.addChild(halo, body, label);
   return player;

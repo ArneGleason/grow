@@ -11,6 +11,7 @@ The repo is initialized with the Studio Pattern so future work has a clear place
 - Initial vision and phased plan added in `docs/vision-and-plan.md`.
 - GitHub setup notes prepared.
 - Byte 1 app scaffold added: bounded PixiJS terrarium, one pulse player, Tone.js start/stop, and transport status hooks.
+- Byte 2a player registry added: the existing `pulse` participant is now rendered from shared player data.
 
 ## First Work
 
@@ -57,6 +58,7 @@ npm run smoke
 - `docs/future-multi-terrarium.md`: future-only notes for multiple spaces/bands and audience/exchange behavior.
 - `docs/persistence-checkpoints.md`: proposed SQLite event-log, snapshot, and fork design.
 - `docs/github-setup.md`: GitHub repo and integration setup notes.
+- `src/players.ts`: player data types and the initial `pulse` registry entry.
 - `.env.example`: non-secret environment variable template.
 
 ## GitHub Connection

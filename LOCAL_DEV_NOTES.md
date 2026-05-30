@@ -125,6 +125,7 @@ Resume work:
 - GitHub remote is configured as `origin` and tracks `main`.
 - No committed secrets should be added. Use `.env.local` for local-only credentials.
 - Byte 1 pins PixiJS, Tone.js, Vite, and TypeScript directly in `package.json`.
+- Byte 2a adds `src/players.ts`; renderers and inspectors should consume player registry data instead of hardcoding visible players.
 - The first transport implementation exposes `window.transport.getState()` for dev inspection.
 - Tone.js audio must start from a user gesture in normal browsers.
 - Playwright smoke tests pass Chromium `--autoplay-policy=no-user-gesture-required` so the test can focus on lifecycle cleanup rather than browser audio policy.
