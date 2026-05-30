@@ -22,9 +22,9 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Prepare copy/paste Claude kickoff handoff",
+  "lastTask": "Add explicit handoff addressing convention",
   "status": "initialized",
-  "updatedAt": "2026-05-30T15:22:24Z",
+  "updatedAt": "2026-05-30T15:25:25Z",
   "lastHandoff": ".agent/handoffs/2026-05-30-copy-paste-claude-kickoff.md",
   "branch": "main",
   "commit": "pending-github-state-commit",

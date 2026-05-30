@@ -1,6 +1,9 @@
 # Handoff: Claude Planning Review
 
 Date: 2026-05-30
+From: Codex on `macbook-pro-m5`
+To: Claude Code on `mac-mini-pro-m4`
+Relay: Arne Gleason, manual copy/paste with optional commentary, edits, or omission.
 
 ## Requested Role
 

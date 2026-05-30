@@ -1,6 +1,9 @@
 # Copy/Paste Handoff: Kick Off Claude Review
 
 Date: 2026-05-30
+From: Codex on `macbook-pro-m5`
+To: Claude Code on `mac-mini-pro-m4`
+Relay: Arne Gleason, manual copy/paste with optional commentary, edits, or omission.
 Repository: https://github.com/ArneGleason/grow
 Branch: `main`
 Baseline commit: `5785d26`
@@ -8,6 +11,10 @@ Baseline commit: `5785d26`
 Copy/paste the text below into Claude Code on the Mac Mini.
 
 ```md
+From: Codex on macbook-pro-m5
+To: Claude Code on mac-mini-pro-m4
+Relay: Arne Gleason is manually copying/pasting this handoff and may add commentary, edits, or choose not to route it.
+
 Please act as a Studio Pattern reviewer and creative collaborator for this repo:
 
 https://github.com/ArneGleason/grow

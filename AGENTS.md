@@ -43,6 +43,7 @@ Studio Pattern source:
 - Update `.agent/REVIEW_QUEUE.md` when you leave a question, risk, or known weak spot for a reviewer.
 - Keep `.agent/session.json` current before suspend, handoff, or model/environment transfer.
 - Include machine handles in handoffs when work moves between physical machines or local environments.
+- Include explicit `From`, `To`, and `Relay` fields in handoffs so copied text preserves who is speaking, who is being addressed, and where the human-mediated relay sits.
 - Write handoffs and review notes for the human owner first; another agent may be the next reader, but the human should be able to understand and route the work.
 - Preserve role and perspective boundaries. Do not collapse a reviewer into an implementer, or start direct self-orchestration, unless the human owner explicitly routes the work that way.
 
