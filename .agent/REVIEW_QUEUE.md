@@ -12,6 +12,10 @@ Use this file for known risks, open questions, and review focus. Keep entries sh
 - What should the first capture rolling window length be?
 - Should first best-moment detection be heuristic-only, human-marked-only, or include an observer agent?
 - How should agent resistance to producer requests be bounded so it feels alive without getting annoying?
+- How much local Ollama latency is acceptable for agent decisions?
+- Should the terrarium keep ambient memory between sessions or start fresh by default?
+- Should producer movement be keyboard-based, click-to-move, or another input model?
+- Should session artifacts eventually be portable/shareable, or is Grow strictly a solo local instrument?
 
 ## Initial Review Focus
 
@@ -23,3 +27,4 @@ Use this file for known risks, open questions, and review focus. Keep entries sh
 - Claude Code/Mac Mini first assignment: read `CLAUDE.md` and `.agent/handoffs/2026-05-30-claude-planning-review.md`, then produce critique, strengths, creative drift ideas, and concrete next-step recommendations.
 - Review `docs/persistence-checkpoints.md` before implementation: validate SQLite/event-log/snapshot/fork strategy and identify what should stay JSON versus relational.
 - Current Claude Code/Mac Mini assignment: use `.agent/handoffs/2026-05-30-claude-review-and-creative-drift.md` as the primary prompt.
+- Current Codex implementation guidance from Claude review: start with the smallest rule-based playable terrarium before adding Ollama, SQLite, producer avatar, or fork/capture UI.

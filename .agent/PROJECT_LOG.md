@@ -18,3 +18,5 @@ Use this file for durable decisions and meaningful project events. Keep entries 
 - Added `.agent/handoffs/2026-05-30-copy-paste-claude-kickoff.md` so Arne can manually paste a concise Claude Code kickoff prompt while preserving the human-mediated relay step.
 - Added explicit `From`, `To`, and `Relay` fields to handoffs so manually copied text preserves authorship, intended recipient, machine context, and Arne's human-routing role.
 - Added a standing rule to route reusable Grow learnings back into the canonical Studio Pattern and captured the first cross-project feedback note: addressed handoffs with explicit `From`, `To`, and `Relay` metadata.
+- Received Claude Code planning review via Arne's manual relay and preserved the intake in `.agent/reviews/2026-05-30-claude-planning-pass.md`.
+- Adopted Claude's scope cuts into `docs/vision-and-plan.md` and `docs/persistence-checkpoints.md`: first build becomes a rule-based PixiJS/Tone.js terrarium; Ollama, SQLite, producer avatar, forks, instrument invention, effects routing, and automatic capture move later.

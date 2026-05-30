@@ -57,6 +57,39 @@ Keep the first schema hybrid: relational metadata plus JSON payloads.
 
 Do not over-normalize every instrument and behavior yet. Store the key indexes as columns, and keep flexible state in JSON payloads until the shape stabilizes.
 
+Treat the schema below as the target shape, not the first implementation. The first playable terrarium should run in memory so the project can learn what state is actually worth preserving.
+
+When persistence begins, start with a smaller version:
+
+```sql
+create table sessions (
+  id text primary key,
+  name text not null,
+  created_at text not null,
+  updated_at text not null
+);
+
+create table events (
+  id text primary key,
+  session_id text not null references sessions(id),
+  branch_id text not null default 'main',
+  seq integer not null,
+  tick integer not null,
+  bar real,
+  actor_id text,
+  type text not null,
+  payload_json text not null,
+  created_at text not null,
+  unique(session_id, branch_id, seq)
+);
+```
+
+This keeps the fork extension point (`branch_id`) without requiring branch management, snapshots, or moments on day one.
+
+Add `moments` when manual marking exists. Add `snapshots` when replay from long histories becomes slow or when checkpoints become an actual user workflow. Add `worlds` and full `branches` when forks need names, parentage, and UI.
+
+## Target Schema
+
 ```sql
 create table worlds (
   id text primary key,
@@ -127,7 +160,8 @@ This schema supports:
 
 Start simple:
 
-- Write events continuously.
+- Begin with no snapshots in the first playable prototype.
+- Write events continuously once SQLite persistence is introduced.
 - Write snapshots every N events, every N bars, or before major user actions.
 - Keep snapshots small enough to load quickly.
 - Keep enough events between snapshots to preserve good replay detail.
@@ -142,6 +176,8 @@ A good first setting:
 ## Forking
 
 A fork is a new branch with a pointer back to where it began.
+
+Forking should be designed for early and implemented later. Keep `branch_id` on events from the first persistence pass, but defer fork UI and full branch metadata until playing with the terrarium reveals a real need to branch.
 
 Example:
 

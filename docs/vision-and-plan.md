@@ -17,6 +17,7 @@ The project is exploratory. Drift is allowed. The repo should keep enough memory
 - First local model target: Gemma 4 31B through Ollama, using a configurable model name so the exact local Ollama tag can be adjusted.
 - Human avatar: producer-like participant. Agents can comply, resist, ignore, reinterpret, or develop changing attitudes toward producer suggestions.
 - Capture: lightweight rolling best-moments capture, not a large permanent archive.
+- First implementation slice: rule-based PixiJS/Tone.js terrarium with three simple musical agents; no Ollama, SQLite, producer avatar, forks, or capture UI until the audio/visual core feels alive.
 
 ## Product Feel
 
@@ -43,13 +44,13 @@ Tauri can become useful later if Grow wants to feel like a native desktop instru
 
 ## Core Loop
 
-1. The world advances in ticks and musical bars.
-2. Each agent observes a compact world state: nearby agents, current tempo, session phase, available instruments, recent musical events, and its own memory.
-3. On slower intervals, an agent asks the local Ollama model for a small structured decision.
-4. The simulation validates that decision and turns it into safe world actions.
-5. Musical actions are scheduled by Tone.js against a shared transport.
-6. Visual actions are rendered in the terrarium.
-7. The human avatar can inject instructions, constraints, new goals, or new objects.
+1. The visual and audio world advances continuously in animation ticks and musical bars.
+2. Musical actions are scheduled by Tone.js against a shared transport.
+3. Visual actions are rendered in the terrarium without waiting for agent reasoning.
+4. Rule-based agents provide the first musical behavior and remain useful as a fallback.
+5. Later, Ollama decisions arrive on slower intervals and update agent intent rather than blocking timing.
+6. The simulation validates all agent proposals and turns them into safe world actions.
+7. The human avatar can eventually inject instructions, constraints, new goals, or new objects.
 
 ## Initial Agent Abilities
 
@@ -57,15 +58,18 @@ Keep the first agent action set small:
 
 - `move`: choose a nearby destination.
 - `listen`: focus on another agent or the current groove.
-- `propose_tempo`: suggest or reinforce tempo.
 - `claim_role`: pick a simple musical role such as pulse, bass, melody, texture, or noise.
 - `play_pattern`: schedule a short phrase using an existing instrument.
-- `make_instrument`: create a constrained synth preset or rhythm source.
-- `process_signal`: affect another role or the shared mix through a constrained effect chain.
 - `respond`: answer another agent or the human avatar in short text.
 - `rest`: intentionally leave space.
 
 Agents should not directly execute arbitrary code. They propose declarative actions; the app validates and performs them.
+
+Deferred actions:
+
+- `propose_tempo`: add once the transport and session control model exist.
+- `make_instrument`: defer until the basic listen/role/play loop feels good.
+- `process_signal`: defer until Tone.js routing and a mixer model exist.
 
 ## Musical Model
 
@@ -150,7 +154,8 @@ The capture system should behave like a ring buffer:
 
 - Keep only a short recent window by default, such as 2-5 minutes.
 - Let the human press a mark button to preserve the last N seconds.
-- Let automatic heuristics suggest moments based on novelty, convergence, role changes, dense interaction, or sudden musical contrast.
+- Start with human-marked moments only.
+- Later, let automatic heuristics or an observer agent suggest moments based on novelty, convergence, role changes, dense interaction, or sudden musical contrast.
 - Keep a small best-moments tray.
 - Purge unmarked material continuously.
 - Use explicit export for anything that should survive beyond the session.
@@ -185,6 +190,31 @@ The browser should own visuals and audio scheduling. The backend should own loca
 
 Persistence should use an append-only event log plus periodic snapshots. See `docs/persistence-checkpoints.md`.
 
+## First Implementation Slice
+
+Build the smallest playable thing that can answer whether Grow feels alive:
+
+- One browser tab.
+- PixiJS canvas with a bounded terrarium.
+- Three colored moving agents.
+- Roles: pulse, bass, melody.
+- Tone.js shared transport with play/stop and tempo readout.
+- Rule-based quantized patterns in a small tonal/modal scale.
+- No Ollama calls.
+- No SQLite persistence.
+- No producer avatar.
+- No forks/checkpoints UI.
+- No instrument invention or effects routing.
+
+What this tests:
+
+- Whether the terrarium reads visually.
+- Whether the audio and visual loops feel coupled.
+- Whether three constrained musical roles sound like a tiny band rather than noise.
+- Whether the stack is pleasant enough before adding reasoning and memory.
+
+From the start, make stop/restart cleanup reliable and keep the transport/test hooks deterministic.
+
 ## Collaboration Model
 
 Use the Studio Pattern deliberately:
@@ -203,22 +233,22 @@ Use the Studio Pattern deliberately:
 - Keep GitHub setup separate from app credentials.
 - Confirm app stack.
 
-### Milestone 1: Silent Terrarium
+### Milestone 1: Playable Rule-Based Terrarium
 
-- Build the top-down visual world.
-- Spawn, add, remove, and move agents.
-- Show simple status: role, attention target, current intent.
-- Add a human avatar that can move and issue text instructions.
-- Add a visible event log with a small rolling history.
+- Build the top-down bounded visual world.
+- Show three moving agents with stable role colors and labels.
+- Add Tone.js transport with play/stop and tempo readout.
+- Give agents rule-based quantized patterns: pulse, bass, melody.
+- Keep state in memory.
+- Verify transport start/stop cleanup and audio/visual coupling.
 
-### Milestone 2: Sound Sandbox
+### Milestone 2: Producer and World Events
 
-- Add Tone.js transport.
-- Add play/stop and tempo controls.
-- Add a few built-in synth instruments.
-- Let each agent play simple rule-based patterns without LLM calls.
-- Add tonal/modal controls and basic rhythm density controls.
-- Add a first constrained effects role.
+- Add the producer avatar after the terrarium already feels alive.
+- Let the producer move and place text instructions into the world.
+- Show attention lines or simple notice animations when agents react.
+- Add a visible in-memory event log with a small rolling history.
+- Add tonal/modal controls and rhythm density controls.
 
 ### Milestone 3: Local Reasoning Loop
 
@@ -227,26 +257,35 @@ Use the Studio Pattern deliberately:
 - Let one agent decide between safe actions.
 - Add bounded memory and logs so decisions can be inspected.
 - Target Gemma 4 31B first, with the exact Ollama model tag configurable.
-- Add the first SQLite event log for agent/world decisions.
+- Keep rule-based behavior active while Ollama decisions are pending.
 
-### Milestone 4: First Band Session
+### Milestone 4: Persistence and Moments
+
+- Add minimal SQLite persistence for sessions and events.
+- Include `branch_id` in events as a future fork extension point.
+- Add manual "mark moment" support.
+- Defer automatic best-moment detection until real sessions reveal what is interesting.
+- Design for checkpoints/forks, but do not build full fork UI unless the workflow demands it.
+
+### Milestone 5: First Band Session
 
 - Run 3-5 agents.
-- Add session phases: gather, choose tempo, assign roles, jam, reflect.
+- Start with two phases: loose/free and deliberate/groove.
 - Let the human avatar conduct: "make it sparser", "follow the pulse", "switch roles", "try a brighter melody".
 - Persist session snapshots.
 - Add varied agent reactions to producer suggestions.
 - Add checkpoint and fork support for session branches.
 
-### Milestone 5: Instrument Invention
+### Milestone 6: Instrument and Effects Invention
 
 - Let agents propose constrained synth patches.
 - Save instruments as declarative presets.
 - Let agents switch instruments and reuse discoveries.
 - Add a small library view.
 - Let effects agents propose constrained effect patches.
+- Add the effects-agent role once the mixer/routing model exists.
 
-### Milestone 6: Best-Moments Capture
+### Milestone 7: Best-Moments Capture
 
 - Add a rolling event buffer.
 - Add manual moment marking.
@@ -255,7 +294,7 @@ Use the Studio Pattern deliberately:
 - Add optional WebM export.
 - Evaluate whether MP4 export needs local backend conversion.
 
-### Milestone 7: GitHub Connection
+### Milestone 8: GitHub Connection
 
 - Decide whether Grow needs GitHub only as its source remote or as a product integration.
 - If product integration is needed, prefer a GitHub App or OAuth app over a long-lived personal token.
@@ -278,3 +317,7 @@ Use the Studio Pattern deliberately:
 - What should the first rolling window length be: 2, 3, or 5 minutes?
 - Should automatic best-moment detection begin with simple heuristics or ask an observer agent to nominate moments?
 - What is the exact local Ollama model tag for Gemma 4 31B on this machine?
+- How much Ollama decision latency feels acceptable: every bar, every few bars, or slower creature-like thinking?
+- Should the terrarium keep ambient memory between sessions or start fresh by default?
+- Should the producer move by keyboard, click-to-move, or another input model?
+- Is Grow ultimately a solo instrument only, or should session artifacts become portable/shareable?
