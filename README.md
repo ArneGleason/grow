@@ -33,6 +33,14 @@ Default URL:
 http://127.0.0.1:5173
 ```
 
+## Validate
+
+```sh
+npm audit
+npm run build
+npm run smoke
+```
+
 ## Repository Map
 
 - `AGENTS.md`: fast orientation and working rules for agents.

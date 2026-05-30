@@ -87,9 +87,6 @@ function renderStatus(state: GrowTransportState = getState()): void {
 initTransport(renderStatus);
 renderStatus();
 
-terrarium = await createTerrariumView(container);
-renderStatus();
-
 button.addEventListener("click", async () => {
   button.disabled = true;
   try {
@@ -107,6 +104,9 @@ button.addEventListener("click", async () => {
     button.focus();
   }
 });
+
+terrarium = await createTerrariumView(container);
+renderStatus();
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {

@@ -10,6 +10,8 @@ build/
 coverage/
 .next/
 .astro/
+playwright-report/
+test-results/
 
 # Local databases
 data/*.sqlite

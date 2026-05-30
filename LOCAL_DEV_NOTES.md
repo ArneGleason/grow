@@ -44,6 +44,7 @@ http://127.0.0.1:5173
 ```sh
 npm audit
 npm run build
+npm run smoke
 git status --short --branch
 git ls-files --cached --others --exclude-standard | sort
 ```
@@ -52,6 +53,7 @@ git ls-files --cached --others --exclude-standard | sort
 
 ```sh
 npm run build
+npm run smoke
 ```
 
 ## GitHub Repo Setup
@@ -87,6 +89,7 @@ For software projects, record the testing conventions that future agents should 
 
 - Stable selectors or test IDs: Byte 1 exposes `transport-toggle`, `transport-status`, `terrarium-container`, `terrarium-canvas`, `player-name`, `player-role`, `player-sound`, and `player-state`.
 - E2E state setup and teardown: TBD.
+- E2E smoke command: `npm run smoke`; Playwright starts or reuses Vite at `http://127.0.0.1:5173/`.
 - Page readiness and realtime waits: wait for `window.transport.getState()` before transport assertions.
 - Shared fixtures/helpers: TBD.
 - Visual regression entry points: capture the Vite root page at `http://127.0.0.1:5173/`; the terrarium canvas should show one stationary `pulse` player.
@@ -124,6 +127,7 @@ Resume work:
 - Byte 1 pins PixiJS, Tone.js, Vite, and TypeScript directly in `package.json`.
 - The first transport implementation exposes `window.transport.getState()` for dev inspection.
 - Tone.js audio must start from a user gesture in normal browsers.
+- Playwright smoke tests pass Chromium `--autoplay-policy=no-user-gesture-required` so the test can focus on lifecycle cleanup rather than browser audio policy.
 - Vite dev HMR can leave audio objects alive if cleanup regresses; preserve transport disposal hooks.
 - Byte 1 validation passed with `npm run build`, `npm audit`, and a Playwright smoke check for repeated start/stop cleanup.
 - Use `git ls-files --cached --others --exclude-standard | sort` for the file inventory now that ignored `node_modules/` and `dist/` trees exist.

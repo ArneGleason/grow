@@ -14,9 +14,9 @@ const BPM = 90;
 let Tone: typeof ToneNS | null = null;
 let synth: ToneNS.MembraneSynth | null = null;
 let sequence: ToneNS.Sequence<string> | null = null;
+const scheduledSequences = new Set<ToneNS.Sequence<string>>();
 let status: TransportStatus = "stopped";
 let bar = 1;
-let tickId: number | null = null;
 let onTick: ((state: GrowTransportState) => void) | null = null;
 
 function log(message: string): void {
@@ -29,9 +29,9 @@ function emitTick(): void {
   onTick?.(getState());
 }
 
-function setBarFromTransport(): void {
-  if (!Tone) return;
-  const [bars] = Tone.Transport.position.toString().split(":");
+function setBarFromTransport(tone: typeof ToneNS): void {
+  if (status !== "playing") return;
+  const [bars] = tone.getTransport().position.toString().split(":");
   const nextBar = Number.parseInt(bars, 10) + 1;
   bar = Number.isFinite(nextBar) && nextBar > 0 ? nextBar : 1;
   emitTick();
@@ -64,11 +64,12 @@ function ensureSynth(tone: typeof ToneNS): ToneNS.MembraneSynth {
 }
 
 function disposeSequence(): void {
-  if (sequence) {
-    sequence.stop(0);
-    sequence.dispose();
-    sequence = null;
+  for (const activeSequence of scheduledSequences) {
+    activeSequence.stop(0);
+    activeSequence.dispose();
   }
+  scheduledSequences.clear();
+  sequence = null;
 }
 
 export function initTransport(
@@ -84,34 +85,32 @@ export async function startTransport(): Promise<GrowTransportState> {
   const tone = await loadTone();
   await tone.start();
 
-  if (sequence) {
+  if (scheduledSequences.size > 0) {
     console.warn("[transport] start requested while a sequence is already active");
     return getState();
   }
 
   const instrument = ensureSynth(tone);
-  tone.Transport.bpm.value = BPM;
-  tone.Transport.timeSignature = [4, 4];
-  tone.Transport.loop = false;
-  tone.Transport.position = "0:0:0";
+  const transport = tone.getTransport();
+  const draw = tone.getDraw();
+  transport.bpm.value = BPM;
+  transport.timeSignature = [4, 4];
+  transport.loop = false;
+  transport.position = "0:0:0";
   bar = 1;
 
   sequence = new tone.Sequence(
     (time, note) => {
       instrument.triggerAttackRelease(note, "8n", time);
-      tone.Draw.schedule(setBarFromTransport, time);
+      draw.schedule(() => setBarFromTransport(tone), time);
     },
     ["C2"],
     "4n",
   );
   sequence.start(0);
+  scheduledSequences.add(sequence);
 
-  if (tickId !== null) {
-    tone.Transport.clear(tickId);
-  }
-  tickId = tone.Transport.scheduleRepeat(setBarFromTransport, "4n");
-
-  tone.Transport.start("+0.05");
+  transport.start("+0.05");
   status = "playing";
   log("started");
   emitTick();
@@ -119,19 +118,14 @@ export async function startTransport(): Promise<GrowTransportState> {
 }
 
 export function stopTransport(): GrowTransportState {
-  if (Tone) {
-    Tone.Transport.stop(0);
-  }
-  if (tickId !== null) {
-    Tone?.Transport.clear(tickId);
-    tickId = null;
-  }
+  const transport = Tone?.getTransport();
+  transport?.stop(0);
   disposeSequence();
-  Tone?.Transport.cancel(0);
+  transport?.cancel(0);
   status = "stopped";
   bar = 1;
-  if (Tone) {
-    Tone.Transport.position = "0:0:0";
+  if (transport) {
+    transport.position = "0:0:0";
   }
   log("stopped");
   emitTick();
@@ -153,7 +147,7 @@ export function getState(): GrowTransportState {
     status,
     bpm: BPM,
     bar,
-    scheduledEventCount: sequence ? 1 : 0,
+    scheduledEventCount: scheduledSequences.size,
   };
 }
 
@@ -180,7 +174,7 @@ window.transport = {
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
     disposeTransport();
-    Tone?.Transport.stop(0);
-    Tone?.Transport.cancel(0);
+    Tone?.getTransport().stop(0);
+    Tone?.getTransport().cancel(0);
   });
 }

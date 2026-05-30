@@ -56,6 +56,7 @@ Before handoff or review, run the project's normal checks:
 ```sh
 npm audit
 npm run build
+npm run smoke
 git status --short --branch
 git ls-files --cached --others --exclude-standard | sort
 ```
