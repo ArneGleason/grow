@@ -230,7 +230,7 @@ Implementation notes:
 
 ### Byte 3b: Pre-Taste Listening + State Cleanup
 
-Status: planned.
+Status: implemented.
 
 Small cleanup byte before subjective taste consumes runtime state.
 
@@ -247,6 +247,14 @@ Review focus:
 - whether note-on flash preserves the visible liveliness without lying through state labels,
 - whether listening-frame getters are safe to call from probes/tests,
 - whether tonal context is right-sized and not a full composition engine yet.
+
+Implementation notes:
+
+- `GrowWorldState.syncPlayerStates()` now treats `performing` as recent participation over an 8-beat posture window.
+- Note-on emphasis moved into `terrarium.flashPlayer()` and is triggered from the rAF render path, not as the persistent runtime state label.
+- `window.listening.getFrame()` derives fresh read-only player state for the returned frame without clearing ledgers or mutating transition state.
+- `silenceRatio` now measures the union of active intervals, avoiding overlap double-counting.
+- `GrowWorldState` carries default tonal context: `C mixolydian` with scale `C D E F G A Bb`.
 
 ### Byte 4: Subjective Taste, Still Rule-Based
 

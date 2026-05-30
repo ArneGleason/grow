@@ -14,13 +14,14 @@ The repo is initialized with the Studio Pattern so future work has a clear place
 - Byte 2a player registry added: the existing `pulse` participant is now rendered from shared player data.
 - Byte 2 listening foundation added: the pulse emits structured musical events into an in-memory ledger, the app exposes a minimum listening frame, and per-player runtime state lives in world state.
 - Byte 3 rule-based trio added: pulse, bass, and melody now play deterministic patterns into the shared listening frame with simple visual drift.
+- Byte 3b listening cleanup added: player state now represents stable musical posture, note hits flash visually, listening getters are read-only, `silenceRatio` avoids overlap double-counting, and world state carries `C mixolydian` tonal context.
 
 ## First Work
 
 1. Install dependencies with `npm install`.
 2. Run the first byte with `npm run dev`.
 3. Verify repeated start/stop does not duplicate the beat or event subscription.
-4. Review Byte 3 before adding subjective taste, player evaluations, or Ollama.
+4. Review Byte 3b before adding subjective taste, player evaluations, or Ollama.
 5. Wire any future GitHub app/API access using the least-privileged credential model for the job.
 
 ## Run

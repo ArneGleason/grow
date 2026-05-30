@@ -23,11 +23,11 @@ const app = requireElement<HTMLDivElement>("#app");
 const world = new GrowWorldState(PLAYER_REGISTRY);
 
 app.innerHTML = `
-  <section class="app-shell" aria-label="Grow Byte 3">
+  <section class="app-shell" aria-label="Grow Byte 3b">
     <header class="topbar">
       <div class="brand">
         <h1 class="brand__title">Grow</h1>
-        <p class="brand__subtitle">Byte 3: three rule-based players sharing a listening frame</p>
+        <p class="brand__subtitle">Byte 3b: stable posture and tonal listening</p>
       </div>
       <div class="transport-controls">
         <button
@@ -66,6 +66,8 @@ app.innerHTML = `
         <section class="inspector-section" aria-label="Listening frame">
           <h2>Listening</h2>
           <dl>
+            <dt>Mode</dt>
+            <dd data-testid="listening-tonal-context">C mixolydian</dd>
             <dt>Events</dt>
             <dd data-testid="listening-event-count">0</dd>
             <dt>Window</dt>
@@ -86,12 +88,14 @@ const playerList = requireElement<HTMLDivElement>("#player-list");
 const listeningEventCount = requireElement<HTMLElement>("[data-testid='listening-event-count']");
 const listeningWindow = requireElement<HTMLElement>("[data-testid='listening-window']");
 const listeningLatestEvent = requireElement<HTMLElement>("[data-testid='listening-latest-event']");
+const listeningTonalContext = requireElement<HTMLElement>("[data-testid='listening-tonal-context']");
 
 let terrarium: TerrariumView | null = null;
 let previousTransportStatus = getState().status;
 let renderedPlayerIds = "";
 let renderFrameId: number | null = null;
 const playerStateNodes = new Map<string, HTMLElement>();
+const pendingPlayerFlashes = new Set<string>();
 
 function createDefinition(
   term: string,
@@ -150,6 +154,7 @@ function renderPlayerInspector(players: readonly RuntimePlayer[]): void {
 
 function renderListening(frame: ListeningFrame): void {
   const latestEvent = frame.recentEvents.at(-1);
+  listeningTonalContext.textContent = `${frame.tonalContext.tonic} ${frame.tonalContext.mode}`;
   listeningEventCount.textContent = String(frame.eventCount);
   listeningWindow.textContent = `beats ${frame.timeWindow.fromBeat.toFixed(1)}-${frame.timeWindow.toBeat.toFixed(1)}`;
   listeningLatestEvent.textContent = latestEvent
@@ -175,6 +180,10 @@ function renderWorld(state: GrowTransportState = getState()): void {
   for (const { player, state: playerState } of players) {
     terrarium?.setPlayerState(player.id, playerState);
   }
+  for (const playerId of pendingPlayerFlashes) {
+    terrarium?.flashPlayer(playerId);
+  }
+  pendingPlayerFlashes.clear();
 }
 
 function syncWorldFromTransport(state: GrowTransportState): void {
@@ -198,6 +207,7 @@ function handleTransportState(): void {
 
 function handleMusicalEvent(event: MusicalEvent): void {
   world.recordMusicalEvent(event);
+  pendingPlayerFlashes.add(event.playerId);
   queueRender();
 }
 
@@ -248,11 +258,11 @@ declare global {
 window.listening = {
   getFrame: () => {
     const state = getState();
-    syncWorldFromTransport(state);
     return world.getListeningFrame({
       tempo: state.bpm,
       meter: [4, 4],
       currentBeat: state.currentBeat,
+      transportStatus: state.status,
     });
   },
   getEvents: () => world.getMusicalEvents(),

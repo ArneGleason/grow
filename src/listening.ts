@@ -2,6 +2,12 @@ import type { PlayerRole, PlayerRuntimeState } from "./players";
 
 export type MusicalEventKind = "note" | "rest" | "effect";
 
+export interface TonalContext {
+  tonic: string;
+  mode: string;
+  scale: readonly string[];
+}
+
 export interface MusicalEvent {
   id: string;
   kind: MusicalEventKind;
@@ -37,6 +43,7 @@ export interface ListeningFrame {
   };
   tempo: number;
   meter: [number, number];
+  tonalContext: TonalContext;
   mix: {
     loudness: number;
     silenceRatio: number;
@@ -62,6 +69,7 @@ export interface ListeningFrameOptions {
   players: readonly ListeningFramePlayerSource[];
   tempo: number;
   meter: [number, number];
+  tonalContext: TonalContext;
   currentBeat?: number;
   windowBeats?: number;
 }
@@ -101,6 +109,7 @@ export class MusicalEventLedger {
       timeWindow: { fromBeat, toBeat },
       tempo: options.tempo,
       meter: options.meter,
+      tonalContext: options.tonalContext,
       mix: {
         loudness: 0,
         silenceRatio: calculateSilenceRatio(recentEvents, fromBeat, toBeat),
@@ -141,11 +150,36 @@ function calculateSilenceRatio(
 ): number {
   const windowLength = Math.max(0, toBeat - fromBeat);
   if (windowLength === 0) return events.length === 0 ? 1 : 0;
-  const activeBeats = events.reduce((total, event) => {
-    const eventStart = Math.max(fromBeat, event.absoluteBeat);
-    const eventEnd = Math.min(toBeat, event.absoluteBeat + event.durationBeats);
-    return total + Math.max(0, eventEnd - eventStart);
-  }, 0);
+  const intervals = events
+    .map((event) => ({
+      start: Math.max(fromBeat, event.absoluteBeat),
+      end: Math.min(toBeat, event.absoluteBeat + event.durationBeats),
+    }))
+    .filter((interval) => interval.end > interval.start)
+    .sort((left, right) => left.start - right.start);
+  const activeBeats = measureIntervalUnion(intervals);
 
   return Math.max(0, Math.min(1, 1 - activeBeats / windowLength));
+}
+
+function measureIntervalUnion(intervals: readonly { start: number; end: number }[]): number {
+  if (intervals.length === 0) return 0;
+
+  let activeBeats = 0;
+  let currentStart = intervals[0].start;
+  let currentEnd = intervals[0].end;
+
+  for (let index = 1; index < intervals.length; index += 1) {
+    const interval = intervals[index];
+    if (interval.start <= currentEnd) {
+      currentEnd = Math.max(currentEnd, interval.end);
+      continue;
+    }
+
+    activeBeats += currentEnd - currentStart;
+    currentStart = interval.start;
+    currentEnd = interval.end;
+  }
+
+  return activeBeats + currentEnd - currentStart;
 }

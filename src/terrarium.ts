@@ -13,15 +13,18 @@ const TERRARIUM_HEIGHT = 560;
 
 interface RenderedPlayer {
   container: Container;
+  halo: Graphics;
   anchor: { x: number; y: number };
   phase: number;
   radius: number;
   speed: number;
+  flashUntilMs: number;
 }
 
 export interface TerrariumView {
   app: Application;
   setPlayerState(playerId: string, state: PlayerRuntimeState): void;
+  flashPlayer(playerId: string): void;
   destroy(): void;
 }
 
@@ -51,21 +54,24 @@ export async function createTerrariumView(
   const renderedPlayers = new Map<string, RenderedPlayer>();
   players.forEach(({ player, state }, index) => {
     const renderedPlayer = drawPlayer(player);
-    renderedPlayer.x = player.position.x;
-    renderedPlayer.y = player.position.y;
-    applyVisualState(renderedPlayer, state);
+    renderedPlayer.container.x = player.position.x;
+    renderedPlayer.container.y = player.position.y;
+    applyVisualState(renderedPlayer.container, state);
     renderedPlayers.set(player.id, {
-      container: renderedPlayer,
+      container: renderedPlayer.container,
+      halo: renderedPlayer.halo,
       anchor: player.position,
       phase: index * 2.1,
       radius: 5 + index * 2,
       speed: 0.24 + index * 0.05,
+      flashUntilMs: 0,
     });
-    world.addChild(renderedPlayer);
+    world.addChild(renderedPlayer.container);
   });
 
   app.ticker.add(() => {
-    const now = performance.now() / 1000;
+    const nowMs = performance.now();
+    const now = nowMs / 1000;
     for (const renderedPlayer of renderedPlayers.values()) {
       renderedPlayer.container.x =
         renderedPlayer.anchor.x +
@@ -73,6 +79,8 @@ export async function createTerrariumView(
       renderedPlayer.container.y =
         renderedPlayer.anchor.y +
         Math.sin(now * renderedPlayer.speed * 0.8 + renderedPlayer.phase) * renderedPlayer.radius;
+      const flashProgress = Math.max(0, (renderedPlayer.flashUntilMs - nowMs) / 180);
+      renderedPlayer.halo.alpha = 1 + flashProgress * 0.45;
     }
   });
 
@@ -95,6 +103,11 @@ export async function createTerrariumView(
       const renderedPlayer = renderedPlayers.get(playerId);
       if (!renderedPlayer) return;
       applyVisualState(renderedPlayer.container, state);
+    },
+    flashPlayer(playerId: string): void {
+      const renderedPlayer = renderedPlayers.get(playerId);
+      if (!renderedPlayer) return;
+      renderedPlayer.flashUntilMs = performance.now() + 180;
     },
     destroy(): void {
       resizeObserver.disconnect();
@@ -142,7 +155,7 @@ function drawBackground(): Container {
   return layer;
 }
 
-function drawPlayer(playerData: Player): Container {
+function drawPlayer(playerData: Player): { container: Container; halo: Graphics } {
   const player = new Container();
 
   const halo = new Graphics()
@@ -168,5 +181,5 @@ function drawPlayer(playerData: Player): Container {
   label.y = playerData.visual.labelOffsetY;
 
   player.addChild(halo, body, label);
-  return player;
+  return { container: player, halo };
 }

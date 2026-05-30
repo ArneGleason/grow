@@ -10,6 +10,8 @@ type TransportState = {
 
 type ListeningFrame = {
   eventCount: number;
+  tonalContext: { tonic: string; mode: string; scale: readonly string[] };
+  mix: { silenceRatio: number };
   recentEvents: Array<{
     playerId: string;
     kind: string;
@@ -69,7 +71,7 @@ test("Grow starts three players, hears events, and cleans up the transport", asy
   const canvas = page.getByTestId("terrarium-canvas");
 
   await expect(page.locator(".brand__subtitle")).toHaveText(
-    "Byte 3: three rule-based players sharing a listening frame",
+    "Byte 3b: stable posture and tonal listening",
   );
   await expect(button).toHaveText("Start");
   await expect(status).toContainText("stopped | 90 BPM | bar 1 | beat 0.0 | scheduled 0");
@@ -86,6 +88,7 @@ test("Grow starts three players, hears events, and cleans up the transport", asy
   await expect(page.getByTestId("player-melody-role")).toHaveText("melody");
   await expect(page.getByTestId("player-melody-sound")).toHaveText("modal line");
   await expect(page.getByTestId("player-melody-state")).toHaveText("waiting");
+  await expect(page.getByTestId("listening-tonal-context")).toHaveText("C mixolydian");
   await expect(page.getByTestId("listening-event-count")).toHaveText("0");
 
   const box = await canvas.boundingBox();
@@ -108,16 +111,32 @@ test("Grow starts three players, hears events, and cleans up the transport", asy
     .toBe("bass,melody,pulse");
 
   const frame = await getListeningFrame(page);
+  expect(frame.tonalContext).toEqual({
+    tonic: "C",
+    mode: "mixolydian",
+    scale: ["C", "D", "E", "F", "G", "A", "Bb"],
+  });
+  expect(frame.mix.silenceRatio).toBeGreaterThanOrEqual(0);
+  expect(frame.mix.silenceRatio).toBeLessThanOrEqual(1);
   expect(frame.players.map((player) => player.id).sort()).toEqual(["bass", "melody", "pulse"]);
   expect(frame.players.find((player) => player.id === "pulse")?.recentEvents.length).toBeGreaterThan(0);
   expect(frame.players.find((player) => player.id === "bass")?.recentEvents.length).toBeGreaterThan(0);
   expect(frame.players.find((player) => player.id === "melody")?.recentEvents.length).toBeGreaterThan(0);
+  expect(frame.players.map((player) => player.state)).toEqual(["performing", "performing", "performing"]);
   expect(
     frame.recentEvents.every((event) => {
       const snappedHalfBeat = event.absoluteBeat * 2;
       return Math.abs(snappedHalfBeat - Math.round(snappedHalfBeat)) < 0.000001;
     }),
   ).toBe(true);
+
+  await page.waitForTimeout(650);
+  const postureFrame = await getListeningFrame(page);
+  expect(postureFrame.players.map((player) => player.state)).toEqual([
+    "performing",
+    "performing",
+    "performing",
+  ]);
 
   await button.click();
   await expect(button).toHaveText("Start");

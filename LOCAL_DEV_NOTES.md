@@ -132,6 +132,7 @@ Resume work:
 - The inspector DOM is built only when the player registry changes; state/listening values update on a browser render cadence.
 - Before Byte 4 taste logic, player runtime state needs to represent musical posture over a recent window instead of individual note-on articulation. Use a separate visual flash for note-on emphasis.
 - `window.listening.getFrame()` should be read-only; do not let dev/test getters mutate transition state or clear ledgers.
+- Byte 3b implements posture state over the last 8 beats, `terrarium.flashPlayer()` for note-on emphasis, side-effect-free `window.listening.getFrame()`, interval-union `silenceRatio`, and default tonal context `C mixolydian`.
 - The first transport implementation exposes `window.transport.getState()` for dev inspection.
 - Byte 2 exposes `window.listening.getFrame()` and `window.listening.getEvents()` for dev inspection.
 - Tone.js audio must start from a user gesture in normal browsers.
@@ -139,6 +140,7 @@ Resume work:
 - Vite dev HMR can leave audio objects alive if cleanup regresses; preserve transport disposal hooks.
 - Byte 1 validation passed with `npm run build`, `npm audit`, and a Playwright smoke check for repeated start/stop cleanup.
 - Byte 3 validation should include confirming all three player IDs appear in the listening frame and repeated start/stop cycles keep `scheduledEventCount` at 3 while playing and 0 while stopped.
+- Byte 3b validation should include confirming all three player states remain `performing` after they have participated recently, rather than blinking between `performing` and `resting` between staccato notes.
 - Use `git ls-files --cached --others --exclude-standard | sort` for the file inventory now that ignored `node_modules/` and `dist/` trees exist.
 
 ## Known Gotchas
