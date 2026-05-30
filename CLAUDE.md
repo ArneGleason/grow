@@ -24,7 +24,8 @@ Do not flatten the project into a generic agent playground. Preserve the core: a
 3. `docs/vision-and-plan.md`
 4. `.agent/PROJECT_LOG.md`
 5. `.agent/REVIEW_QUEUE.md`
-6. `.agent/handoffs/2026-05-30-claude-planning-review.md`
+6. `.agent/handoffs/2026-05-30-claude-review-and-creative-drift.md`
+7. `.agent/handoffs/2026-05-30-claude-planning-review.md` for earlier context, if useful.
 
 ## Boundaries
 
