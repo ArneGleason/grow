@@ -130,6 +130,8 @@ Resume work:
 - Byte 3 schedules three Tone.js sequences. While playing, `scheduledEventCount` should be `3`; after stop it should return to `0`.
 - Musical events should be stamped from scheduled transport time and snapped to the current pattern grid, not from live `Transport.position`.
 - The inspector DOM is built only when the player registry changes; state/listening values update on a browser render cadence.
+- Before Byte 4 taste logic, player runtime state needs to represent musical posture over a recent window instead of individual note-on articulation. Use a separate visual flash for note-on emphasis.
+- `window.listening.getFrame()` should be read-only; do not let dev/test getters mutate transition state or clear ledgers.
 - The first transport implementation exposes `window.transport.getState()` for dev inspection.
 - Byte 2 exposes `window.listening.getFrame()` and `window.listening.getEvents()` for dev inspection.
 - Tone.js audio must start from a user gesture in normal browsers.
@@ -143,3 +145,4 @@ Resume work:
 
 - Browser autoplay policy can block audio if start is not triggered by a click/tap.
 - Repeated start/stop should not increase `scheduledEventCount` above 3 while playing.
+- `silenceRatio` should measure actual silent coverage. If multiple players overlap, compute active interval union rather than summing durations across players.

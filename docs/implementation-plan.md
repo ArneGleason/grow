@@ -228,12 +228,35 @@ Implementation notes:
 - `src/terrarium.ts` adds a small deterministic visual drift around each player's anchor point.
 - `window.listening.getFrame()` now passes `currentBeat` so the listening window can represent live time and silence.
 
+### Byte 3b: Pre-Taste Listening + State Cleanup
+
+Status: planned.
+
+Small cleanup byte before subjective taste consumes runtime state.
+
+Scope:
+
+- Coarsen `GrowWorldState.syncPlayerStates()` from note-articulation state to musical posture: `performing` should mean recent participation in the last 1-2 bars, while note-on activity becomes a separate visual flash.
+- Make `window.listening.getFrame()` side-effect-free. Dev getters should not clear ledgers or mutate `previousTransportStatus`.
+- Fix `silenceRatio` so overlapping notes do not double-count active time; compute active interval union or an equivalent zero-active-beat coverage.
+- Add key/mode/scale as tonal context in world state before taste and future producer direction need it.
+
+Review focus:
+
+- whether stable posture state is useful enough for taste,
+- whether note-on flash preserves the visible liveliness without lying through state labels,
+- whether listening-frame getters are safe to call from probes/tests,
+- whether tonal context is right-sized and not a full composition engine yet.
+
 ### Byte 4: Subjective Taste, Still Rule-Based
+
+Status: planned after Byte 3b cleanup.
 
 Give each player a small deterministic taste profile.
 
 Scope:
 
+- First land the Byte 3b cleanup items below so taste reads stable player posture rather than note articulation.
 - Add simple taste values such as density preference, repetition preference, brightness preference, rhythmic stability preference, and novelty preference.
 - Add a player evaluation object that explains a reaction to the current listening frame.
 - Let taste influence tiny choices: rest, support, contrast, simplify, repeat, or vary.
