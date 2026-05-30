@@ -1,0 +1,1 @@
+export const RECENT_ACTIVITY_WINDOW_BEATS = 8;

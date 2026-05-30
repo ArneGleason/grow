@@ -1,6 +1,7 @@
 import type * as ToneNS from "tone";
-import type { MusicalEvent } from "./listening";
+import type { MusicalEvent, TonalContext } from "./listening";
 import { getPlayerById } from "./players";
+import { DEFAULT_TONAL_CONTEXT, noteFromScaleDegree } from "./tonal-context";
 
 export type TransportStatus = "stopped" | "playing";
 
@@ -17,22 +18,36 @@ export interface TransportHandlers {
   musicalEvent?: (event: MusicalEvent) => void;
 }
 
+export interface TransportOptions {
+  tonalContext?: TonalContext;
+}
+
 const BPM = 90;
 const BEATS_PER_BAR = 4;
 const BEAT_SNAP = 16;
 const AUDIO_START_TIMEOUT_MS = 3_000;
 
-interface ScheduledNote {
+interface PatternNote {
   playerId: string;
-  pitch: string;
+  scaleDegree: number;
+  octave: number;
   duration: ToneNS.Unit.Time;
   durationBeats: number;
   velocity: number;
 }
 
+interface ScheduledNote extends Omit<PatternNote, "scaleDegree" | "octave"> {
+  pitch: string;
+}
+
 interface PlayerPattern {
   subdivision: ToneNS.Unit.Time;
   events: Array<ScheduledNote | null>;
+}
+
+interface PlayerPatternSource {
+  subdivision: ToneNS.Unit.Time;
+  events: Array<PatternNote | null>;
 }
 
 let Tone: typeof ToneNS | null = null;
@@ -43,14 +58,16 @@ const scheduledSequences = new Set<ToneNS.Sequence<ScheduledNote | null>>();
 let status: TransportStatus = "stopped";
 let eventSerial = 0;
 let handlers: TransportHandlers = {};
+let activeTonalContext: TonalContext = DEFAULT_TONAL_CONTEXT;
 
-const PLAYER_PATTERNS: readonly PlayerPattern[] = [
+const PLAYER_PATTERN_SOURCES: readonly PlayerPatternSource[] = [
   {
     subdivision: "4n",
     events: [
       {
         playerId: "pulse",
-        pitch: "C2",
+        scaleDegree: 0,
+        octave: 2,
         duration: "8n",
         durationBeats: 0.5,
         velocity: 0.74,
@@ -62,7 +79,8 @@ const PLAYER_PATTERNS: readonly PlayerPattern[] = [
     events: [
       {
         playerId: "bass",
-        pitch: "C2",
+        scaleDegree: 0,
+        octave: 2,
         duration: "8n",
         durationBeats: 0.5,
         velocity: 0.54,
@@ -71,14 +89,16 @@ const PLAYER_PATTERNS: readonly PlayerPattern[] = [
       null,
       {
         playerId: "bass",
-        pitch: "G1",
+        scaleDegree: 4,
+        octave: 1,
         duration: "8n",
         durationBeats: 0.5,
         velocity: 0.44,
       },
       {
         playerId: "bass",
-        pitch: "Bb1",
+        scaleDegree: 6,
+        octave: 1,
         duration: "8n",
         durationBeats: 0.5,
         velocity: 0.48,
@@ -86,7 +106,8 @@ const PLAYER_PATTERNS: readonly PlayerPattern[] = [
       null,
       {
         playerId: "bass",
-        pitch: "G1",
+        scaleDegree: 4,
+        octave: 1,
         duration: "8n",
         durationBeats: 0.5,
         velocity: 0.42,
@@ -100,14 +121,16 @@ const PLAYER_PATTERNS: readonly PlayerPattern[] = [
       null,
       {
         playerId: "melody",
-        pitch: "E4",
+        scaleDegree: 2,
+        octave: 4,
         duration: "8n",
         durationBeats: 0.5,
         velocity: 0.28,
       },
       {
         playerId: "melody",
-        pitch: "G4",
+        scaleDegree: 4,
+        octave: 4,
         duration: "8n",
         durationBeats: 0.5,
         velocity: 0.32,
@@ -115,14 +138,16 @@ const PLAYER_PATTERNS: readonly PlayerPattern[] = [
       null,
       {
         playerId: "melody",
-        pitch: "A4",
+        scaleDegree: 5,
+        octave: 4,
         duration: "8n",
         durationBeats: 0.5,
         velocity: 0.28,
       },
       {
         playerId: "melody",
-        pitch: "G4",
+        scaleDegree: 4,
+        octave: 4,
         duration: "8n",
         durationBeats: 0.5,
         velocity: 0.24,
@@ -130,7 +155,8 @@ const PLAYER_PATTERNS: readonly PlayerPattern[] = [
       null,
       {
         playerId: "melody",
-        pitch: "D4",
+        scaleDegree: 1,
+        octave: 4,
         duration: "8n",
         durationBeats: 0.5,
         velocity: 0.3,
@@ -138,7 +164,8 @@ const PLAYER_PATTERNS: readonly PlayerPattern[] = [
       null,
       {
         playerId: "melody",
-        pitch: "C4",
+        scaleDegree: 0,
+        octave: 4,
         duration: "8n",
         durationBeats: 0.5,
         velocity: 0.26,
@@ -146,14 +173,16 @@ const PLAYER_PATTERNS: readonly PlayerPattern[] = [
       null,
       {
         playerId: "melody",
-        pitch: "E4",
+        scaleDegree: 2,
+        octave: 4,
         duration: "8n",
         durationBeats: 0.5,
         velocity: 0.28,
       },
       {
         playerId: "melody",
-        pitch: "G4",
+        scaleDegree: 4,
+        octave: 4,
         duration: "8n",
         durationBeats: 0.5,
         velocity: 0.3,
@@ -161,7 +190,8 @@ const PLAYER_PATTERNS: readonly PlayerPattern[] = [
       null,
       {
         playerId: "melody",
-        pitch: "Bb4",
+        scaleDegree: 6,
+        octave: 4,
         duration: "8n",
         durationBeats: 0.5,
         velocity: 0.24,
@@ -170,6 +200,23 @@ const PLAYER_PATTERNS: readonly PlayerPattern[] = [
     ],
   },
 ];
+
+function buildPlayerPatterns(tonalContext: TonalContext): readonly PlayerPattern[] {
+  return PLAYER_PATTERN_SOURCES.map((pattern) => ({
+    subdivision: pattern.subdivision,
+    events: pattern.events.map((note) => note ? materializeNote(tonalContext, note) : null),
+  }));
+}
+
+function materializeNote(tonalContext: TonalContext, note: PatternNote): ScheduledNote {
+  return {
+    playerId: note.playerId,
+    pitch: noteFromScaleDegree(tonalContext, note.scaleDegree, note.octave),
+    duration: note.duration,
+    durationBeats: note.durationBeats,
+    velocity: note.velocity,
+  };
+}
 
 function log(message: string): void {
   if (import.meta.env.DEV) {
@@ -353,8 +400,10 @@ function disposeSequence(): void {
 
 export function initTransport(
   nextHandlers: TransportHandlers = {},
+  options: TransportOptions = {},
 ): GrowTransportState {
   handlers = nextHandlers;
+  activeTonalContext = options.tonalContext ?? DEFAULT_TONAL_CONTEXT;
   emitTick();
   return getState();
 }
@@ -381,7 +430,7 @@ export async function startTransport(): Promise<GrowTransportState> {
   status = "playing";
   eventSerial = 0;
 
-  for (const pattern of PLAYER_PATTERNS) {
+  for (const pattern of buildPlayerPatterns(activeTonalContext)) {
     const sequence = new tone.Sequence<ScheduledNote | null>(
       (time, note) => {
         if (!note) return;

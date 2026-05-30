@@ -30,7 +30,7 @@ export const PULSE_PLAYER: Player = {
   id: "pulse",
   displayName: "pulse",
   role: "pulse",
-  soundLabel: "C2 beat",
+  soundLabel: "root pulse",
   instrumentId: "membrane-pulse",
   position: { x: 480, y: 280 },
   visual: {

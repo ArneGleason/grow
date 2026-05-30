@@ -23,11 +23,11 @@ const app = requireElement<HTMLDivElement>("#app");
 const world = new GrowWorldState(PLAYER_REGISTRY);
 
 app.innerHTML = `
-  <section class="app-shell" aria-label="Grow Byte 3b">
+  <section class="app-shell" aria-label="Grow Byte 3c">
     <header class="topbar">
       <div class="brand">
         <h1 class="brand__title">Grow</h1>
-        <p class="brand__subtitle">Byte 3b: stable posture and tonal listening</p>
+        <p class="brand__subtitle">Byte 3c: visible hits and tonal wiring</p>
       </div>
       <div class="transport-controls">
         <button
@@ -222,6 +222,8 @@ function queueRender(): void {
 initTransport({
   tick: handleTransportState,
   musicalEvent: handleMusicalEvent,
+}, {
+  tonalContext: world.getTonalContext(),
 });
 renderWorld();
 

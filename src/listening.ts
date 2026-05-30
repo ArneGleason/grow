@@ -1,4 +1,5 @@
 import type { PlayerRole, PlayerRuntimeState } from "./players";
+import { RECENT_ACTIVITY_WINDOW_BEATS } from "./music-time";
 
 export type MusicalEventKind = "note" | "rest" | "effect";
 
@@ -95,7 +96,7 @@ export class MusicalEventLedger {
   }
 
   createFrame(options: ListeningFrameOptions): ListeningFrame {
-    const windowBeats = options.windowBeats ?? 8;
+    const windowBeats = options.windowBeats ?? RECENT_ACTIVITY_WINDOW_BEATS;
     const latestEventBeat = this.events.at(-1)?.absoluteBeat ?? 0;
     const toBeat = options.currentBeat ?? latestEventBeat;
     const fromBeat = Math.max(0, toBeat - windowBeats);

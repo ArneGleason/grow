@@ -5,7 +5,9 @@ import {
   MusicalEventLedger,
   type TonalContext,
 } from "./listening";
+import { RECENT_ACTIVITY_WINDOW_BEATS } from "./music-time";
 import type { Player, PlayerRuntimeState } from "./players";
+import { DEFAULT_TONAL_CONTEXT } from "./tonal-context";
 
 type TransportStatus = "playing" | "stopped";
 
@@ -13,14 +15,6 @@ export interface RuntimePlayer {
   player: Player;
   state: PlayerRuntimeState;
 }
-
-export const DEFAULT_TONAL_CONTEXT: TonalContext = {
-  tonic: "C",
-  mode: "mixolydian",
-  scale: ["C", "D", "E", "F", "G", "A", "Bb"],
-};
-
-const POSTURE_WINDOW_BEATS = 8;
 
 export class GrowWorldState {
   private readonly playerStates = new Map<string, PlayerRuntimeState>();
@@ -107,7 +101,7 @@ export class GrowWorldState {
     const recentEvent = this.findLatestEventForPlayer(playerId);
     if (!recentEvent) return "resting";
 
-    const windowStart = Math.max(0, currentBeat - POSTURE_WINDOW_BEATS);
+    const windowStart = Math.max(0, currentBeat - RECENT_ACTIVITY_WINDOW_BEATS);
     return recentEvent.absoluteBeat >= windowStart ? "performing" : "resting";
   }
 

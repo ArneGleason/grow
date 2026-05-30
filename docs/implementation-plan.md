@@ -259,7 +259,7 @@ Implementation notes:
 
 ### Byte 3c: Visible Flash + Tonal Wiring Prep
 
-Status: planned next.
+Status: implemented.
 
 Small follow-up before Byte 4 taste.
 
@@ -276,9 +276,17 @@ Review focus:
 - whether tonal context is becoming source data rather than inspector-only decoration,
 - whether constants and helpers land in a natural place without creating premature composition machinery.
 
+Implementation notes:
+
+- `src/music-time.ts` now owns the shared 8-beat recent-activity/listening window constant.
+- `src/tonal-context.ts` now owns the default `C mixolydian` context and scale-degree-to-note materialization.
+- `src/transport.ts` stores deterministic pattern notes as scale degrees plus octaves, then builds Tone.js note names from the world tonal context at transport start.
+- `src/terrarium.ts` flashes note hits with halo alpha headroom and a scale bump rather than relying on alpha values above 1.0.
+- The smoke test now checks that emitted event pitch classes belong to the active tonal scale.
+
 ### Byte 4: Subjective Taste, Still Rule-Based
 
-Status: planned after Byte 3c follow-up.
+Status: planned after Byte 3c review.
 
 Give each player a small deterministic taste profile.
 

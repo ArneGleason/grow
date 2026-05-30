@@ -71,14 +71,14 @@ test("Grow starts three players, hears events, and cleans up the transport", asy
   const canvas = page.getByTestId("terrarium-canvas");
 
   await expect(page.locator(".brand__subtitle")).toHaveText(
-    "Byte 3b: stable posture and tonal listening",
+    "Byte 3c: visible hits and tonal wiring",
   );
   await expect(button).toHaveText("Start");
   await expect(status).toContainText("stopped | 90 BPM | bar 1 | beat 0.0 | scheduled 0");
   await expect(canvas).toBeVisible();
   await expect(page.getByTestId("player-pulse-name")).toHaveText("pulse");
   await expect(page.getByTestId("player-pulse-role")).toHaveText("pulse");
-  await expect(page.getByTestId("player-pulse-sound")).toHaveText("C2 beat");
+  await expect(page.getByTestId("player-pulse-sound")).toHaveText("root pulse");
   await expect(page.getByTestId("player-pulse-state")).toHaveText("waiting");
   await expect(page.getByTestId("player-bass-name")).toHaveText("bass");
   await expect(page.getByTestId("player-bass-role")).toHaveText("bass");
@@ -123,6 +123,13 @@ test("Grow starts three players, hears events, and cleans up the transport", asy
   expect(frame.players.find((player) => player.id === "bass")?.recentEvents.length).toBeGreaterThan(0);
   expect(frame.players.find((player) => player.id === "melody")?.recentEvents.length).toBeGreaterThan(0);
   expect(frame.players.map((player) => player.state)).toEqual(["performing", "performing", "performing"]);
+  expect(
+    frame.recentEvents.every((event) => {
+      if (!event.pitch) return true;
+      const pitchClass = event.pitch.replace(/[0-9-]+$/, "");
+      return frame.tonalContext.scale.includes(pitchClass);
+    }),
+  ).toBe(true);
   expect(
     frame.recentEvents.every((event) => {
       const snappedHalfBeat = event.absoluteBeat * 2;

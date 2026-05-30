@@ -10,6 +10,9 @@ import type { RuntimePlayer } from "./world-state";
 
 const TERRARIUM_WIDTH = 960;
 const TERRARIUM_HEIGHT = 560;
+const HALO_RESTING_ALPHA = 0.64;
+const FLASH_DURATION_MS = 180;
+const FLASH_SCALE_BUMP = 0.34;
 
 interface RenderedPlayer {
   container: Container;
@@ -79,8 +82,9 @@ export async function createTerrariumView(
       renderedPlayer.container.y =
         renderedPlayer.anchor.y +
         Math.sin(now * renderedPlayer.speed * 0.8 + renderedPlayer.phase) * renderedPlayer.radius;
-      const flashProgress = Math.max(0, (renderedPlayer.flashUntilMs - nowMs) / 180);
-      renderedPlayer.halo.alpha = 1 + flashProgress * 0.45;
+      const flashProgress = Math.max(0, (renderedPlayer.flashUntilMs - nowMs) / FLASH_DURATION_MS);
+      renderedPlayer.halo.alpha = HALO_RESTING_ALPHA + flashProgress * (1 - HALO_RESTING_ALPHA);
+      renderedPlayer.halo.scale.set(1 + flashProgress * FLASH_SCALE_BUMP);
     }
   });
 
@@ -107,7 +111,7 @@ export async function createTerrariumView(
     flashPlayer(playerId: string): void {
       const renderedPlayer = renderedPlayers.get(playerId);
       if (!renderedPlayer) return;
-      renderedPlayer.flashUntilMs = performance.now() + 180;
+      renderedPlayer.flashUntilMs = performance.now() + FLASH_DURATION_MS;
     },
     destroy(): void {
       resizeObserver.disconnect();
@@ -162,6 +166,7 @@ function drawPlayer(playerData: Player): { container: Container; halo: Graphics 
     .circle(0, 0, playerData.visual.haloRadius)
     .fill({ color: playerData.visual.color, alpha: 0.18 })
     .stroke({ color: playerData.visual.accentColor, alpha: 0.34, width: 2 });
+  halo.alpha = HALO_RESTING_ALPHA;
 
   const body = new Graphics()
     .circle(0, 0, playerData.visual.bodyRadius)
