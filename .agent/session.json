@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Define delayed-now lookahead time model",
+  "lastTask": "Define explicit session modes and meaningful breaks",
   "status": "initialized",
-  "updatedAt": "2026-05-30T15:58:24Z",
+  "updatedAt": "2026-05-30T16:04:14Z",
   "lastHandoff": ".agent/handoffs/2026-05-30-copy-paste-claude-kickoff.md",
   "branch": "main",
   "commit": "pending-github-state-commit",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "The repo has a Studio Pattern scaffold, GitHub setup notes, and an initial plan for a browser-first local Ollama-powered musical terrarium. Claude's first review was ingested. Current first implementation slice is a rule-based PixiJS/Tone.js terrarium with three musical players. The time model is delayed-now/lookahead: players can think non-real-time, commit future material, and perform later in sync."
+    "summary": "The repo has a Studio Pattern scaffold, GitHub setup notes, and an initial plan for a browser-first local Ollama-powered musical terrarium. Claude's first review was ingested. Current first implementation slice is a rule-based PixiJS/Tone.js terrarium with three musical players. The time model is delayed-now/lookahead, and the session model explicitly supports breaks, solo practice, rehearsal, performance, reflection, constructed pieces, and meaningful silence."
   }
 }

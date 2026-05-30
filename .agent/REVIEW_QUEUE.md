@@ -17,6 +17,7 @@ Use this file for known risks, open questions, and review focus. Keep entries sh
 - Should session artifacts eventually be portable/shareable, or is Grow strictly a solo local instrument?
 - What first lookahead target feels right: 4 bars, 8 bars, or about 20 seconds?
 - What should the user see when the lookahead buffer runs thin: pause, visible rehearsing, fallback groove, or a mix?
+- What should a saved piece contain first: motifs, role assignments, cue points, mode/key/tempo, or all of these?
 
 ## Initial Review Focus
 
@@ -30,3 +31,4 @@ Use this file for known risks, open questions, and review focus. Keep entries sh
 - Current Claude Code/Mac Mini assignment: use `.agent/handoffs/2026-05-30-claude-review-and-creative-drift.md` as the primary prompt.
 - Current Codex implementation guidance from Claude review: start with the smallest rule-based playable terrarium before adding Ollama, SQLite, producer avatar, or fork/capture UI.
 - Time-model guidance from Arne: Grow can use a delayed-now/lookahead buffer; players may think non-real-time and commit upcoming material rather than producing every audible moment on the sample clock.
+- Session-mode guidance from Arne: Grow is not a nonstop ambience generator; it should support breaks, solo practice, rehearsals, bounded performances, reflection, constructed pieces, and meaningful silence.

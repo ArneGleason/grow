@@ -35,6 +35,7 @@ Events describe what happened:
 
 - Player moved.
 - Player chose a role.
+- Session mode changed.
 - Note or pattern played.
 - Instrument or effect preset created.
 - Producer instruction given.
@@ -42,10 +43,12 @@ Events describe what happened:
 - Moment marked.
 - Player thought/decision completed.
 - Material committed to a future playback window.
+- Piece, motif, or performance attempt started/stopped.
 
 Snapshots describe state at a point:
 
 - World bounds and session state.
+- Current session mode.
 - Player positions, memories, roles, instruments, relationships to producer instructions.
 - Active instruments and effect chains.
 - Current tempo, key, mode, transport position.
@@ -75,6 +78,7 @@ create table events (
   id text primary key,
   session_id text not null references sessions(id),
   branch_id text not null default 'main',
+  session_mode text,
   seq integer not null,
   tick integer not null,
   bar real,
@@ -87,7 +91,7 @@ create table events (
 );
 ```
 
-This keeps the fork extension point (`branch_id`) without requiring branch management, snapshots, or moments on day one. `bar` can record when an event was created or observed; `scheduled_bar` can record when committed musical material should actually perform.
+This keeps the fork extension point (`branch_id`) without requiring branch management, snapshots, or moments on day one. `session_mode` can record whether an event belongs to break, solo practice, rehearsal, performance, or reflection. `bar` can record when an event was created or observed; `scheduled_bar` can record when committed musical material should actually perform.
 
 Add `moments` when manual marking exists. Add `snapshots` when replay from long histories becomes slow or when checkpoints become an actual user workflow. Add `worlds` and full `branches` when forks need names, parentage, and UI.
 

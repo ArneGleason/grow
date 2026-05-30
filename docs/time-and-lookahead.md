@@ -55,6 +55,7 @@ Players can have explicit non-playing states:
 - listening,
 - thinking,
 - rehearsing,
+- practicing alone,
 - waiting for a cue,
 - resting,
 - committing a phrase,
@@ -92,3 +93,4 @@ Rule-based material is not only a prototype scaffold. It should remain a fallbac
 - Persistence should record both when a decision was made and when it was scheduled to perform.
 - Best-moment replay should replay committed musical events, not attempt to reproduce raw inference timing.
 - Producer instructions can land as future cues: "next section, get sparser" rather than "change this millisecond."
+- Breaks between sessions can refill lookahead and let players work independently instead of forcing continuous output.

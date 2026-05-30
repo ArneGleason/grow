@@ -19,6 +19,7 @@ The project is exploratory. Drift is allowed. The repo should keep enough memory
 - Capture: lightweight rolling best-moments capture, not a large permanent archive.
 - First implementation slice: rule-based PixiJS/Tone.js terrarium with three simple musical players; no Ollama, SQLite, producer avatar, forks, or capture UI until the audio/visual core feels alive.
 - Time model: not hard real-time. Players can think ahead, commit material into a lookahead buffer, and perform it later in time with the transport.
+- Session model: not nonstop generation. Grow has breaks, solo practice, rehearsals, performances, reflection, and constructed pieces.
 
 ## Product Feel
 
@@ -30,6 +31,7 @@ The project is exploratory. Drift is allowed. The repo should keep enough memory
 - The human avatar should be able to join, observe, nudge, interrupt, or conduct.
 - The system should occasionally notice interesting moments and make them easy to replay or export, while aggressively purging ordinary history.
 - Slow thinking, listening, resting, and re-entry should feel like part of the musical behavior rather than app latency.
+- Silence and breaks should be meaningful. Grow should avoid becoming an always-on pleasant texture generator.
 
 ## Working Thesis
 
@@ -47,14 +49,15 @@ Tauri can become useful later if Grow wants to feel like a native desktop instru
 
 ## Core Loop
 
-1. The visual and audio world advances continuously in animation ticks and musical bars.
-2. Musical actions are scheduled by Tone.js against a shared transport.
-3. Visual actions are rendered in the terrarium without waiting for agent reasoning.
-4. Rule-based agents provide the first musical behavior and remain useful as a fallback.
-5. Later, Ollama decisions arrive on slower intervals and update future intent rather than the currently sounding bar.
-6. The simulation validates all agent proposals and turns them into safe world actions.
-7. Validated material is committed into a lookahead buffer and scheduled at musical boundaries.
-8. The human avatar can eventually inject instructions, constraints, new goals, or new objects as future cues.
+1. The terrarium moves between modes: break, solo practice, rehearsal, performance, and reflection.
+2. The visual and audio world advances in animation ticks and musical bars when a mode calls for playback.
+3. Musical actions are scheduled by Tone.js against a shared transport.
+4. Visual actions are rendered in the terrarium without waiting for agent reasoning.
+5. Rule-based agents provide the first musical behavior and remain useful as a fallback.
+6. Later, Ollama decisions arrive on slower intervals and update future intent rather than the currently sounding bar.
+7. The simulation validates all agent proposals and turns them into safe world actions.
+8. Validated material is committed into a lookahead buffer and scheduled at musical boundaries.
+9. The human avatar can eventually inject instructions, constraints, new goals, or new objects as future cues.
 
 ## Time and Lookahead
 
@@ -69,6 +72,20 @@ Important principles:
 - Let players visibly enter listening, thinking, rehearsing, resting, and performing states.
 - Keep rule-based material as a fallback so the world can keep breathing while players think.
 - If the lookahead buffer runs dry, pause or show a rehearsing/loading state intentionally rather than pretending it is seamless.
+
+## Sessions, Breaks, and Pieces
+
+Grow should use explicit session modes. See `docs/session-modes.md`.
+
+Important principles:
+
+- Avoid nonstop generative ambience as the default.
+- Let players take breaks between sessions.
+- Let players practice alone away from the group.
+- Let rehearsals stop, repeat, revise, and restart.
+- Let performances be bounded attempts at organized works, even when improvised.
+- Let some players sit out, join late, or disagree with a proposed piece.
+- Treat silence and absence as musical states, not missing output.
 
 ## Language: Players vs Agents
 
@@ -86,12 +103,16 @@ Keep the first player action set small:
 - `play_pattern`: schedule a short phrase using an existing instrument.
 - `respond`: answer another player or the human avatar in short text.
 - `rest`: intentionally leave space.
+- `practice`: work independently on a phrase, role, or sound.
+- `join_session`: opt into a rehearsal or performance.
+- `sit_out`: decline or defer participation.
 
 Players should not directly execute arbitrary code. The reasoning layer proposes declarative actions; the app validates and performs them.
 
 Deferred actions:
 
 - `propose_tempo`: add once the transport and session control model exist.
+- `propose_piece`: add once reusable motifs or song-like structures exist.
 - `make_instrument`: defer until the basic listen/role/play loop feels good.
 - `process_signal`: defer until Tone.js routing and a mixer model exist.
 
@@ -164,6 +185,7 @@ Start with a rolling event buffer rather than raw video as the source of truth:
 - Musical events: notes, rhythms, patches, role changes, effect automation.
 - Producer instructions.
 - Session tempo, key, mode, and transport position.
+- Session mode and boundaries.
 
 This allows replay by re-running the visual and audio engine for a selected segment. It should be lighter, more inspectable, and easier to purge than recording everything as media.
 
@@ -216,6 +238,8 @@ Persistence should use an append-only event log plus periodic snapshots. See `do
 
 Time and scheduling should use a lookahead buffer. See `docs/time-and-lookahead.md`.
 
+Session modes should keep breaks, solo practice, rehearsal, performance, and reflection explicit. See `docs/session-modes.md`.
+
 ## First Implementation Slice
 
 Build the smallest playable thing that can answer whether Grow feels alive:
@@ -231,6 +255,7 @@ Build the smallest playable thing that can answer whether Grow feels alive:
 - No producer avatar.
 - No forks/checkpoints UI.
 - No instrument invention or effects routing.
+- No full session-state machine yet, but avoid designing the first loop as endless ambience.
 
 What this tests:
 
@@ -276,6 +301,7 @@ Use the Studio Pattern deliberately:
 - Show attention lines or simple notice animations when players react.
 - Add a visible in-memory event log with a small rolling history.
 - Add tonal/modal controls and rhythm density controls.
+- Add simple explicit modes: break, solo practice, rehearsal, performance.
 
 ### Milestone 3: Local Reasoning Loop
 
@@ -298,8 +324,9 @@ Use the Studio Pattern deliberately:
 ### Milestone 5: First Band Session
 
 - Run 3-5 players.
-- Start with two phases: loose/free and deliberate/groove.
+- Start with explicit modes: break, solo practice, rehearsal, performance, reflection.
 - Let the human avatar conduct: "make it sparser", "follow the pulse", "switch roles", "try a brighter melody".
+- Let players opt in, sit out, or break away for solo practice.
 - Persist session snapshots.
 - Add varied player reactions to producer suggestions.
 - Add checkpoint and fork support for session branches.
@@ -350,3 +377,4 @@ Use the Studio Pattern deliberately:
 - Is Grow ultimately a solo instrument only, or should session artifacts become portable/shareable?
 - What first lookahead target feels right: 4 bars, 8 bars, or about 20 seconds?
 - What should the user see when the lookahead buffer runs thin: pause, visible rehearsing, fallback groove, or a mix?
+- What should a saved piece contain first: motifs, role assignments, cue points, mode/key/tempo, or all of these?
