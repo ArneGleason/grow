@@ -15,3 +15,4 @@ Use this file for durable decisions and meaningful project events. Keep entries 
 - Created private GitHub repository `ArneGleason/grow`, configured it as `origin`, and pushed `main`.
 - Added initial persistence recommendation in `docs/persistence-checkpoints.md`: SQLite via the local backend, using an append-only event log plus periodic snapshots for rewind, best-moment replay, and branch/fork support.
 - Added `.agent/handoffs/2026-05-30-claude-review-and-creative-drift.md` as the next Claude Code/Mac Mini assignment: critique risks, suggest what to change/remove, identify what to protect, propose synergistic creative ideas, and recommend the smallest implementation slice.
+- Added `.agent/handoffs/2026-05-30-copy-paste-claude-kickoff.md` so Arne can manually paste a concise Claude Code kickoff prompt while preserving the human-mediated relay step.
