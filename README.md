@@ -27,6 +27,7 @@ The repo is initialized with the Studio Pattern so future work has a clear place
 - `LOCAL_DEV_NOTES.md`: local commands, ports, setup notes, and gotchas.
 - `.agent/`: project memory, session state, handoffs, and workflows.
 - `.agent/reviews/`: review notes received through the Studio Pattern relay.
+- `docs/implementation-plan.md`: small-byte implementation sequence and first build candidate.
 - `docs/vision-and-plan.md`: the initial creative and technical direction for Grow.
 - `docs/time-and-lookahead.md`: delayed-now and lookahead-buffer model for player thinking and playback.
 - `docs/session-modes.md`: explicit break, solo practice, rehearsal, performance, reflection, and piece model.
