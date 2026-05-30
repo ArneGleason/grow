@@ -17,7 +17,7 @@ The project is exploratory. Drift is allowed. The repo should keep enough memory
 - First local model target: Gemma 4 31B through Ollama, using a configurable model name so the exact local Ollama tag can be adjusted.
 - Human avatar: language-driven producer proxy. Players can comply, resist, ignore, reinterpret, or develop changing attitudes toward producer suggestions.
 - Capture: lightweight rolling best-moments capture, not a large permanent archive.
-- First implementation slice: rule-based PixiJS/Tone.js terrarium with three simple musical players; no Ollama, SQLite, producer avatar, forks, or capture UI until the audio/visual core feels alive.
+- First running slice: rule-based PixiJS/Tone.js terrarium with one pulse player. Next foundation: musical events and listening frames before adding multiple players.
 - Time model: not hard real-time. Players can think ahead, commit material into a lookahead buffer, and perform it later in time with the transport.
 - Session model: not nonstop generation. Grow has breaks, solo practice, rehearsals, performances, reflection, and constructed pieces.
 - Scope model: solo local instrument first; future architecture may allow multiple terrariums/bands that can observe or react to each other.
@@ -28,6 +28,7 @@ The project is exploratory. Drift is allowed. The repo should keep enough memory
 - Small visible players with simple, readable representations.
 - No heavy character psychology required; their musical behavior can imply personality without turning them into simulated people.
 - Musical interaction is central: players should hear shared timing and each other’s contributions.
+- Listening starts from structured musical events and shared listening frames, with raw audio features added as a lightweight reality check.
 - The world can begin empty except for the players, then gain sound sources, instruments, play styles, and session structures.
 - The human avatar should be able to join, observe, nudge, interrupt, or conduct through ordinary language.
 - The system should occasionally notice interesting moments and make them easy to replay or export, while aggressively purging ordinary history.
@@ -41,6 +42,7 @@ Grow should begin as a browser-first local app:
 - Web UI for fast iteration.
 - PixiJS for the top-down world.
 - Tone.js/Web Audio for timing, synths, sequencing, and musical playback.
+- Shared musical event and listening-frame types before complex player behavior.
 - A small local backend that talks to Ollama on `localhost:11434`.
 - SQLite persistence through the local backend for checkpoints, forks, and moments.
 - TypeScript for shared schemas between the world simulation, UI, and agent decision protocol.
@@ -55,10 +57,11 @@ Tauri can become useful later if Grow wants to feel like a native desktop instru
 3. Musical actions are scheduled by Tone.js against a shared transport.
 4. Visual actions are rendered in the terrarium without waiting for agent reasoning.
 5. Rule-based agents provide the first musical behavior and remain useful as a fallback.
-6. Later, Ollama decisions arrive on slower intervals and update future intent rather than the currently sounding bar.
-7. The simulation validates all agent proposals and turns them into safe world actions.
-8. Validated material is committed into a lookahead buffer and scheduled at musical boundaries.
-9. The human can eventually type ordinary language that a producer proxy interprets into in-world movement, speech, cues, and future musical requests.
+6. Players listen first through structured musical events and listening frames, then later through lightweight raw audio features.
+7. Later, Ollama decisions arrive on slower intervals and update future intent rather than the currently sounding bar.
+8. The simulation validates all agent proposals and turns them into safe world actions.
+9. Validated material is committed into a lookahead buffer and scheduled at musical boundaries.
+10. The human can eventually type ordinary language that a producer proxy interprets into in-world movement, speech, cues, and future musical requests.
 
 ## Time and Lookahead
 
@@ -250,13 +253,17 @@ The human-facing avatar should be a producer proxy that interprets natural-langu
 
 Future architecture should avoid assuming that only one terrarium or band can ever exist. See `docs/future-multi-terrarium.md`.
 
+Foundational interaction principles, including the listening model, inner music, and subjective taste, live in `docs/principles/`.
+
 ## First Implementation Slice
 
 Build the smallest playable thing that can answer whether Grow feels alive:
 
 - One browser tab.
 - PixiJS canvas with a bounded terrarium.
-- Three colored moving players.
+- One visible pulse player first.
+- A musical event ledger and listening frame before adding more players.
+- Then three colored moving players.
 - Roles: pulse, bass, melody.
 - Tone.js shared transport with play/stop and tempo readout.
 - Rule-based quantized patterns in a small tonal/modal scale.
@@ -272,7 +279,8 @@ What this tests:
 
 - Whether the terrarium reads visually.
 - Whether the audio and visual loops feel coupled.
-- Whether three constrained musical roles sound like a tiny band rather than noise.
+- Whether structured events are enough for players to "hear" each other before raw audio analysis.
+- Whether three constrained musical roles can later sound like a tiny band rather than noise.
 - Whether the stack is pleasant enough before adding reasoning and memory.
 
 From the start, make stop/restart cleanup reliable and keep the transport/test hooks deterministic.
@@ -298,8 +306,9 @@ Use the Studio Pattern deliberately:
 ### Milestone 1: Playable Rule-Based Terrarium
 
 - Build the top-down bounded visual world.
-- Show three moving players with stable role colors and labels.
+- Show one pulse player first, then three moving players with stable role colors and labels.
 - Add Tone.js transport with play/stop and tempo readout.
+- Add a musical event ledger and minimum listening frame.
 - Give players rule-based quantized patterns: pulse, bass, melody.
 - Keep state in memory.
 - Verify transport start/stop cleanup and audio/visual coupling.

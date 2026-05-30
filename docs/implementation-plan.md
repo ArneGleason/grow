@@ -24,8 +24,12 @@ Start with:
 - Plain TypeScript modules for the first byte, with no React unless the UI becomes complex enough to justify it.
 - Playwright or a simple browser smoke check once the app exists.
 - Pinned PixiJS and Tone.js package versions once dependencies are added.
+- A shared musical event model before adding complex player behavior.
+- A minimum listening-frame summarizer before asking players to reason about each other.
 
 Keep the app browser-first. Do not add Tauri yet.
+
+Interaction principles live in `docs/principles/`. The most important near-term principle is: players should hear structured musical behavior first and raw audio features second.
 
 ## Byte Rules
 
@@ -37,6 +41,8 @@ Keep the app browser-first. Do not add Tauri yet.
 - Keep UI controls plain and inspectable.
 - Add stable test hooks early, even if tests are minimal.
 - Give every interactive or inspectable element a stable `data-testid` or `id` from day one.
+- Prefer explicit musical events and listening frames over trying to infer musical meaning from raw audio buckets.
+- Keep subjective player judgments inspectable. A player should be able to say why it thinks the recent music is crowded, sparse, boring, stable, or interesting.
 - Do not add local database files, generated media, or secrets to git.
 
 ## First Byte Candidate
@@ -113,7 +119,7 @@ This is slower but makes review easier.
 
 ### Byte 1: Space + One Pulse Player
 
-Build the first byte candidate above.
+Status: implemented.
 
 Review focus:
 
@@ -125,7 +131,38 @@ Review focus:
 - whether Tone.js scheduled objects are disposed correctly,
 - whether repeated start/stop cannot duplicate the beat.
 
-### Byte 2: Three Rule-Based Players
+### Byte 2: Musical Event Ledger + Minimum Listening Frame
+
+Add the foundation for hearing before adding more players.
+
+Scope:
+
+- Define a shared `MusicalEvent` type for scheduled musical behavior.
+- Add an in-memory recent-event ledger.
+- Emit events from the existing `pulse` player when its beat is scheduled or triggered.
+- Add a summarizer that produces a listening frame for the last 1-2 bars.
+- Include tempo, meter, current bar, recent events, player role/state, density, register, and tags.
+- Keep raw audio analysis out of scope or as placeholder zeros.
+- Expose the frame through a dev hook such as `window.listening.getFrame()` or an equivalent app state hook.
+- Optionally show a tiny debug readout with recent event count and listening window.
+
+Acceptance criteria:
+
+- Start/stop still behaves exactly as Byte 1.
+- At least one musical event is recorded while the pulse is playing.
+- Stopping resets or closes the active event window cleanly.
+- The listening frame can be inspected from the browser console.
+- Repeated start/stop cycles do not leak duplicate event subscriptions.
+- The event/listening types do not assume there will only ever be one player.
+
+Review focus:
+
+- whether the event model is too large, too small, or badly named,
+- whether the listening frame is useful without becoming a database,
+- whether this creates a clean path to multiple players,
+- whether subjective hearing can be added without rewriting the event model.
+
+### Byte 3: Three Rule-Based Players
 
 Add pulse, bass, and melody players.
 
@@ -137,14 +174,34 @@ Scope:
 - Basic mix balancing.
 - Keep all state in memory.
 - Add simple movement now that the lifecycle is stable.
+- Have each player read the shared listening frame before choosing its next deterministic pattern.
 
 Review focus:
 
 - does it sound musical enough,
 - does the screen reveal roles,
-- does adding a player stay easy.
+- does adding a player stay easy,
+- does the listening frame help prevent every player from acting like a separate metronome.
 
-### Byte 3: Lookahead Scheduling
+### Byte 4: Subjective Taste, Still Rule-Based
+
+Give each player a small deterministic taste profile.
+
+Scope:
+
+- Add simple taste values such as density preference, repetition preference, brightness preference, rhythmic stability preference, and novelty preference.
+- Add a player evaluation object that explains a reaction to the current listening frame.
+- Let taste influence tiny choices: rest, support, contrast, simplify, repeat, or vary.
+- Keep personality language light and musical.
+- Do not add Ollama yet.
+
+Review focus:
+
+- whether taste creates musical variety without pretending to be a full psychology simulation,
+- whether player reactions remain inspectable,
+- whether "good", "bad", "boring", or "interesting" are grounded in listening-frame data.
+
+### Byte 5: Lookahead Scheduling
 
 Add a tiny lookahead buffer even before Ollama.
 
@@ -160,7 +217,7 @@ Review focus:
 - whether the delayed-now model is represented correctly,
 - whether scheduling is debuggable.
 
-### Byte 4: Simple Session Modes
+### Byte 6: Simple Session Modes
 
 Add basic mode states:
 
@@ -177,7 +234,7 @@ Review focus:
 - making silence/rest readable,
 - mode transitions and controls.
 
-### Byte 5: Producer Marker, No LLM
+### Byte 7: Producer Marker, No LLM
 
 Add the producer proxy visually and with a rule-based command interpreter.
 
@@ -193,7 +250,7 @@ Review focus:
 - whether natural-language input feels like it enters the world,
 - whether the proxy is distinct from a control panel.
 
-### Byte 6: Ollama Health And One Interpretation
+### Byte 8: Ollama Health And One Interpretation
 
 Add backend health check for Ollama and one safe prompt-to-action path.
 
@@ -210,7 +267,7 @@ Review focus:
 - safety of action schema,
 - inspectability of prompt interpretation.
 
-### Byte 7: Minimal Persistence
+### Byte 9: Minimal Persistence
 
 Add SQLite only after there is something worth preserving.
 

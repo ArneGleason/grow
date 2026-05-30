@@ -28,10 +28,11 @@ Studio Pattern source:
 1. Read `README.md` for project purpose and normal commands.
 2. Read `LOCAL_DEV_NOTES.md` for local workflow memory.
 3. Read `docs/github-setup.md` before creating remotes, tokens, OAuth apps, or GitHub Apps.
-4. Read `.agent/PROJECT_LOG.md` for recent decisions.
-5. Read `.agent/REVIEW_QUEUE.md` for known risks and review focus.
-6. If using Claude Code, read `CLAUDE.md`.
-7. If resuming or reviewing, read `.agent/session.json` and the latest handoff in `.agent/handoffs/` if one exists.
+4. Read `docs/implementation-plan.md` and `docs/principles/README.md` before changing player behavior, listening, scheduling, or musical interaction.
+5. Read `.agent/PROJECT_LOG.md` for recent decisions.
+6. Read `.agent/REVIEW_QUEUE.md` for known risks and review focus.
+7. If using Claude Code, read `CLAUDE.md`.
+8. If resuming or reviewing, read `.agent/session.json` and the latest handoff in `.agent/handoffs/` if one exists.
 
 ## Working Rules
 

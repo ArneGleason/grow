@@ -31,3 +31,4 @@ Use this file for durable decisions and meaningful project events. Keep entries 
 - Updated the repo validation command to use `git ls-files --cached --others --exclude-standard` now that ignored `node_modules/` and `dist/` trees make the initial scaffold `find` check noisy.
 - Added `.agent/handoffs/2026-05-30-copy-paste-claude-byte-1-implementation-review.md` so Arne can route the pushed Byte 1 implementation to Claude Code for review.
 - Added `.agent/handoffs/2026-05-30-copy-paste-claude-code-review.md` with explicit GitHub pull/push guidance, review role boundaries, validation commands, and review-output shape for Claude Code.
+- Added `docs/principles/` with listening model, inner music, and subjective taste principles. Updated the implementation plan so Byte 2 becomes a musical event ledger plus minimum listening frame before adding more players.
