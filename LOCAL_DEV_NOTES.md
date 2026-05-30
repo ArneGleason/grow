@@ -87,10 +87,11 @@ See `docs/github-setup.md` before adding tokens, OAuth credentials, webhook secr
 
 For software projects, record the testing conventions that future agents should preserve:
 
-- Stable selectors or test IDs: Byte 1 exposes `transport-toggle`, `transport-status`, `terrarium-container`, `terrarium-canvas`, `player-name`, `player-role`, `player-sound`, and `player-state`.
+- Stable selectors or test IDs: Byte 2 exposes `transport-toggle`, `transport-status`, `terrarium-container`, `terrarium-canvas`, `player-list`, `player-pulse-name`, `player-pulse-role`, `player-pulse-sound`, `player-pulse-state`, `listening-event-count`, `listening-window`, and `listening-latest-event`.
+- Legacy first-player selectors `player-name`, `player-role`, `player-sound`, and `player-state` are still present for continuity, but new tests should prefer player-id-specific selectors.
 - E2E state setup and teardown: TBD.
 - E2E smoke command: `npm run smoke`; Playwright starts or reuses Vite at `http://127.0.0.1:5173/`.
-- Page readiness and realtime waits: wait for `window.transport.getState()` before transport assertions.
+- Page readiness and realtime waits: wait for `window.transport.getState()` before transport assertions and `window.listening.getFrame()` before listening-frame assertions.
 - Shared fixtures/helpers: TBD.
 - Visual regression entry points: capture the Vite root page at `http://127.0.0.1:5173/`; the terrarium canvas should show one stationary `pulse` player.
 
@@ -126,11 +127,14 @@ Resume work:
 - No committed secrets should be added. Use `.env.local` for local-only credentials.
 - Byte 1 pins PixiJS, Tone.js, Vite, and TypeScript directly in `package.json`.
 - Byte 2a adds `src/players.ts`; renderers and inspectors should consume player registry data instead of hardcoding visible players.
+- Byte 2 adds `src/listening.ts` and `src/world-state.ts`. Static player data belongs in the registry; transient state such as `waiting`, `performing`, `thinking`, and `resting` belongs in `GrowWorldState`.
 - The first transport implementation exposes `window.transport.getState()` for dev inspection.
+- Byte 2 exposes `window.listening.getFrame()` and `window.listening.getEvents()` for dev inspection.
 - Tone.js audio must start from a user gesture in normal browsers.
 - Playwright smoke tests pass Chromium `--autoplay-policy=no-user-gesture-required` so the test can focus on lifecycle cleanup rather than browser audio policy.
 - Vite dev HMR can leave audio objects alive if cleanup regresses; preserve transport disposal hooks.
 - Byte 1 validation passed with `npm run build`, `npm audit`, and a Playwright smoke check for repeated start/stop cleanup.
+- Byte 2 validation should include confirming the listening event count returns to zero after stop and repeated start/stop cycles keep `scheduledEventCount` at 1 while playing and 0 while stopped.
 - Use `git ls-files --cached --others --exclude-standard | sort` for the file inventory now that ignored `node_modules/` and `dist/` trees exist.
 
 ## Known Gotchas

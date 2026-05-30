@@ -22,7 +22,6 @@ export interface Player {
   soundLabel: string;
   instrumentId: string;
   position: WorldPoint;
-  state: PlayerRuntimeState;
   visual: PlayerVisual;
   tags: string[];
 }
@@ -34,7 +33,6 @@ export const PULSE_PLAYER: Player = {
   soundLabel: "C2 beat",
   instrumentId: "membrane-pulse",
   position: { x: 480, y: 280 },
-  state: "waiting",
   visual: {
     color: 0x8f1d20,
     accentColor: 0xffd6a2,

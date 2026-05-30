@@ -1,4 +1,6 @@
 import type * as ToneNS from "tone";
+import type { MusicalEvent } from "./listening";
+import { PULSE_PLAYER } from "./players";
 
 export type TransportStatus = "stopped" | "playing";
 
@@ -9,6 +11,11 @@ export interface GrowTransportState {
   scheduledEventCount: number;
 }
 
+export interface TransportHandlers {
+  tick?: (state: GrowTransportState) => void;
+  musicalEvent?: (event: MusicalEvent) => void;
+}
+
 const BPM = 90;
 
 let Tone: typeof ToneNS | null = null;
@@ -17,7 +24,8 @@ let sequence: ToneNS.Sequence<string> | null = null;
 const scheduledSequences = new Set<ToneNS.Sequence<string>>();
 let status: TransportStatus = "stopped";
 let bar = 1;
-let onTick: ((state: GrowTransportState) => void) | null = null;
+let eventSerial = 0;
+let handlers: TransportHandlers = {};
 
 function log(message: string): void {
   if (import.meta.env.DEV) {
@@ -26,7 +34,7 @@ function log(message: string): void {
 }
 
 function emitTick(): void {
-  onTick?.(getState());
+  handlers.tick?.(getState());
 }
 
 function setBarFromTransport(tone: typeof ToneNS): void {
@@ -35,6 +43,51 @@ function setBarFromTransport(tone: typeof ToneNS): void {
   const nextBar = Number.parseInt(bars, 10) + 1;
   bar = Number.isFinite(nextBar) && nextBar > 0 ? nextBar : 1;
   emitTick();
+}
+
+function getTransportSnapshot(tone: typeof ToneNS): {
+  transportPosition: string;
+  bar: number;
+  beat: number;
+  absoluteBeat: number;
+} {
+  const transportPosition = tone.getTransport().position.toString();
+  const [barsRaw = "0", beatsRaw = "0", sixteenthsRaw = "0"] = transportPosition.split(":");
+  const bars = Number.parseInt(barsRaw, 10);
+  const beats = Number.parseInt(beatsRaw, 10);
+  const sixteenths = Number.parseFloat(sixteenthsRaw);
+  const safeBars = Number.isFinite(bars) ? bars : 0;
+  const safeBeats = Number.isFinite(beats) ? beats : 0;
+  const safeSixteenths = Number.isFinite(sixteenths) ? sixteenths : 0;
+
+  return {
+    transportPosition,
+    bar: safeBars + 1,
+    beat: safeBeats + 1,
+    absoluteBeat: safeBars * 4 + safeBeats + safeSixteenths / 4,
+  };
+}
+
+function emitPulseEvent(tone: typeof ToneNS, note: string): void {
+  if (status !== "playing") return;
+  const snapshot = getTransportSnapshot(tone);
+  const event: MusicalEvent = {
+    id: `event-${eventSerial}`,
+    kind: "note",
+    playerId: PULSE_PLAYER.id,
+    instrumentId: PULSE_PLAYER.instrumentId,
+    transportPosition: snapshot.transportPosition,
+    bar: snapshot.bar,
+    beat: snapshot.beat,
+    absoluteBeat: snapshot.absoluteBeat,
+    durationBeats: 0.5,
+    velocity: 0.74,
+    pitch: note,
+    tags: PULSE_PLAYER.tags,
+    createdAtMs: performance.now(),
+  };
+  eventSerial += 1;
+  handlers.musicalEvent?.(event);
 }
 
 async function loadTone(): Promise<typeof ToneNS> {
@@ -73,9 +126,9 @@ function disposeSequence(): void {
 }
 
 export function initTransport(
-  tickHandler?: (state: GrowTransportState) => void,
+  nextHandlers: TransportHandlers = {},
 ): GrowTransportState {
-  onTick = tickHandler ?? null;
+  handlers = nextHandlers;
   bar = 1;
   emitTick();
   return getState();
@@ -102,6 +155,7 @@ export async function startTransport(): Promise<GrowTransportState> {
   sequence = new tone.Sequence(
     (time, note) => {
       instrument.triggerAttackRelease(note, "8n", time);
+      emitPulseEvent(tone, note);
       draw.schedule(() => setBarFromTransport(tone), time);
     },
     ["C2"],
@@ -138,7 +192,7 @@ export function disposeTransport(): void {
     synth.dispose();
   }
   synth = null;
-  onTick = null;
+  handlers = {};
   log("disposed");
 }
 

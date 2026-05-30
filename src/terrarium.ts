@@ -6,6 +6,7 @@ import {
   TextStyle,
 } from "pixi.js";
 import type { Player, PlayerRuntimeState } from "./players";
+import type { RuntimePlayer } from "./world-state";
 
 const TERRARIUM_WIDTH = 960;
 const TERRARIUM_HEIGHT = 560;
@@ -18,7 +19,7 @@ export interface TerrariumView {
 
 export async function createTerrariumView(
   container: HTMLElement,
-  players: readonly Player[],
+  players: readonly RuntimePlayer[],
 ): Promise<TerrariumView> {
   const app = new Application();
   await app.init({
@@ -40,12 +41,11 @@ export async function createTerrariumView(
   world.addChild(background);
 
   const renderedPlayers = new Map<string, Container>();
-  for (const player of players) {
+  for (const { player, state } of players) {
     const renderedPlayer = drawPlayer(player);
     renderedPlayer.x = player.position.x;
     renderedPlayer.y = player.position.y;
-    renderedPlayer.alpha = player.state === "performing" ? 1 : 0.82;
-    renderedPlayer.scale.set(player.state === "performing" ? 1.05 : 1);
+    applyVisualState(renderedPlayer, state);
     renderedPlayers.set(player.id, renderedPlayer);
     world.addChild(renderedPlayer);
   }
@@ -68,14 +68,32 @@ export async function createTerrariumView(
     setPlayerState(playerId: string, state: PlayerRuntimeState): void {
       const renderedPlayer = renderedPlayers.get(playerId);
       if (!renderedPlayer) return;
-      renderedPlayer.alpha = state === "performing" ? 1 : 0.82;
-      renderedPlayer.scale.set(state === "performing" ? 1.05 : 1);
+      applyVisualState(renderedPlayer, state);
     },
     destroy(): void {
       resizeObserver.disconnect();
       app.destroy(true);
     },
   };
+}
+
+function visualForState(state: PlayerRuntimeState): { alpha: number; scale: number } {
+  switch (state) {
+    case "performing":
+      return { alpha: 1, scale: 1.05 };
+    case "thinking":
+      return { alpha: 0.72, scale: 0.98 };
+    case "resting":
+      return { alpha: 0.56, scale: 0.94 };
+    case "waiting":
+      return { alpha: 0.82, scale: 1 };
+  }
+}
+
+function applyVisualState(player: Container, state: PlayerRuntimeState): void {
+  const visual = visualForState(state);
+  player.alpha = visual.alpha;
+  player.scale.set(visual.scale);
 }
 
 function drawBackground(): Container {

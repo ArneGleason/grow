@@ -153,6 +153,8 @@ Review focus:
 
 ### Byte 2: Musical Event Ledger + Minimum Listening Frame
 
+Status: implemented.
+
 Add the foundation for hearing before adding more players.
 
 Scope:
@@ -182,6 +184,14 @@ Review focus:
 - whether this creates a clean path to multiple players,
 - whether subjective hearing can be added without rewriting the event model.
 
+Implementation notes:
+
+- `src/listening.ts` owns `MusicalEvent`, `ListeningFrame`, and the bounded recent-event ledger.
+- `src/world-state.ts` owns mutable per-player runtime state and the event ledger; `Player` remains durable/static identity and setup data.
+- The existing `pulse` sequence emits a shared musical event at the scheduled trigger.
+- `window.listening.getFrame()` and `window.listening.getEvents()` expose the current listening state for browser inspection.
+- The inspector renders player/listening data through DOM APIs rather than unescaped dynamic HTML.
+
 ### Byte 3: Three Rule-Based Players
 
 Add pulse, bass, and melody players.
@@ -195,6 +205,7 @@ Scope:
 - Keep all state in memory.
 - Add simple movement now that the lifecycle is stable.
 - Have each player read the shared listening frame before choosing its next deterministic pattern.
+- Keep runtime player state in `GrowWorldState`; do not put transient thinking/performing/resting flags back into static player definitions.
 
 Review focus:
 

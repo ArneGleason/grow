@@ -137,9 +137,19 @@ button {
   padding: 14px;
 }
 
+.inspector-section + .inspector-section {
+  border-top: 1px solid rgba(174, 183, 165, 0.18);
+  margin-top: 16px;
+  padding-top: 16px;
+}
+
 .inspector h2 {
   margin: 0 0 12px;
   font-size: 1rem;
+}
+
+.player-inspector + .player-inspector {
+  margin-top: 14px;
 }
 
 .inspector dl {
