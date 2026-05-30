@@ -1,0 +1,34 @@
+{
+  "project": "Grow",
+  "mode": "studio",
+  "studioPattern": {
+    "versionDate": "2026-05-30 initial scaffold",
+    "sourceRepo": "https://github.com/ArneGleason/the-studio-pattern",
+    "sourceCommit": "dbbe3e9",
+    "license": "CC BY-SA 4.0",
+    "localAdaptation": "Early Grow project scaffold with GitHub connection notes; product scope and runtime stack are still TBD."
+  },
+  "currentLead": "Codex",
+  "intendedReviewer": "TBD",
+  "participants": {
+    "lead": {
+      "agentTool": "Codex",
+      "machineHandle": "macbook-pro-m5",
+      "localCheckout": "/Users/arnegleason/Documents/Grow"
+    },
+    "reviewer": {
+      "agentTool": "Claude Code",
+      "machineHandle": "mac-mini-pro-m4",
+      "localCheckout": ""
+    }
+  },
+  "lastTask": "Prepare GitHub handoff for Claude Code planning review",
+  "status": "initialized",
+  "updatedAt": "2026-05-30T15:02:38Z",
+  "lastHandoff": ".agent/handoffs/2026-05-30-claude-planning-review.md",
+  "branch": "main",
+  "commit": "",
+  "projectState": {
+    "summary": "The repo has a Studio Pattern scaffold, GitHub setup notes, and an initial plan for a browser-first local Ollama-powered musical terrarium. Confirmed direction includes tonal/modal rhythm foundation, producer-like human avatar, effects-agent role, Gemma 4 31B target, and lightweight rolling best-moments capture."
+  }
+}

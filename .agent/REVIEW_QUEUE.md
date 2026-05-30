@@ -1,0 +1,23 @@
+# Review Queue
+
+Use this file for known risks, open questions, and review focus. Keep entries short enough that a fresh reviewer will read them.
+
+## Open Questions
+
+- Should the GitHub repo be public or private?
+- Should the local checkout move to `/Users/arnegleason/code/github.com/arnegleason/grow` before the first commit?
+- Will the product need GitHub as a repository remote only, or also as an app/API integration?
+- If an app/API integration is needed, should it use a GitHub App, OAuth app, or temporary local token?
+- What exact local Ollama model tag should map to "Gemma 4 31B"?
+- What should the first capture rolling window length be?
+- Should first best-moment detection be heuristic-only, human-marked-only, or include an observer agent?
+- How should agent resistance to producer requests be bounded so it feels alive without getting annoying?
+
+## Initial Review Focus
+
+- Confirm that no credentials are committed.
+- Confirm project structure once the runtime stack is selected.
+- Confirm least-privilege GitHub scopes before any GitHub integration work.
+- Review `docs/vision-and-plan.md` for scope discipline before implementation begins.
+- Review the capture/replay approach before media export work starts.
+- Claude Code/Mac Mini first assignment: read `CLAUDE.md` and `.agent/handoffs/2026-05-30-claude-planning-review.md`, then produce critique, strengths, creative drift ideas, and concrete next-step recommendations.

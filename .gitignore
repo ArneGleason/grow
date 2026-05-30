@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+vendor/
+.venv/
+venv/
+
+# Build output
+dist/
+build/
+coverage/
+.next/
+.astro/
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Logs and caches
+*.log
+.DS_Store
+.cache/
+.turbo/
+
+# Editor state
+.vscode/
+.idea/
