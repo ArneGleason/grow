@@ -39,9 +39,11 @@ Events describe what happened:
 - Note or pattern played.
 - Instrument or effect preset created.
 - Producer instruction given.
+- Producer prompt interpreted into world action.
 - Tempo, key, or mode changed.
 - Moment marked.
 - Player thought/decision completed.
+- Producer proxy movement or cue completed.
 - Material committed to a future playback window.
 - Piece, motif, or performance attempt started/stopped.
 

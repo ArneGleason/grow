@@ -15,7 +15,7 @@ The project is exploratory. Drift is allowed. The repo should keep enough memory
 - First prototype: browser-first.
 - First musical language: tonal/modal and rhythm-linked from the start.
 - First local model target: Gemma 4 31B through Ollama, using a configurable model name so the exact local Ollama tag can be adjusted.
-- Human avatar: producer-like participant. Agents can comply, resist, ignore, reinterpret, or develop changing attitudes toward producer suggestions.
+- Human avatar: language-driven producer proxy. Players can comply, resist, ignore, reinterpret, or develop changing attitudes toward producer suggestions.
 - Capture: lightweight rolling best-moments capture, not a large permanent archive.
 - First implementation slice: rule-based PixiJS/Tone.js terrarium with three simple musical players; no Ollama, SQLite, producer avatar, forks, or capture UI until the audio/visual core feels alive.
 - Time model: not hard real-time. Players can think ahead, commit material into a lookahead buffer, and perform it later in time with the transport.
@@ -28,7 +28,7 @@ The project is exploratory. Drift is allowed. The repo should keep enough memory
 - No heavy character psychology required; their musical behavior can imply personality without turning them into simulated people.
 - Musical interaction is central: players should hear shared timing and each other’s contributions.
 - The world can begin empty except for the players, then gain sound sources, instruments, play styles, and session structures.
-- The human avatar should be able to join, observe, nudge, interrupt, or conduct.
+- The human avatar should be able to join, observe, nudge, interrupt, or conduct through ordinary language.
 - The system should occasionally notice interesting moments and make them easy to replay or export, while aggressively purging ordinary history.
 - Slow thinking, listening, resting, and re-entry should feel like part of the musical behavior rather than app latency.
 - Silence and breaks should be meaningful. Grow should avoid becoming an always-on pleasant texture generator.
@@ -57,7 +57,7 @@ Tauri can become useful later if Grow wants to feel like a native desktop instru
 6. Later, Ollama decisions arrive on slower intervals and update future intent rather than the currently sounding bar.
 7. The simulation validates all agent proposals and turns them into safe world actions.
 8. Validated material is committed into a lookahead buffer and scheduled at musical boundaries.
-9. The human avatar can eventually inject instructions, constraints, new goals, or new objects as future cues.
+9. The human can eventually type ordinary language that a producer proxy interprets into in-world movement, speech, cues, and future musical requests.
 
 ## Time and Lookahead
 
@@ -159,20 +159,25 @@ This role can create drama without requiring every player to invent a new melody
 
 ## Human Avatar
 
-The human avatar should be producer-like rather than purely omnipotent.
+The human avatar should be a language-driven producer proxy rather than a purely omnipotent control panel.
 
 Players can react individually to producer suggestions. Some may be compliant, skeptical, playful, resistant, or temporarily rebellious. This should not become a heavy social simulation, but it should create texture: requests can be followed, bent, ignored, over-applied, or argued with.
+
+See `docs/producer-proxy.md`.
 
 The producer avatar can:
 
 - Move through the space.
-- Give text instructions.
+- Interpret human text instructions and carry them into the world.
+- Address a player or group on the human's behalf.
 - Start, stop, or reshape sessions.
 - Encourage roles or moods.
 - Ask players to simplify, intensify, follow, contrast, or leave space.
 - Mark a moment as worth keeping.
 
 Player reactions should evolve from recent interactions, but remain bounded and inspectable.
+
+First visual representation can be simple: a distinct dot or marker with a producer color, halo, and visible instruction/intent bubble. Character can emerge later through color modulation, pulse, trails, attention lines, and state changes.
 
 ## Capture and Replay
 
@@ -240,6 +245,8 @@ Time and scheduling should use a lookahead buffer. See `docs/time-and-lookahead.
 
 Session modes should keep breaks, solo practice, rehearsal, performance, and reflection explicit. See `docs/session-modes.md`.
 
+The human-facing avatar should be a producer proxy that interprets natural-language prompts into in-world actions. See `docs/producer-proxy.md`.
+
 ## First Implementation Slice
 
 Build the smallest playable thing that can answer whether Grow feels alive:
@@ -297,7 +304,10 @@ Use the Studio Pattern deliberately:
 ### Milestone 2: Producer and World Events
 
 - Add the producer avatar after the terrarium already feels alive.
-- Let the producer move and place text instructions into the world.
+- Let the human type ordinary language prompts.
+- Add a simple producer marker with a distinct color/halo.
+- Let the producer proxy move and place interpreted text instructions into the world.
+- Start with a rule-based interpreter for a small command set before using Ollama.
 - Show attention lines or simple notice animations when players react.
 - Add a visible in-memory event log with a small rolling history.
 - Add tonal/modal controls and rhythm density controls.
@@ -308,6 +318,7 @@ Use the Studio Pattern deliberately:
 - Add Ollama connection health check.
 - Define structured agent action schema.
 - Let one agent decide between safe actions.
+- Let the producer proxy interpret open-ended human prompts into validated world actions.
 - Add bounded memory and logs so decisions can be inspected.
 - Target Gemma 4 31B first, with the exact Ollama model tag configurable.
 - Keep rule-based behavior active while Ollama decisions are pending.
@@ -374,6 +385,7 @@ Use the Studio Pattern deliberately:
 - What is the exact local Ollama model tag for Gemma 4 31B on this machine?
 - Should the terrarium keep ambient memory between sessions or start fresh by default?
 - Should the producer move by keyboard, click-to-move, or another input model?
+- What should the producer proxy's first visual identity be: dot with halo, ring, cursor-like marker, or another simple sign?
 - Is Grow ultimately a solo instrument only, or should session artifacts become portable/shareable?
 - What first lookahead target feels right: 4 bars, 8 bars, or about 20 seconds?
 - What should the user see when the lookahead buffer runs thin: pause, visible rehearsing, fallback groove, or a mix?

@@ -14,6 +14,7 @@ Use this file for known risks, open questions, and review focus. Keep entries sh
 - How should player resistance to producer requests be bounded so it feels alive without getting annoying?
 - Should the terrarium keep ambient memory between sessions or start fresh by default?
 - Should producer movement be keyboard-based, click-to-move, or another input model?
+- What should the producer proxy's first visual identity be: dot with halo, ring, cursor-like marker, or another simple sign?
 - Should session artifacts eventually be portable/shareable, or is Grow strictly a solo local instrument?
 - What first lookahead target feels right: 4 bars, 8 bars, or about 20 seconds?
 - What should the user see when the lookahead buffer runs thin: pause, visible rehearsing, fallback groove, or a mix?
@@ -32,3 +33,4 @@ Use this file for known risks, open questions, and review focus. Keep entries sh
 - Current Codex implementation guidance from Claude review: start with the smallest rule-based playable terrarium before adding Ollama, SQLite, producer avatar, or fork/capture UI.
 - Time-model guidance from Arne: Grow can use a delayed-now/lookahead buffer; players may think non-real-time and commit upcoming material rather than producing every audible moment on the sample clock.
 - Session-mode guidance from Arne: Grow is not a nonstop ambience generator; it should support breaks, solo practice, rehearsals, bounded performances, reflection, constructed pieces, and meaningful silence.
+- Producer-proxy guidance from Arne: the human should be able to type natural-language prompts, and an interpreter should carry them into the world as movement, speech, cues, and negotiated requests rather than requiring structured controls.
