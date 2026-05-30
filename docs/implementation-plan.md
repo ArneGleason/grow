@@ -206,6 +206,9 @@ Scope:
 - Add simple movement now that the lifecycle is stable.
 - Have each player read the shared listening frame before choosing its next deterministic pattern.
 - Keep runtime player state in `GrowWorldState`; do not put transient thinking/performing/resting flags back into static player definitions.
+- Stamp emitted `MusicalEvent` timing from the scheduled sequence time or another deterministic scheduled source, not from live `Transport.position`, so the ledger can become a replay source of truth without beat jitter.
+- Keep musical-event recording lightweight in the scheduled/audio callback; push inspector and visual updates through `Tone.Draw`, `requestAnimationFrame`, or another UI-safe render loop instead of rebuilding inspector DOM every beat.
+- Pass current transport beat into the listening frame once the window needs to represent live silence; until then `silenceRatio` is only a placeholder.
 
 Review focus:
 
@@ -213,6 +216,7 @@ Review focus:
 - does the screen reveal roles,
 - does adding a player stay easy,
 - does the listening frame help prevent every player from acting like a separate metronome.
+- whether event timing, rendering cadence, and listening-window timing are ready to scale beyond one player.
 
 ### Byte 4: Subjective Taste, Still Rule-Based
 
