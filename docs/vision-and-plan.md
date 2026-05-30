@@ -4,9 +4,9 @@
 
 Grow is a playful local AI music terrarium.
 
-The first version should feel like a bounded top-down world where a small, variable number of locally powered agents move, listen, make simple musical choices, and gradually organize into sessions. The agents are not modeled as humans. They are small autonomous presences with musical memory, tendencies, tools, and spatial awareness.
+The first version should feel like a bounded top-down world where a small, variable number of locally powered players move, listen, make simple musical choices, and gradually organize into sessions. The players are not modeled as humans. They are small autonomous presences with musical memory, tendencies, tools, and spatial awareness.
 
-The human can enter the terrarium through an avatar-like proxy: another participant that takes direct human instruction and can move through the space, talk to the agents, suggest musical direction, start or stop sessions, and influence what is built.
+The human can enter the terrarium through an avatar-like proxy: another participant that takes direct human instruction and can move through the space, talk to the players, suggest musical direction, start or stop sessions, and influence what is built.
 
 The project is exploratory. Drift is allowed. The repo should keep enough memory that ideas can mutate without losing why earlier choices were made.
 
@@ -17,17 +17,19 @@ The project is exploratory. Drift is allowed. The repo should keep enough memory
 - First local model target: Gemma 4 31B through Ollama, using a configurable model name so the exact local Ollama tag can be adjusted.
 - Human avatar: producer-like participant. Agents can comply, resist, ignore, reinterpret, or develop changing attitudes toward producer suggestions.
 - Capture: lightweight rolling best-moments capture, not a large permanent archive.
-- First implementation slice: rule-based PixiJS/Tone.js terrarium with three simple musical agents; no Ollama, SQLite, producer avatar, forks, or capture UI until the audio/visual core feels alive.
+- First implementation slice: rule-based PixiJS/Tone.js terrarium with three simple musical players; no Ollama, SQLite, producer avatar, forks, or capture UI until the audio/visual core feels alive.
+- Time model: not hard real-time. Players can think ahead, commit material into a lookahead buffer, and perform it later in time with the transport.
 
 ## Product Feel
 
 - A confined top-down terrarium rather than an infinite world.
-- Small visible agents with simple, readable representations.
+- Small visible players with simple, readable representations.
 - No heavy character psychology required; their musical behavior can imply personality without turning them into simulated people.
-- Musical interaction is central: agents should hear shared timing and each other’s contributions.
-- The world can begin empty except for the agents, then gain sound sources, instruments, play styles, and session structures.
+- Musical interaction is central: players should hear shared timing and each other’s contributions.
+- The world can begin empty except for the players, then gain sound sources, instruments, play styles, and session structures.
 - The human avatar should be able to join, observe, nudge, interrupt, or conduct.
 - The system should occasionally notice interesting moments and make them easy to replay or export, while aggressively purging ordinary history.
+- Slow thinking, listening, resting, and re-entry should feel like part of the musical behavior rather than app latency.
 
 ## Working Thesis
 
@@ -39,6 +41,7 @@ Grow should begin as a browser-first local app:
 - A small local backend that talks to Ollama on `localhost:11434`.
 - SQLite persistence through the local backend for checkpoints, forks, and moments.
 - TypeScript for shared schemas between the world simulation, UI, and agent decision protocol.
+- A deliberate lookahead buffer so model reasoning can happen off the playback clock.
 
 Tauri can become useful later if Grow wants to feel like a native desktop instrument or needs local-file permissions, but the first milestone should stay web-first.
 
@@ -48,22 +51,43 @@ Tauri can become useful later if Grow wants to feel like a native desktop instru
 2. Musical actions are scheduled by Tone.js against a shared transport.
 3. Visual actions are rendered in the terrarium without waiting for agent reasoning.
 4. Rule-based agents provide the first musical behavior and remain useful as a fallback.
-5. Later, Ollama decisions arrive on slower intervals and update agent intent rather than blocking timing.
+5. Later, Ollama decisions arrive on slower intervals and update future intent rather than the currently sounding bar.
 6. The simulation validates all agent proposals and turns them into safe world actions.
-7. The human avatar can eventually inject instructions, constraints, new goals, or new objects.
+7. Validated material is committed into a lookahead buffer and scheduled at musical boundaries.
+8. The human avatar can eventually inject instructions, constraints, new goals, or new objects as future cues.
 
-## Initial Agent Abilities
+## Time and Lookahead
 
-Keep the first agent action set small:
+Grow should use a deliberate delayed-now model. The audible/visible performance can trail the planning process by a few bars or seconds, giving players time to observe, think, synchronize, and commit upcoming material.
+
+See `docs/time-and-lookahead.md` for the full model.
+
+Important principles:
+
+- Do not block the audio transport on Ollama.
+- Treat late model output as material for a later bar, not the current moment.
+- Let players visibly enter listening, thinking, rehearsing, resting, and performing states.
+- Keep rule-based material as a fallback so the world can keep breathing while players think.
+- If the lookahead buffer runs dry, pause or show a rehearsing/loading state intentionally rather than pretending it is seamless.
+
+## Language: Players vs Agents
+
+Product language should usually call visible participants `players` or `musicians`. They are musical presences in the terrarium, not chatbots in costumes.
+
+Implementation language can still use `agents` for the reasoning system, action schemas, memory, and Ollama-backed decision loops.
+
+## Initial Player Abilities
+
+Keep the first player action set small:
 
 - `move`: choose a nearby destination.
-- `listen`: focus on another agent or the current groove.
+- `listen`: focus on another player or the current groove.
 - `claim_role`: pick a simple musical role such as pulse, bass, melody, texture, or noise.
 - `play_pattern`: schedule a short phrase using an existing instrument.
-- `respond`: answer another agent or the human avatar in short text.
+- `respond`: answer another player or the human avatar in short text.
 - `rest`: intentionally leave space.
 
-Agents should not directly execute arbitrary code. They propose declarative actions; the app validates and performs them.
+Players should not directly execute arbitrary code. The reasoning layer proposes declarative actions; the app validates and performs them.
 
 Deferred actions:
 
@@ -82,7 +106,7 @@ Start with constrained musical primitives rather than open-ended audio generatio
 - Short phrase patterns: 1-4 bars.
 - Instrument presets built from safe synth parameters.
 - Effect presets built from constrained filters, delay, reverb, modulation, distortion, and routing choices.
-- Recent-event memory so agents can respond to what just happened.
+- Recent-event memory so players can respond to what just happened.
 
 This keeps the band coherent enough to be fun while still letting odd emergent behavior appear.
 
@@ -98,25 +122,25 @@ The first musical grammar should not separate pitch from rhythm too cleanly. Age
 - Tension/release.
 - Role against the ensemble.
 
-The first prototype can use a small mode set such as major, minor, dorian, mixolydian, pentatonic, and chromatic color notes. More elaborate harmony can wait until the agents can already listen and react in a simple groove.
+The first prototype can use a small mode set such as major, minor, dorian, mixolydian, pentatonic, and chromatic color notes. More elaborate harmony can wait until the players can already listen and react in a simple groove.
 
 ### Effects Role
 
-At least one agent role should be able to behave less like a traditional player and more like an effects operator:
+At least one player role should be able to behave less like a traditional instrumentalist and more like an effects operator:
 
-- Listen to or target another agent's output.
+- Listen to or target another player's output.
 - Process a dry signal through a constrained effect chain.
 - Sometimes replace the dry signal entirely with the processed signal.
 - Add interest through filtering, delay, space, stutter, modulation, or distortion.
 - Respect safety limits so the mix stays audible and not painfully loud.
 
-This role can create drama without requiring every agent to invent a new melody.
+This role can create drama without requiring every player to invent a new melody.
 
 ## Human Avatar
 
 The human avatar should be producer-like rather than purely omnipotent.
 
-Agents can react individually to producer suggestions. Some may be compliant, skeptical, playful, resistant, or temporarily rebellious. This should not become a heavy social simulation, but it should create texture: requests can be followed, bent, ignored, over-applied, or argued with.
+Players can react individually to producer suggestions. Some may be compliant, skeptical, playful, resistant, or temporarily rebellious. This should not become a heavy social simulation, but it should create texture: requests can be followed, bent, ignored, over-applied, or argued with.
 
 The producer avatar can:
 
@@ -124,10 +148,10 @@ The producer avatar can:
 - Give text instructions.
 - Start, stop, or reshape sessions.
 - Encourage roles or moods.
-- Ask agents to simplify, intensify, follow, contrast, or leave space.
+- Ask players to simplify, intensify, follow, contrast, or leave space.
 - Mark a moment as worth keeping.
 
-Agent reactions should evolve from recent interactions, but remain bounded and inspectable.
+Player reactions should evolve from recent interactions, but remain bounded and inspectable.
 
 ## Capture and Replay
 
@@ -136,7 +160,7 @@ Grow should support best-of capture without turning into an archive.
 Start with a rolling event buffer rather than raw video as the source of truth:
 
 - World state snapshots.
-- Agent decisions and short visible messages.
+- Player decisions and short visible messages.
 - Musical events: notes, rhythms, patches, role changes, effect automation.
 - Producer instructions.
 - Session tempo, key, mode, and transport position.
@@ -190,13 +214,15 @@ The browser should own visuals and audio scheduling. The backend should own loca
 
 Persistence should use an append-only event log plus periodic snapshots. See `docs/persistence-checkpoints.md`.
 
+Time and scheduling should use a lookahead buffer. See `docs/time-and-lookahead.md`.
+
 ## First Implementation Slice
 
 Build the smallest playable thing that can answer whether Grow feels alive:
 
 - One browser tab.
 - PixiJS canvas with a bounded terrarium.
-- Three colored moving agents.
+- Three colored moving players.
 - Roles: pulse, bass, melody.
 - Tone.js shared transport with play/stop and tempo readout.
 - Rule-based quantized patterns in a small tonal/modal scale.
@@ -236,17 +262,18 @@ Use the Studio Pattern deliberately:
 ### Milestone 1: Playable Rule-Based Terrarium
 
 - Build the top-down bounded visual world.
-- Show three moving agents with stable role colors and labels.
+- Show three moving players with stable role colors and labels.
 - Add Tone.js transport with play/stop and tempo readout.
-- Give agents rule-based quantized patterns: pulse, bass, melody.
+- Give players rule-based quantized patterns: pulse, bass, melody.
 - Keep state in memory.
 - Verify transport start/stop cleanup and audio/visual coupling.
+- Add the first simple lookahead scheduling boundary, even if rule-based material only looks ahead 1-2 bars.
 
 ### Milestone 2: Producer and World Events
 
 - Add the producer avatar after the terrarium already feels alive.
 - Let the producer move and place text instructions into the world.
-- Show attention lines or simple notice animations when agents react.
+- Show attention lines or simple notice animations when players react.
 - Add a visible in-memory event log with a small rolling history.
 - Add tonal/modal controls and rhythm density controls.
 
@@ -258,6 +285,7 @@ Use the Studio Pattern deliberately:
 - Add bounded memory and logs so decisions can be inspected.
 - Target Gemma 4 31B first, with the exact Ollama model tag configurable.
 - Keep rule-based behavior active while Ollama decisions are pending.
+- Schedule Ollama results into future bars through the lookahead buffer.
 
 ### Milestone 4: Persistence and Moments
 
@@ -269,20 +297,20 @@ Use the Studio Pattern deliberately:
 
 ### Milestone 5: First Band Session
 
-- Run 3-5 agents.
+- Run 3-5 players.
 - Start with two phases: loose/free and deliberate/groove.
 - Let the human avatar conduct: "make it sparser", "follow the pulse", "switch roles", "try a brighter melody".
 - Persist session snapshots.
-- Add varied agent reactions to producer suggestions.
+- Add varied player reactions to producer suggestions.
 - Add checkpoint and fork support for session branches.
 
 ### Milestone 6: Instrument and Effects Invention
 
-- Let agents propose constrained synth patches.
+- Let players propose constrained synth patches.
 - Save instruments as declarative presets.
-- Let agents switch instruments and reuse discoveries.
+- Let players switch instruments and reuse discoveries.
 - Add a small library view.
-- Let effects agents propose constrained effect patches.
+- Let effects players propose constrained effect patches.
 - Add the effects-agent role once the mixer/routing model exists.
 
 ### Milestone 7: Best-Moments Capture
@@ -312,12 +340,13 @@ Use the Studio Pattern deliberately:
 
 ## Open Design Questions
 
-- Should agents communicate in visible text bubbles, hidden logs, musical gestures, or all three?
-- How much "personality" should agents have beyond musical tendencies?
+- Should players communicate in visible text bubbles, hidden logs, musical gestures, or all three?
+- How much "personality" should players have beyond musical tendencies?
 - What should the first rolling window length be: 2, 3, or 5 minutes?
 - Should automatic best-moment detection begin with simple heuristics or ask an observer agent to nominate moments?
 - What is the exact local Ollama model tag for Gemma 4 31B on this machine?
-- How much Ollama decision latency feels acceptable: every bar, every few bars, or slower creature-like thinking?
 - Should the terrarium keep ambient memory between sessions or start fresh by default?
 - Should the producer move by keyboard, click-to-move, or another input model?
 - Is Grow ultimately a solo instrument only, or should session artifacts become portable/shareable?
+- What first lookahead target feels right: 4 bars, 8 bars, or about 20 seconds?
+- What should the user see when the lookahead buffer runs thin: pause, visible rehearsing, fallback groove, or a mix?

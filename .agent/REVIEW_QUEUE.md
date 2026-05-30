@@ -10,12 +10,13 @@ Use this file for known risks, open questions, and review focus. Keep entries sh
 - If an app/API integration is needed, should it use a GitHub App, OAuth app, or temporary local token?
 - What exact local Ollama model tag should map to "Gemma 4 31B"?
 - What should the first capture rolling window length be?
-- Should first best-moment detection be heuristic-only, human-marked-only, or include an observer agent?
-- How should agent resistance to producer requests be bounded so it feels alive without getting annoying?
-- How much local Ollama latency is acceptable for agent decisions?
+- Should first best-moment detection be heuristic-only, human-marked-only, or include an observer player?
+- How should player resistance to producer requests be bounded so it feels alive without getting annoying?
 - Should the terrarium keep ambient memory between sessions or start fresh by default?
 - Should producer movement be keyboard-based, click-to-move, or another input model?
 - Should session artifacts eventually be portable/shareable, or is Grow strictly a solo local instrument?
+- What first lookahead target feels right: 4 bars, 8 bars, or about 20 seconds?
+- What should the user see when the lookahead buffer runs thin: pause, visible rehearsing, fallback groove, or a mix?
 
 ## Initial Review Focus
 
@@ -28,3 +29,4 @@ Use this file for known risks, open questions, and review focus. Keep entries sh
 - Review `docs/persistence-checkpoints.md` before implementation: validate SQLite/event-log/snapshot/fork strategy and identify what should stay JSON versus relational.
 - Current Claude Code/Mac Mini assignment: use `.agent/handoffs/2026-05-30-claude-review-and-creative-drift.md` as the primary prompt.
 - Current Codex implementation guidance from Claude review: start with the smallest rule-based playable terrarium before adding Ollama, SQLite, producer avatar, or fork/capture UI.
+- Time-model guidance from Arne: Grow can use a delayed-now/lookahead buffer; players may think non-real-time and commit upcoming material rather than producing every audible moment on the sample clock.

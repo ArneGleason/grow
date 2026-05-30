@@ -28,6 +28,7 @@ The repo is initialized with the Studio Pattern so future work has a clear place
 - `.agent/`: project memory, session state, handoffs, and workflows.
 - `.agent/reviews/`: review notes received through the Studio Pattern relay.
 - `docs/vision-and-plan.md`: the initial creative and technical direction for Grow.
+- `docs/time-and-lookahead.md`: delayed-now and lookahead-buffer model for player thinking and playback.
 - `docs/persistence-checkpoints.md`: proposed SQLite event-log, snapshot, and fork design.
 - `docs/github-setup.md`: GitHub repo and integration setup notes.
 - `.env.example`: non-secret environment variable template.

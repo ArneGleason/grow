@@ -23,7 +23,7 @@ Problems with one mutable blob:
 - Hard to rewind without copying the whole file repeatedly.
 - Hard to fork from a point in time.
 - Easy to corrupt or partially write.
-- Hard to query for moments, agents, instruments, or decisions.
+- Hard to query for moments, players, instruments, or decisions.
 - Hard to purge rolling history cleanly.
 - Hard for another agent to review changes because every small change rewrites everything.
 
@@ -33,18 +33,20 @@ Use an append-only event log plus periodic snapshots.
 
 Events describe what happened:
 
-- Agent moved.
-- Agent chose a role.
+- Player moved.
+- Player chose a role.
 - Note or pattern played.
 - Instrument or effect preset created.
 - Producer instruction given.
 - Tempo, key, or mode changed.
 - Moment marked.
+- Player thought/decision completed.
+- Material committed to a future playback window.
 
 Snapshots describe state at a point:
 
 - World bounds and session state.
-- Agent positions, memories, roles, instruments, relationships to producer instructions.
+- Player positions, memories, roles, instruments, relationships to producer instructions.
 - Active instruments and effect chains.
 - Current tempo, key, mode, transport position.
 - Any deterministic random seed or clock information needed for replay.
@@ -76,6 +78,7 @@ create table events (
   seq integer not null,
   tick integer not null,
   bar real,
+  scheduled_bar real,
   actor_id text,
   type text not null,
   payload_json text not null,
@@ -84,7 +87,7 @@ create table events (
 );
 ```
 
-This keeps the fork extension point (`branch_id`) without requiring branch management, snapshots, or moments on day one.
+This keeps the fork extension point (`branch_id`) without requiring branch management, snapshots, or moments on day one. `bar` can record when an event was created or observed; `scheduled_bar` can record when committed musical material should actually perform.
 
 Add `moments` when manual marking exists. Add `snapshots` when replay from long histories becomes slow or when checkpoints become an actual user workflow. Add `worlds` and full `branches` when forks need names, parentage, and UI.
 
@@ -115,6 +118,7 @@ create table events (
   seq integer not null,
   tick integer not null,
   bar real,
+  scheduled_bar real,
   actor_id text,
   type text not null,
   payload_json text not null,
@@ -155,6 +159,7 @@ This schema supports:
 - Best-moment marking.
 - Automatic moment scoring.
 - Compact session export.
+- Delayed-now replay where decisions and scheduled performance time are distinct.
 
 ## Snapshot Strategy
 

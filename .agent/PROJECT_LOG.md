@@ -20,3 +20,4 @@ Use this file for durable decisions and meaningful project events. Keep entries 
 - Added a standing rule to route reusable Grow learnings back into the canonical Studio Pattern and captured the first cross-project feedback note: addressed handoffs with explicit `From`, `To`, and `Relay` metadata.
 - Received Claude Code planning review via Arne's manual relay and preserved the intake in `.agent/reviews/2026-05-30-claude-planning-pass.md`.
 - Adopted Claude's scope cuts into `docs/vision-and-plan.md` and `docs/persistence-checkpoints.md`: first build becomes a rule-based PixiJS/Tone.js terrarium; Ollama, SQLite, producer avatar, forks, instrument invention, effects routing, and automatic capture move later.
+- Captured Arne's latency direction in `docs/time-and-lookahead.md`: Grow should use a delayed-now/lookahead model where players can listen, think, rehearse, commit future material, and perform later in sync instead of needing hard real-time LLM decisions.
