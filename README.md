@@ -27,6 +27,7 @@ The repo is initialized with the Studio Pattern so future work has a clear place
 - `LOCAL_DEV_NOTES.md`: local commands, ports, setup notes, and gotchas.
 - `.agent/`: project memory, session state, handoffs, and workflows.
 - `docs/vision-and-plan.md`: the initial creative and technical direction for Grow.
+- `docs/persistence-checkpoints.md`: proposed SQLite event-log, snapshot, and fork design.
 - `docs/github-setup.md`: GitHub repo and integration setup notes.
 - `.env.example`: non-secret environment variable template.
 

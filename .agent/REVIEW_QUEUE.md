@@ -21,3 +21,4 @@ Use this file for known risks, open questions, and review focus. Keep entries sh
 - Review `docs/vision-and-plan.md` for scope discipline before implementation begins.
 - Review the capture/replay approach before media export work starts.
 - Claude Code/Mac Mini first assignment: read `CLAUDE.md` and `.agent/handoffs/2026-05-30-claude-planning-review.md`, then produce critique, strengths, creative drift ideas, and concrete next-step recommendations.
+- Review `docs/persistence-checkpoints.md` before implementation: validate SQLite/event-log/snapshot/fork strategy and identify what should stay JSON versus relational.

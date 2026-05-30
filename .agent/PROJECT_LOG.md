@@ -13,3 +13,4 @@ Use this file for durable decisions and meaningful project events. Keep entries 
 - Confirmed browser-first prototype, tonal/modal-plus-rhythm musical language, producer-like human avatar, Gemma 4 31B Ollama target, effects-agent role, and rolling best-moments capture/replay/export direction.
 - Added `CLAUDE.md` and `.agent/handoffs/2026-05-30-claude-planning-review.md` so Claude Code on the Mac Mini has a clear review/creative-collaboration entry point.
 - Created private GitHub repository `ArneGleason/grow`, configured it as `origin`, and pushed `main`.
+- Added initial persistence recommendation in `docs/persistence-checkpoints.md`: SQLite via the local backend, using an append-only event log plus periodic snapshots for rewind, best-moment replay, and branch/fork support.

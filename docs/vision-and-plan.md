@@ -36,6 +36,7 @@ Grow should begin as a browser-first local app:
 - PixiJS for the top-down world.
 - Tone.js/Web Audio for timing, synths, sequencing, and musical playback.
 - A small local backend that talks to Ollama on `localhost:11434`.
+- SQLite persistence through the local backend for checkpoints, forks, and moments.
 - TypeScript for shared schemas between the world simulation, UI, and agent decision protocol.
 
 Tauri can become useful later if Grow wants to feel like a native desktop instrument or needs local-file permissions, but the first milestone should stay web-first.
@@ -177,9 +178,12 @@ web app
 
 local backend
   src/server       Ollama proxy, persistence, optional GitHub integration later
+  data             local SQLite database files, ignored by git
 ```
 
 The browser should own visuals and audio scheduling. The backend should own local model calls, persistence, and any GitHub API work that needs credentials.
+
+Persistence should use an append-only event log plus periodic snapshots. See `docs/persistence-checkpoints.md`.
 
 ## Collaboration Model
 
@@ -223,6 +227,7 @@ Use the Studio Pattern deliberately:
 - Let one agent decide between safe actions.
 - Add bounded memory and logs so decisions can be inspected.
 - Target Gemma 4 31B first, with the exact Ollama model tag configurable.
+- Add the first SQLite event log for agent/world decisions.
 
 ### Milestone 4: First Band Session
 
@@ -231,6 +236,7 @@ Use the Studio Pattern deliberately:
 - Let the human avatar conduct: "make it sparser", "follow the pulse", "switch roles", "try a brighter melody".
 - Persist session snapshots.
 - Add varied agent reactions to producer suggestions.
+- Add checkpoint and fork support for session branches.
 
 ### Milestone 5: Instrument Invention
 
