@@ -259,7 +259,7 @@ Implementation notes:
 
 ### Byte 3c: Visible Flash + Tonal Wiring Prep
 
-Status: implemented.
+Status: implemented and approved.
 
 Small follow-up before Byte 4 taste.
 
@@ -283,16 +283,16 @@ Implementation notes:
 - `src/transport.ts` stores deterministic pattern notes as scale degrees plus octaves, then builds Tone.js note names from the world tonal context at transport start.
 - `src/terrarium.ts` flashes note hits with halo alpha headroom and a scale bump rather than relying on alpha values above 1.0.
 - The smoke test now checks that emitted event pitch classes belong to the active tonal scale.
+- Claude's Byte 3c review approved the byte with no required fixes. Forward notes: runtime tonal-context changes will need pattern re-materialization, and the `TonalContext` type may move into `src/tonal-context.ts` later.
 
 ### Byte 4: Subjective Taste, Still Rule-Based
 
-Status: planned after Byte 3c review.
+Status: ready to implement.
 
 Give each player a small deterministic taste profile.
 
 Scope:
 
-- First land the Byte 3c follow-up so taste reads stable player posture, visible note-on activity, and authoritative tonal context.
 - Add simple taste values such as density preference, repetition preference, brightness preference, rhythmic stability preference, and novelty preference.
 - Add a player evaluation object that explains a reaction to the current listening frame.
 - Let taste influence tiny choices: rest, support, contrast, simplify, repeat, or vary.
