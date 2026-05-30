@@ -54,6 +54,12 @@ find . -path ./.git -prune -o -maxdepth 3 -type f -print | sort
 
 ## GitHub Repo Setup
 
+Remote:
+
+```txt
+origin https://github.com/ArneGleason/grow.git
+```
+
 Check local GitHub CLI authentication:
 
 ```sh
@@ -111,7 +117,7 @@ Resume work:
 
 ## Operational Notes
 
-- No GitHub remote is configured yet.
+- GitHub remote is configured as `origin` and tracks `main`.
 - No committed secrets should be added. Use `.env.local` for local-only credentials.
 
 ## Known Gotchas

@@ -32,4 +32,6 @@ The repo is initialized with the Studio Pattern so future work has a clear place
 
 ## GitHub Connection
 
-No GitHub remote or credentials are configured yet. See `docs/github-setup.md` when it is time to connect this repo or the app itself to GitHub.
+This repo is connected to the private GitHub repository [ArneGleason/grow](https://github.com/ArneGleason/grow).
+
+No product-level GitHub credentials are configured yet. See `docs/github-setup.md` if Grow itself later needs to connect to GitHub as an app or API client.

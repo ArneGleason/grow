@@ -1,17 +1,18 @@
 # GitHub Setup
 
-This repo is prepared for a GitHub connection, but no remote or credentials are configured yet.
+This repo is connected to GitHub as a private repository.
 
 Intended initial GitHub repository:
 
 - Owner: `ArneGleason`
 - Repo: `grow`
 - URL: `https://github.com/ArneGleason/grow`
-- Initial visibility: `private` unless Arne explicitly changes it.
+- Initial visibility: `private`
+- Git remote: `origin https://github.com/ArneGleason/grow.git`
 
 ## Repo Remote
 
-Before creating a GitHub repo, confirm:
+Before changing the GitHub repo setup, confirm:
 
 - Repo slug: likely `grow`, but confirm first.
 - Owner: likely `arnegleason`, but confirm first.
@@ -24,14 +25,14 @@ Check GitHub CLI authentication:
 gh auth status
 ```
 
-Create and connect the remote after visibility is confirmed:
+Initial creation command used:
 
 ```sh
 gh repo create ArneGleason/grow --source=. --remote=origin --private
 git push -u origin main
 ```
 
-Use `--public` only after the human owner confirms public visibility.
+Do not change visibility to public unless the human owner explicitly confirms it.
 
 ## Product Integration Options
 

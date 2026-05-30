@@ -12,3 +12,4 @@ Use this file for durable decisions and meaningful project events. Keep entries 
 - Added initial Studio Pattern collaboration intent: Codex as implementation lead, Antigravity and Claude as possible review or creative-drift participants.
 - Confirmed browser-first prototype, tonal/modal-plus-rhythm musical language, producer-like human avatar, Gemma 4 31B Ollama target, effects-agent role, and rolling best-moments capture/replay/export direction.
 - Added `CLAUDE.md` and `.agent/handoffs/2026-05-30-claude-planning-review.md` so Claude Code on the Mac Mini has a clear review/creative-collaboration entry point.
+- Created private GitHub repository `ArneGleason/grow`, configured it as `origin`, and pushed `main`.
