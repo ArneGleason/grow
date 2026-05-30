@@ -46,6 +46,7 @@ Studio Pattern source:
 - Include explicit `From`, `To`, and `Relay` fields in handoffs so copied text preserves who is speaking, who is being addressed, and where the human-mediated relay sits.
 - Write handoffs and review notes for the human owner first; another agent may be the next reader, but the human should be able to understand and route the work.
 - Preserve role and perspective boundaries. Do not collapse a reviewer into an implementer, or start direct self-orchestration, unless the human owner explicitly routes the work that way.
+- Treat reusable Studio Pattern lessons from Grow as part of the work: record local evidence, update this repo's memory, and route improvements back to `the-studio-pattern` docs or templates when they generalize beyond Grow.
 
 ## Validation
 

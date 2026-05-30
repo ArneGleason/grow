@@ -17,3 +17,4 @@ Use this file for durable decisions and meaningful project events. Keep entries 
 - Added `.agent/handoffs/2026-05-30-claude-review-and-creative-drift.md` as the next Claude Code/Mac Mini assignment: critique risks, suggest what to change/remove, identify what to protect, propose synergistic creative ideas, and recommend the smallest implementation slice.
 - Added `.agent/handoffs/2026-05-30-copy-paste-claude-kickoff.md` so Arne can manually paste a concise Claude Code kickoff prompt while preserving the human-mediated relay step.
 - Added explicit `From`, `To`, and `Relay` fields to handoffs so manually copied text preserves authorship, intended recipient, machine context, and Arne's human-routing role.
+- Added a standing rule to route reusable Grow learnings back into the canonical Studio Pattern and captured the first cross-project feedback note: addressed handoffs with explicit `From`, `To`, and `Relay` metadata.

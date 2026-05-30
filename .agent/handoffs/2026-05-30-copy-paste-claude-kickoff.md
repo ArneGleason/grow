@@ -6,7 +6,7 @@ To: Claude Code on `mac-mini-pro-m4`
 Relay: Arne Gleason, manual copy/paste with optional commentary, edits, or omission.
 Repository: https://github.com/ArneGleason/grow
 Branch: `main`
-Baseline commit: `5785d26`
+Baseline: pull the latest `main` before reviewing.
 
 Copy/paste the text below into Claude Code on the Mac Mini.
 
