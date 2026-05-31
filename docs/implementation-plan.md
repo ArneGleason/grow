@@ -507,6 +507,9 @@ Scope:
 
 - Add a strict `PlayerThoughtRequest` shape.
 - Add a strict `PlayerThoughtIntent` response shape.
+- Add a compact symbolic `MusicalExcerpt` shape so players can send self, heard, imagined, or group material with a prompt.
+- Include request levels: `in_song_short`, `influence_probe`, `songcraft_plan`, and `memory_digest`.
+- Include response levels: `play_intent`, `variation_intent`, `influence_note`, `song_sketch`, and `memory_note`.
 - Include allowed action vocabulary such as `rest`, `simplify`, `vary_motif`, `answer_player`, `shift_register`, `change_density`, and `disrupt_for_bars`.
 - Include musical fields the app can validate: scale degrees, rhythm cells, target density, duration bars, target player, and confidence.
 - Add a validator and a deterministic mock responder that returns one valid intent from a request.
@@ -515,6 +518,8 @@ Scope:
 Review focus:
 
 - whether the schema is actionable enough to change music,
+- whether the excerpt markup is compact but musically meaningful,
+- whether request/response levels keep quick in-song thoughts separate from slower planning,
 - whether invalid or overlarge responses are easy to reject,
 - whether this avoids vague prose that the app cannot use.
 
@@ -528,14 +533,16 @@ Scope:
 - Add configurable model tag, initially targeting the user's local Gemma 4 31B Ollama model.
 - Add health/status UI and dev hooks.
 - Add a session primer that tells the model the protocol, allowed action vocabulary, current musical primitives, output schema, and short-response rule.
-- Add one manual test call that sends a tiny thought request and displays raw latency, raw response, parse result, and validation result.
+- Add one manual test call that sends a tiny `in_song_short` thought request and displays raw latency, raw response, parse result, and validation result.
+- Add one manual or fixture-level `influence_probe` request that asks for an abstract transferable technique, not a direct style clone or copied melody.
 - Do not schedule model output into music yet.
 
 Review focus:
 
 - whether the protocol is small enough for 10-15 second responses when possible,
 - whether failures are visible and harmless,
-- whether the primer creates useful, parseable, bounded responses.
+- whether the primer creates useful, parseable, bounded responses,
+- whether reference/influence requests come back as musical techniques the app can apply.
 
 ### Byte 10: One Slow-Thinking Player Loop
 
@@ -558,7 +565,25 @@ Review focus:
 - whether the player still feels musical when the model is slow or unavailable,
 - whether the inspectable trail explains what happened.
 
-### Byte 11: Thought Memory And Persistence Prep
+### Byte 11: Song Sketch / Piece Construction Stub
+
+Let players work on a larger song idea without requiring full persistence yet.
+
+Scope:
+
+- Add a symbolic `SongSketch` or `PieceDraft` shape with motifs, roles, sections, cues, and open questions.
+- Let one player bring a mock song idea to the group during rehearsal or a future piece-construction mode.
+- Let other players attach support ideas, objections, or variations as structured responses.
+- Keep output inspectable; no need to perform the whole piece yet.
+- Use the same `songcraft_plan` request/response level from the thought protocol.
+
+Review focus:
+
+- whether this feels like songwriting rather than another short variation,
+- whether piece data can later be practiced, referenced, and iterated,
+- whether the structure stays small enough to persist later.
+
+### Byte 12: Thought Memory And Persistence Prep
 
 Prepare to preserve player identity, backstory fragments, thoughts, and useful motifs.
 
@@ -575,7 +600,7 @@ Review focus:
 - whether persistence stays small and queryable,
 - whether it supports replay/debugging without archiving everything.
 
-### Byte 12: Producer Marker, No LLM
+### Byte 13: Producer Marker, No LLM
 
 Add the producer proxy visually and with a rule-based command interpreter.
 
@@ -591,7 +616,7 @@ Review focus:
 - whether natural-language input feels like it enters the world,
 - whether the proxy is distinct from a control panel.
 
-### Byte 13: Producer Interpretation
+### Byte 14: Producer Interpretation
 
 Add one safe prompt-to-action path for the producer, using the existing thought/action protocol where possible.
 
@@ -607,7 +632,7 @@ Review focus:
 - safety of action schema,
 - inspectability of prompt interpretation.
 
-### Byte 14: Minimal Persistence
+### Byte 15: Minimal Persistence
 
 Add SQLite only after there is something worth preserving.
 

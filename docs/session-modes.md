@@ -58,6 +58,21 @@ This can include:
 
 The rehearsal mode can stop and restart often. It should not pretend to be a polished performance.
 
+### Songwriting / Piece Construction
+
+Players can work on a larger piece before it is ready to perform.
+
+This can include:
+
+- one player bringing a motif or section idea to the group,
+- other players trying support parts or alternate responses,
+- asking for influence or reference probes,
+- deciding whether an idea deserves to become a saved piece,
+- shaping roles, cues, and section boundaries,
+- revising a part without immediately turning it into performance.
+
+This mode is slower than rehearsal. It may produce symbolic piece data, draft motifs, or role plans before it produces sound.
+
 ### Performance Session
 
 Players attempt to perform an organized work.

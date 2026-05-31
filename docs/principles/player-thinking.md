@@ -94,6 +94,118 @@ Each request should include:
 
 The response should be structured JSON or another strict parseable format.
 
+## Musical Exchange Markup
+
+Players need a compact way to include what they are playing or hearing.
+
+Do not pass raw audio to the LLM in the first version. Pass symbolic excerpts:
+
+```ts
+type MusicalExcerpt = {
+  label: string;
+  origin: "self" | "heard" | "imagined" | "group";
+  bars: number;
+  meter: [number, number];
+  mode: string;
+  events: Array<{
+    beat: number;
+    durationBeats: number;
+    scaleDegree?: number;
+    octave?: number;
+    velocity?: number;
+    kind: "note" | "rest" | "accent" | "gesture";
+  }>;
+  tags: string[];
+};
+```
+
+This markup should be dense enough for the LLM to reason about contour, rhythm, repetition, density, and role, but small enough to fit inside a quick thought request.
+
+Players can send:
+
+- a current self excerpt,
+- a heard excerpt from another player,
+- a group excerpt from the listening frame,
+- an imagined draft they want help developing.
+
+## Request Levels
+
+Not every thought should ask for the same depth of reasoning.
+
+### In-Song Short Thought
+
+Use while playback is active.
+
+Target:
+
+- 1-4 bars,
+- small variations,
+- rests,
+- register shifts,
+- density changes,
+- short answers to another player.
+
+Response should be very small and quickly actionable.
+
+### Influence Or Reference Probe
+
+Use when a player wants to draw on an influence, genre, remembered piece, or personal association.
+
+Example request shape:
+
+> Given this phrase and my taste for jagged low patterns, is there a technique from early dub, gamelan interlock, or my "hot-water fabrication plant" memory that suggests a usable move?
+
+The response should describe a transferable technique, not copy a melody or directly imitate a specific living artist. Good answers are things like:
+
+- use staggered echoes,
+- thin the downbeat and answer on the offbeat,
+- turn a contour into a call-and-response cell,
+- borrow a rhythmic density idea,
+- make the bass imply the missing pulse.
+
+The app still receives a bounded intent that it can validate.
+
+### Songcraft Or Piece Planning
+
+Use during a songwriting or rehearsal-planning phase.
+
+A player can bring a song idea to the group:
+
+- a motif,
+- a role plan,
+- a section idea,
+- a cue structure,
+- a suggested form,
+- a question for other players.
+
+Other players can respond with their own excerpts, objections, support parts, or variations. This is slower than in-song thinking and may produce reusable piece data rather than immediate playback.
+
+### Reflection Or Memory Digest
+
+Use after a rehearsal or performance.
+
+The goal is not to generate new notes immediately. It is to decide what to keep:
+
+- a motif worth preserving,
+- a best moment candidate,
+- a failed idea to avoid,
+- a relationship between players,
+- a future prompt seed.
+
+## Response Levels
+
+The LLM can return different intent classes, but each must stay actionable.
+
+Examples:
+
+- `play_intent`: a short future musical action.
+- `variation_intent`: transform an excerpt.
+- `influence_note`: an abstract technique plus a small musical application.
+- `song_sketch`: a candidate motif/form/role plan for group work.
+- `memory_note`: a compact memory fragment to preserve for future thoughts.
+
+Every response should include enough rationale to inspect, but not enough prose to become the product.
+
 ## Timing
 
 Assume a thought can take 10-60 seconds.

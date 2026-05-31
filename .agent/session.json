@@ -24,12 +24,12 @@
   },
   "lastTask": "Update plan for player thinking before producer",
   "status": "player-thinking-plan-updated-byte6c-awaiting-review",
-  "updatedAt": "2026-05-31T02:58:31Z",
+  "updatedAt": "2026-05-31T03:11:44Z",
   "lastHandoff": ".agent/handoffs/2026-05-31-copy-paste-claude-byte-6c-review.md",
   "branch": "main",
   "commit": "pending-byte-6c-push",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 6c remains implemented and awaiting Claude review. While Claude reviews, the implementation plan was updated from Arne's direction: player Ollama thinking should precede producer work. The next arc is profiles/backstory fragments, deterministic thought-context selection, strict thought request/intent protocol, Ollama health/session primer, one slow-thinking player loop, then thought memory/persistence prep before producer proxy work."
+    "summary": "Byte 6c remains implemented and awaiting Claude review. While Claude reviews, the implementation plan was updated from Arne's direction: player Ollama thinking should precede producer work. The next arc is profiles/backstory fragments, deterministic thought-context selection, musical-excerpt markup, strict thought request/intent protocol with in-song/influence/songcraft/memory request levels, Ollama health/session primer, one slow-thinking player loop, song sketch/piece construction, then thought memory/persistence prep before producer proxy work."
   }
 }
