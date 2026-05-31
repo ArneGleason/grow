@@ -94,6 +94,29 @@ Each request should include:
 
 The response should be structured JSON or another strict parseable format.
 
+## Prompt Protocol Adapters
+
+Grow should keep one canonical internal thought contract while allowing multiple model-facing prompt protocols.
+
+The stable contract is:
+
+```text
+PlayerThoughtRequest -> PlayerThoughtIntent -> validator -> scheduler/fallback
+```
+
+Prompt protocols are adapters around that contract. A protocol can present the same request as projected JSON, a compact music card, split protocol/request cards, or another future shape, but it must return something that normalizes into the same `PlayerThoughtIntent` validator.
+
+This matters because local models vary in what they tolerate. A compact card may be fastest for one model, while another model may need a clearer JSON projection to preserve required fields. The model landscape will keep changing, so Grow should be able to test and cache model/protocol pairings without changing musical behavior.
+
+First adapter set:
+
+- `projected-json`: default safe protocol with only validation-critical request fields.
+- `music-card`: compact musical line protocol, useful when a model preserves required fields.
+- `split-cards`: protocol card plus request card, experimental.
+- `full-json`: debug/reference only, not a production default.
+
+Protocol selection should be calibrated outside the performance loop. A small bakeoff can run fixed thought fixtures across installed models and protocols, score parse success, validation success, latency, and compactness, then remember the best model/protocol pairing. During playback, Grow should use the cached pairing and keep deterministic fallback active.
+
 ## Musical Exchange Markup
 
 Players need a compact way to include what they are playing or hearing.

@@ -764,19 +764,25 @@ Review focus:
 - whether contagion is bounded and cannot run away into noise or silence,
 - whether player dispositions become load-bearing rather than decorative.
 
-### Byte 10f: Ollama Backend Proxy And Prompt Tuning
+### Byte 10f: Ollama Backend Proxy And Prompt Protocol Registry
 
 Status: planned.
 
-Make the manual Ollama probe ready for automatic slow-thinking use.
+Make the manual Ollama probe ready for automatic slow-thinking use without assuming one prompt shape fits every local model.
 
 Scope:
 
 - Move model calls behind a tiny local backend/proxy before any automatic loop.
 - Handle reasoning-model output such as `message.thinking` and empty `message.content`.
-- Send a trimmed request projection instead of the full `PlayerThoughtRequest` object.
+- Keep `PlayerThoughtRequest` and `PlayerThoughtIntent` as the canonical internal contract.
+- Add a small prompt protocol registry whose adapters transform a canonical thought request into model-facing prompts and normalize responses back into the same validator path.
+- Start the registry with `projected-json`, `music-card`, `split-cards`, and a debug/reference `full-json`.
+- Default production use to `projected-json` until a calibrated pairing proves better.
+- Add a small calibration/bakeoff harness that runs fixed thought fixtures against available models and protocol adapters, then scores parse success, validation success, required-field preservation, latency, and compactness.
+- Cache or record the selected model/protocol pairing for later use; do not run calibration inside the musical performance loop.
 - Add mocked invalid-response and unavailable-Ollama smoke cases.
 - Surface `availableModels` in the UI, preferably as a picker.
+- Surface the selected prompt protocol in the UI or debug inspector.
 - Consider separating health latency and thought latency in the inspector.
 - Keep deterministic mock fallback.
 - Still do not schedule model output into music in this byte.
@@ -784,6 +790,8 @@ Scope:
 Review focus:
 
 - whether the backend/proxy removes browser CORS/environment uncertainty,
+- whether prompt protocols remain thin adapters rather than alternate musical contracts,
+- whether model/protocol calibration is useful without adding runtime complexity,
 - whether real local models return parseable bounded JSON more often,
 - whether failure remains harmless and visible.
 
@@ -792,7 +800,8 @@ Prompt-shape experiment note:
 - `docs/experiments/2026-05-31-thought-prompt-shapes.md` compares the current full JSON prompt with projected JSON, line-card, and split-card shapes.
 - The first recommended production change is projected JSON: it preserves every validation-critical field while cutting the representative prompt from about 979 estimated tokens to about 546.
 - Live `gemma4:31b` testing showed `think: false` is required for short structured responses; otherwise useful output may sit in `message.thinking` while `message.content` stays empty.
-- In the live comparison, projected JSON and music-card parsed with required fields; full JSON and split-cards hit `num_predict` length and failed parsing. Projected JSON remains the safest first implementation target.
+- Live `qwen3:4b-instruct-2507-q4_K_M` and `gemma3:4b-it-q4_K_M` tests showed that prompt tolerance varies by model: projected JSON was valid and fast on both, Qwen handled music-card cleanly, Gemma 3 omitted one required music-card field, and split-cards failed on Qwen but passed on Gemma 3.
+- Projected JSON remains the safest first implementation target, but Grow should preserve the ability to calibrate prompt protocol per model because model behavior changes over time.
 
 ### Byte 11: One Slow-Thinking Player Loop
 

@@ -14,13 +14,14 @@ The project is exploratory. Drift is allowed. The repo should keep enough memory
 
 - First prototype: browser-first.
 - First musical language: tonal/modal and rhythm-linked from the start.
-- First local model target: Gemma 4 31B through Ollama, using a configurable model name so the exact local Ollama tag can be adjusted.
+- Local model target: Ollama-backed and configurable. Gemma 4 31B is the initial large-model reference, while faster local candidates can be tested and selected per prompt protocol.
 - Human avatar: language-driven producer proxy. Players can comply, resist, ignore, reinterpret, or develop changing attitudes toward producer suggestions.
 - Capture: lightweight rolling best-moments capture, not a large permanent archive.
 - First running slice: rule-based PixiJS/Tone.js terrarium with one pulse player. Next foundation: musical events and listening frames before adding multiple players.
 - Time model: not hard real-time. Players can think ahead, commit material into a lookahead buffer, and perform it later in time with the transport.
 - Session model: not nonstop generation. Grow has breaks, solo practice, rehearsals, performances, reflection, and constructed pieces.
 - Player thinking model: players should gain their own slow Ollama-backed creative planning before the producer proxy is added, so they can generate future musical ideas from listening frames, dispositions, compact memory fragments, symbolic musical excerpts, influence probes, and songcraft plans.
+- Prompt protocol model: Grow should keep one canonical internal thought contract while allowing swappable model-facing prompt adapters, because different local models tolerate projected JSON, card protocols, and other compact shapes differently.
 - Scope model: solo local instrument first; future architecture may allow multiple terrariums/bands that can observe or react to each other.
 
 ## Product Feel
