@@ -10,6 +10,8 @@ import type { RuntimePlayer } from "./world-state";
 
 const TERRARIUM_WIDTH = 960;
 const TERRARIUM_HEIGHT = 560;
+const AUTO_FOCUS_MARGIN = 180;
+const MAX_AUTO_FOCUS_SCALE = 1.55;
 const HALO_RESTING_ALPHA = 0.64;
 const FLASH_DURATION_MS = 180;
 const FLASH_SCALE_BUMP = 0.34;
@@ -46,6 +48,7 @@ export async function createTerrariumView(
   });
 
   app.canvas.setAttribute("data-testid", "terrarium-canvas");
+  fitCanvasToContainer(app.canvas);
   container.appendChild(app.canvas);
 
   const world = new Container();
@@ -89,15 +92,24 @@ export async function createTerrariumView(
   });
 
   const renderer = app.renderer;
+  const focusBounds = getPlayerFocusBounds(players);
   const resizeObserver = new ResizeObserver((entries) => {
     const entry = entries[0];
     if (!entry) return;
     const { width, height } = entry.contentRect;
-    const scale = Math.min(width / TERRARIUM_WIDTH, height / TERRARIUM_HEIGHT);
+    if (width <= 0 || height <= 0) return;
+    const coverScale = Math.max(width / TERRARIUM_WIDTH, height / TERRARIUM_HEIGHT);
+    const focusScale = Math.min(width / focusBounds.width, height / focusBounds.height);
+    const scale = Math.max(coverScale, Math.min(focusScale, MAX_AUTO_FOCUS_SCALE));
+    const scaledWorldWidth = TERRARIUM_WIDTH * scale;
+    const scaledWorldHeight = TERRARIUM_HEIGHT * scale;
+    const focusCenterX = focusBounds.x + focusBounds.width / 2;
+    const focusCenterY = focusBounds.y + focusBounds.height / 2;
     world.scale.set(scale);
-    world.x = Math.max(0, (width - TERRARIUM_WIDTH * scale) / 2);
-    world.y = Math.max(0, (height - TERRARIUM_HEIGHT * scale) / 2);
+    world.x = clamp(width / 2 - focusCenterX * scale, width - scaledWorldWidth, 0);
+    world.y = clamp(height / 2 - focusCenterY * scale, height - scaledWorldHeight, 0);
     renderer.resize(width, height);
+    fitCanvasToContainer(app.canvas);
   });
   resizeObserver.observe(container);
 
@@ -118,6 +130,56 @@ export async function createTerrariumView(
       app.destroy(true);
     },
   };
+}
+
+function fitCanvasToContainer(canvas: HTMLCanvasElement): void {
+  canvas.style.display = "block";
+  canvas.style.width = "100%";
+  canvas.style.height = "100%";
+}
+
+function getPlayerFocusBounds(players: readonly RuntimePlayer[]): {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+} {
+  if (players.length === 0) {
+    return { x: 0, y: 0, width: TERRARIUM_WIDTH, height: TERRARIUM_HEIGHT };
+  }
+
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const { player } of players) {
+    const visualRadius = Math.max(
+      player.visual.haloRadius,
+      player.visual.bodyRadius,
+      Math.abs(player.visual.labelOffsetY) + 18,
+    );
+    minX = Math.min(minX, player.position.x - visualRadius);
+    minY = Math.min(minY, player.position.y - visualRadius);
+    maxX = Math.max(maxX, player.position.x + visualRadius);
+    maxY = Math.max(maxY, player.position.y + visualRadius);
+  }
+
+  const x = Math.max(0, minX - AUTO_FOCUS_MARGIN);
+  const y = Math.max(0, minY - AUTO_FOCUS_MARGIN);
+  const right = Math.min(TERRARIUM_WIDTH, maxX + AUTO_FOCUS_MARGIN);
+  const bottom = Math.min(TERRARIUM_HEIGHT, maxY + AUTO_FOCUS_MARGIN);
+
+  return {
+    x,
+    y,
+    width: Math.max(1, right - x),
+    height: Math.max(1, bottom - y),
+  };
+}
+
+function clamp(value: number, min: number, max: number): number {
+  if (min > max) return (min + max) / 2;
+  return Math.min(max, Math.max(min, value));
 }
 
 function visualForState(state: PlayerRuntimeState): { alpha: number; scale: number } {

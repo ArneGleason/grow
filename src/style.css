@@ -19,33 +19,52 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  overflow: hidden;
   background:
     radial-gradient(circle at 20% 0%, rgba(78, 107, 70, 0.26), transparent 34rem),
     linear-gradient(135deg, #11140f 0%, #171914 45%, #0e1212 100%);
+}
+
+#app {
+  min-height: 100vh;
 }
 
 button {
   font: inherit;
 }
 
+.visually-hidden {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 .app-shell {
+  height: 100vh;
   min-height: 100vh;
   display: grid;
   grid-template-rows: auto 1fr;
   gap: 16px;
   padding: 18px;
+  overflow: hidden;
 }
 
 .topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: end;
   gap: 16px;
 }
 
 .brand {
   display: grid;
   gap: 3px;
+  justify-content: start;
+  min-height: 42px;
 }
 
 .brand__title {
@@ -62,10 +81,11 @@ button {
 
 .transport-controls {
   display: flex;
-  align-items: center;
+  align-items: end;
   justify-content: flex-end;
   gap: 10px;
   flex-wrap: wrap;
+  min-width: 0;
 }
 
 .mode-control {
@@ -75,16 +95,21 @@ button {
   margin: 0;
   padding: 0;
   border: 0;
+  min-height: 42px;
 }
 
-.mode-control legend {
-  padding: 0;
+.mode-label {
+  display: flex;
+  align-items: center;
+  min-height: 42px;
   color: #aeb7a5;
   font-size: 0.85rem;
+  line-height: 1;
 }
 
 .mode-segments {
   display: flex;
+  min-height: 42px;
   overflow: hidden;
   border: 1px solid rgba(174, 183, 165, 0.28);
   border-radius: 8px;
@@ -104,9 +129,12 @@ button {
 }
 
 .mode-option span {
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   min-width: 62px;
-  padding: 10px 11px;
+  min-height: 40px;
+  padding: 0 11px;
   color: #d7dfcf;
   font-size: 0.86rem;
   line-height: 1;
@@ -133,7 +161,7 @@ button {
 
 .transport-button {
   min-width: 104px;
-  min-height: 42px;
+  height: 42px;
   border: 1px solid #8fae75;
   border-radius: 8px;
   background: #d9f7a7;
@@ -175,27 +203,40 @@ button {
 }
 
 .status-line {
+  display: flex;
+  align-items: center;
+  flex: 1 1 260px;
   min-width: 240px;
+  max-width: 360px;
+  min-height: 42px;
   border: 1px solid rgba(174, 183, 165, 0.26);
   border-radius: 8px;
   padding: 10px 12px;
   background: rgba(10, 14, 12, 0.72);
   color: #d7dfcf;
   font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .stage {
+  --inspector-width: 320px;
+  --stage-resizer-width: 16px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 260px;
-  gap: 16px;
-  align-items: start;
+  grid-template-columns:
+    minmax(360px, 1fr)
+    var(--stage-resizer-width)
+    minmax(280px, var(--inspector-width));
+  gap: 0;
+  align-items: stretch;
   min-height: 0;
 }
 
 .terrarium-panel {
   width: 100%;
-  aspect-ratio: 12 / 7;
-  max-height: calc(100vh - 116px);
+  height: 100%;
+  min-height: 0;
   border: 1px solid rgba(174, 183, 165, 0.24);
   border-radius: 8px;
   background: rgba(13, 17, 14, 0.68);
@@ -216,7 +257,39 @@ button {
   height: 100%;
 }
 
+.stage-resizer {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  min-width: var(--stage-resizer-width);
+  border: 0;
+  background: transparent;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.stage-resizer span {
+  width: 1px;
+  border-radius: 999px;
+  background: rgba(174, 183, 165, 0.2);
+}
+
+.stage-resizer:hover span,
+.stage-resizer:focus-visible span,
+.stage.is-resizing .stage-resizer span {
+  width: 3px;
+  background: #f6cc6b;
+}
+
+.stage-resizer:focus-visible {
+  outline: 3px solid #f6cc6b;
+  outline-offset: -3px;
+}
+
 .inspector {
+  min-height: 0;
+  overflow: auto;
   border: 1px solid rgba(174, 183, 165, 0.24);
   border-radius: 8px;
   background: rgba(10, 14, 12, 0.72);
@@ -386,17 +459,34 @@ button {
   color: #eef3e5;
 }
 
+@media (max-width: 1040px) and (min-width: 821px) {
+  .topbar {
+    grid-template-columns: 1fr;
+  }
+
+  .transport-controls {
+    justify-content: flex-start;
+  }
+}
+
 @media (max-width: 820px) {
   .app-shell {
+    height: auto;
     padding: 14px;
+    overflow: visible;
+  }
+
+  body {
+    overflow: auto;
   }
 
   .topbar {
     align-items: stretch;
-    flex-direction: column;
+    grid-template-columns: 1fr;
   }
 
   .transport-controls {
+    align-items: stretch;
     justify-content: flex-start;
   }
 
@@ -422,9 +512,19 @@ button {
 
   .stage {
     grid-template-columns: 1fr;
+    gap: 16px;
   }
 
   .terrarium-panel {
-    max-height: none;
+    min-height: 320px;
+    aspect-ratio: 12 / 7;
+  }
+
+  .stage-resizer {
+    display: none;
+  }
+
+  .inspector {
+    overflow: visible;
   }
 }

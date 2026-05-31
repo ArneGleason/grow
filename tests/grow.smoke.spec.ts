@@ -508,6 +508,43 @@ test("inspector help icons explain current controls", async ({ page }) => {
   await expect(page.getByTestId("help-lookahead")).toHaveAttribute("aria-expanded", "false");
 });
 
+test("stage resizer changes the inspector width within bounds", async ({ page }) => {
+  await page.goto("/");
+
+  const stage = page.getByTestId("stage");
+  const inspector = page.getByTestId("player-inspector");
+  const resizer = page.getByTestId("stage-resizer");
+  const stageBox = await stage.boundingBox();
+  const initialInspectorBox = await inspector.boundingBox();
+  const resizerBox = await resizer.boundingBox();
+
+  expect(stageBox).not.toBeNull();
+  expect(initialInspectorBox).not.toBeNull();
+  expect(resizerBox).not.toBeNull();
+
+  if (!stageBox || !initialInspectorBox || !resizerBox) return;
+
+  await page.mouse.move(
+    resizerBox.x + resizerBox.width / 2,
+    resizerBox.y + resizerBox.height / 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(resizerBox.x - 120, resizerBox.y + resizerBox.height / 2);
+  await page.mouse.up();
+
+  const widenedInspectorBox = await inspector.boundingBox();
+  expect(widenedInspectorBox).not.toBeNull();
+  expect(widenedInspectorBox?.width).toBeGreaterThan(initialInspectorBox.width + 60);
+  expect(widenedInspectorBox?.width).toBeLessThanOrEqual(stageBox.width * 0.5 + 2);
+
+  await resizer.focus();
+  await page.keyboard.press("Home");
+  const narrowedInspectorBox = await inspector.boundingBox();
+  expect(narrowedInspectorBox).not.toBeNull();
+  expect(narrowedInspectorBox?.width).toBeLessThan(widenedInspectorBox?.width ?? Infinity);
+  await expect(resizer).toHaveAttribute("aria-valuenow", "280");
+});
+
 test("Grow exposes session modes, starts three players, hears events, and cleans up the transport", async ({ page }) => {
   test.setTimeout(60_000);
   const consoleErrors: string[] = [];
@@ -526,6 +563,7 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
 
   const button = page.getByTestId("transport-toggle");
   const status = page.getByTestId("transport-status");
+  const canvasFrame = page.getByTestId("terrarium-container");
   const canvas = page.getByTestId("terrarium-canvas");
 
   await expect(page.locator(".brand__subtitle")).toHaveText("Byte 10d: audible performed offsets");
@@ -643,10 +681,12 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   await expect(page.getByTestId("lookahead-through")).toHaveText("beat 0.0");
   await expect(page.getByTestId("lookahead-pending-slots")).toHaveText("0");
 
+  const frameBox = await canvasFrame.boundingBox();
   const box = await canvas.boundingBox();
   expect(box?.width).toBeGreaterThan(400);
-  expect(box?.height).toBeGreaterThan(220);
-  expect(Math.abs((box?.width ?? 0) / (box?.height ?? 1) - 12 / 7)).toBeLessThan(0.08);
+  expect(box?.height).toBeGreaterThan(340);
+  expect(Math.abs((box?.width ?? 0) - (frameBox?.width ?? 0))).toBeLessThan(2);
+  expect(Math.abs((box?.height ?? 0) - (frameBox?.height ?? 0))).toBeLessThan(2);
 
   await button.click();
   await expect(button).toHaveText("Stop");

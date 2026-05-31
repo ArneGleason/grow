@@ -102,6 +102,11 @@ const HELP_TOPICS = {
 } as const;
 
 type HelpTopicId = keyof typeof HELP_TOPICS;
+const DEFAULT_INSPECTOR_WIDTH = 320;
+const MIN_INSPECTOR_WIDTH = 280;
+const MAX_INSPECTOR_WIDTH = 560;
+const MAX_INSPECTOR_WIDTH_RATIO = 0.5;
+const INSPECTOR_KEYBOARD_RESIZE_STEP = 24;
 
 function renderHelpButton(topic: HelpTopicId, label: string): string {
   return `
@@ -132,8 +137,9 @@ app.innerHTML = `
         <p class="brand__subtitle">Byte 10d: audible performed offsets</p>
       </div>
       <div class="transport-controls">
-        <fieldset class="mode-control" aria-label="Session mode">
-          <legend>Mode</legend>
+        <fieldset class="mode-control">
+          <legend class="visually-hidden">Session mode</legend>
+          <span class="mode-label" aria-hidden="true">Mode</span>
           <div class="mode-segments" data-testid="session-mode-control">
 ${sessionModeControls}
           </div>
@@ -155,7 +161,7 @@ ${sessionModeControls}
       </div>
     </header>
 
-    <section class="stage" aria-label="Terrarium stage">
+    <section class="stage" data-testid="stage" aria-label="Terrarium stage">
       <div class="terrarium-panel">
         <div
           class="terrarium-canvas"
@@ -165,7 +171,27 @@ ${sessionModeControls}
         ></div>
       </div>
 
-      <aside class="inspector" aria-label="Player inspector">
+      <div
+        class="stage-resizer"
+        data-testid="stage-resizer"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize inspector"
+        aria-controls="player-inspector"
+        aria-valuemin="${MIN_INSPECTOR_WIDTH}"
+        aria-valuemax="${MAX_INSPECTOR_WIDTH}"
+        aria-valuenow="${DEFAULT_INSPECTOR_WIDTH}"
+        tabindex="0"
+      >
+        <span aria-hidden="true"></span>
+      </div>
+
+      <aside
+        class="inspector"
+        id="player-inspector"
+        data-testid="player-inspector"
+        aria-label="Player inspector"
+      >
         <section
           class="inspector-help-panel"
           id="inspector-help-panel"
@@ -294,6 +320,9 @@ ${renderHelpButton("lookahead", "lookahead buffer")}
 const container = requireElement<HTMLDivElement>("#terrarium-container");
 const button = requireElement<HTMLButtonElement>("#transport-toggle");
 const status = requireElement<HTMLOutputElement>("#transport-status");
+const stage = requireElement<HTMLElement>("[data-testid='stage']");
+const stageResizer = requireElement<HTMLElement>("[data-testid='stage-resizer']");
+const inspector = requireElement<HTMLElement>("[data-testid='player-inspector']");
 const helpPanel = requireElement<HTMLElement>("[data-testid='inspector-help-panel']");
 const helpTitle = requireElement<HTMLElement>("[data-testid='inspector-help-title']");
 const helpBody = requireElement<HTMLElement>("[data-testid='inspector-help-body']");
@@ -325,6 +354,7 @@ const lookaheadThrough = requireElement<HTMLElement>("[data-testid='lookahead-th
 const lookaheadPendingSlots = requireElement<HTMLElement>("[data-testid='lookahead-pending-slots']");
 
 let terrarium: TerrariumView | null = null;
+let activeResizePointerId: number | null = null;
 let previousTransportStatus = getState().status;
 let renderedPlayerIds = "";
 let renderedThoughtSeedIds = "";
@@ -383,6 +413,44 @@ function hideHelpTopic(): void {
   for (const button of helpButtons) {
     button.setAttribute("aria-expanded", "false");
   }
+}
+
+function getInspectorWidthBounds(): { min: number; max: number } {
+  const stageWidth = stage.getBoundingClientRect().width || window.innerWidth;
+  const max = Math.max(
+    MIN_INSPECTOR_WIDTH,
+    Math.min(MAX_INSPECTOR_WIDTH, Math.floor(stageWidth * MAX_INSPECTOR_WIDTH_RATIO)),
+  );
+  return { min: MIN_INSPECTOR_WIDTH, max };
+}
+
+function clampInspectorWidth(width: number): number {
+  const { min, max } = getInspectorWidthBounds();
+  return Math.min(max, Math.max(min, Math.round(width)));
+}
+
+function setInspectorWidth(width: number): number {
+  const nextWidth = clampInspectorWidth(width);
+  stage.style.setProperty("--inspector-width", `${nextWidth}px`);
+  const { min, max } = getInspectorWidthBounds();
+  stageResizer.setAttribute("aria-valuemin", String(min));
+  stageResizer.setAttribute("aria-valuemax", String(max));
+  stageResizer.setAttribute("aria-valuenow", String(nextWidth));
+  return nextWidth;
+}
+
+function resizeInspectorFromClientX(clientX: number): void {
+  const stageRect = stage.getBoundingClientRect();
+  const resizerRect = stageResizer.getBoundingClientRect();
+  setInspectorWidth(stageRect.right - clientX - resizerRect.width / 2);
+}
+
+function getCurrentInspectorWidth(): number {
+  return inspector.getBoundingClientRect().width || DEFAULT_INSPECTOR_WIDTH;
+}
+
+function handleWindowResize(): void {
+  setInspectorWidth(getCurrentInspectorWidth());
 }
 
 function renderPlayerInspector(
@@ -939,6 +1007,54 @@ helpCloseButton.addEventListener("click", () => {
   hideHelpTopic();
 });
 
+stageResizer.addEventListener("pointerdown", (event) => {
+  if (window.matchMedia("(max-width: 820px)").matches) return;
+  activeResizePointerId = event.pointerId;
+  stageResizer.setPointerCapture(event.pointerId);
+  stage.classList.add("is-resizing");
+  resizeInspectorFromClientX(event.clientX);
+  event.preventDefault();
+});
+
+stageResizer.addEventListener("pointermove", (event) => {
+  if (activeResizePointerId !== event.pointerId) return;
+  resizeInspectorFromClientX(event.clientX);
+});
+
+function finishInspectorResize(event: PointerEvent): void {
+  if (activeResizePointerId !== event.pointerId) return;
+  activeResizePointerId = null;
+  if (stageResizer.hasPointerCapture(event.pointerId)) {
+    stageResizer.releasePointerCapture(event.pointerId);
+  }
+  stage.classList.remove("is-resizing");
+}
+
+stageResizer.addEventListener("pointerup", finishInspectorResize);
+stageResizer.addEventListener("pointercancel", finishInspectorResize);
+
+stageResizer.addEventListener("keydown", (event) => {
+  if (event.key === "ArrowLeft") {
+    setInspectorWidth(getCurrentInspectorWidth() + INSPECTOR_KEYBOARD_RESIZE_STEP);
+    event.preventDefault();
+  }
+  if (event.key === "ArrowRight") {
+    setInspectorWidth(getCurrentInspectorWidth() - INSPECTOR_KEYBOARD_RESIZE_STEP);
+    event.preventDefault();
+  }
+  if (event.key === "Home") {
+    setInspectorWidth(MIN_INSPECTOR_WIDTH);
+    event.preventDefault();
+  }
+  if (event.key === "End") {
+    setInspectorWidth(MAX_INSPECTOR_WIDTH);
+    event.preventDefault();
+  }
+});
+
+window.addEventListener("resize", handleWindowResize);
+setInspectorWidth(DEFAULT_INSPECTOR_WIDTH);
+
 terrarium = await createTerrariumView(container, world.getPlayers());
 renderWorld();
 
@@ -1063,5 +1179,6 @@ if (import.meta.hot) {
     window.thinking = undefined;
     window.session = undefined;
     window.ollama = undefined;
+    window.removeEventListener("resize", handleWindowResize);
   });
 }
