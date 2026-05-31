@@ -829,6 +829,34 @@ Implementation notes:
 - The inspector shows `projected-json (Projected JSON)` through `ollama-protocol-status`.
 - Smoke coverage asserts the mocked `/api/chat` payload uses the qwen model, a schema `format`, projected request text, no full request JSON, no serialized `seed`, and no quoted `sourceStartBeat`.
 
+### Byte 10f-b1: Local Ollama Proxy Route
+
+Status: implemented.
+
+Move the manual probe's network hop behind the local app boundary before automatic slow thinking exists.
+
+Scope:
+
+- Add a tiny Vite dev middleware for `/api/ollama/tags` and `/api/ollama/chat`.
+- Keep the browser responsible for prompt construction, JSON-schema request shape, parsing, validation, and mock fallback in this slice.
+- Forward only to localhost Ollama targets.
+- Rewire `checkOllamaHealth()` and `runOllamaThoughtTest()` to call the same-origin proxy instead of `http://127.0.0.1:11434` directly.
+- Keep this manual-probe-only: no automatic slow-thinking loop and no scheduling of model output.
+- Do not add SQLite, model picker, calibration, or a production backend server yet.
+
+Review focus:
+
+- whether the proxy is transport-only and not a second thought contract,
+- whether the browser no longer performs direct cross-origin Ollama fetches,
+- whether localhost target restriction is appropriate for the current local prototype,
+- whether this shape can later grow into the SQLite/checkpoint backend without forcing a rewrite of the thought contract.
+
+Implementation notes:
+
+- `vite.config.js` now installs a dev middleware that forwards `/api/ollama/tags?baseUrl=...` and `/api/ollama/chat?baseUrl=...` to the target Ollama server.
+- `src/ollama.ts` wraps the existing Ollama chat body in `{ baseUrl, request }` and posts to `/api/ollama/chat`; health checks go through `/api/ollama/tags`.
+- Smoke coverage intercepts `/api/ollama/*`, asserts the browser sends the projected qwen request to the proxy, and installs a guard that fails if the browser directly requests `127.0.0.1:11434`.
+
 ### Byte 10f: Ollama Backend Proxy And Prompt Protocol Registry
 
 Status: planned.
@@ -837,7 +865,7 @@ Make the manual Ollama probe ready for automatic slow-thinking use without assum
 
 Scope:
 
-- Move model calls behind a tiny local backend/proxy before any automatic loop.
+- Grow the local proxy into a fuller backend/proxy before any automatic loop.
 - Handle reasoning-model output such as `message.thinking` and empty `message.content`.
 - Keep `PlayerThoughtRequest` and `PlayerThoughtIntent` as the canonical internal contract.
 - Add a small prompt protocol registry whose adapters transform a canonical thought request into model-facing prompts and normalize responses back into the same validator path.

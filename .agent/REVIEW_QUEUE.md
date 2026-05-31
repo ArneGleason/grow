@@ -53,5 +53,6 @@ Use this file for known risks, open questions, and review focus. Keep entries sh
 - Byte 10e is approved. Claude verified agitation/contagion is bounded, inspectable, read-only, playback-neutral, and genuinely disposition-differentiated: steady pulse damps heat while melody catches/amplifies it.
 - Forward notes after Byte 10e: before contagion drives behavior, add a build/release governor with ceiling plus slow decay for the closed loop; current agitation is density/velocity-led because microtiming is subtle; agitation and contagion are natural terrarium visual-intensity signals before they become audible behavior.
 - Byte 10f-a is approved. Live Mac Mini qwen3 verification returned valid projected-JSON intents for pulse, bass, and melody in about 4-5 seconds each, with clean parsing, zero validation errors, system-owned `sourceStartBeat`, and character-grounded rationales.
-- Before the automatic slow-thinking loop, add a local backend/proxy, add mocked invalid/unavailable Ollama tests, and surface available models as a picker.
+- Byte 10f-b1 review should check that the new Vite proxy is transport-only, localhost-scoped, and that browser code no longer fetches Ollama directly.
+- Before the automatic slow-thinking loop, add mocked invalid/unavailable Ollama tests and surface available models as a picker.
 - Ollama API note: for `gemma4:31b`, include `think: false` in short structured `/api/chat` calls or the response may put reasoning in `message.thinking` and leave `message.content` empty.

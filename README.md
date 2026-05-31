@@ -33,10 +33,10 @@ Grow currently runs as a browser app with:
 - A bounded agitation/contagion signal so the ensemble can expose shared heat before it changes behavior.
 - Terrarium visual heat: the room warms with mix agitation and player halos respond to caught heat.
 - A strict thought protocol for future Ollama-authored musical ideas.
-- A manual local Ollama probe with projected JSON prompts, validation, and mock fallback.
+- A manual local Ollama probe routed through the local app proxy, with projected JSON prompts, validation, and mock fallback.
 - Context help in the inspector so the app can explain its growing set of controls.
 
-The current milestone is around Byte 10f-a: the band is still rule-based, but the local-model boundary now sends a compact projected request to a faster default Ollama model.
+The current milestone is around Byte 10f-b1: the band is still rule-based, but the local-model boundary now sends compact projected requests through a local proxy instead of talking to Ollama directly from the browser.
 
 ## What Is Not Here Yet
 
@@ -84,7 +84,7 @@ Default local URL:
 http://127.0.0.1:5173
 ```
 
-Ollama is optional for most of the current app. The default local endpoint is:
+Ollama is optional for most of the current app. The browser calls Grow's same-origin proxy, which forwards to the default local Ollama endpoint:
 
 ```txt
 http://127.0.0.1:11434
@@ -141,7 +141,8 @@ They are intentionally boring and inspectable. The system should be weird becaus
 - `src/performed-time.ts`: deterministic performed-time offsets.
 - `src/thought-protocol.ts`: thought request/intent schemas and validators.
 - `src/thought-seeds.ts`: compact player thought context.
-- `src/ollama.ts`: local Ollama boundary and mock fallback.
+- `src/ollama.ts`: browser-side Ollama probe orchestration and mock fallback.
+- `vite.config.js`: local dev proxy for Ollama `/api/tags` and `/api/chat`.
 - `src/terrarium.ts`: PixiJS world rendering.
 - `src/main.ts`: app shell, inspector, controls, and browser hooks.
 

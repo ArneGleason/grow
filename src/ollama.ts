@@ -78,6 +78,23 @@ interface OllamaChatResponse {
   response?: string;
 }
 
+interface OllamaChatRequest {
+  model: string;
+  messages: Array<{ role: "system" | "user"; content: string }>;
+  stream: false;
+  format: unknown;
+  think: false;
+  options: {
+    temperature: number;
+    num_predict: number;
+  };
+}
+
+interface OllamaProxyChatRequest {
+  baseUrl: string;
+  request: OllamaChatRequest;
+}
+
 const DEFAULT_OLLAMA_BASE_URL = import.meta.env?.VITE_GROW_OLLAMA_BASE_URL ?? "http://127.0.0.1:11434";
 const DEFAULT_OLLAMA_MODEL = import.meta.env?.VITE_GROW_OLLAMA_MODEL ?? "qwen3:4b-instruct-2507-q4_K_M";
 const DEFAULT_PROMPT_PROTOCOL = import.meta.env?.VITE_GROW_THOUGHT_PROMPT_PROTOCOL ?? DEFAULT_THOUGHT_PROMPT_PROTOCOL_ID;
@@ -157,7 +174,7 @@ export function createOllamaInfluenceProbePrompt(
 export async function checkOllamaHealth(config: OllamaConfig): Promise<OllamaHealthState> {
   const startedAt = Date.now();
   try {
-    const response = await fetchWithTimeout(`${sanitizeBaseUrl(config.baseUrl)}/api/tags`, {
+    const response = await fetchWithTimeout(createOllamaProxyUrl("tags", config), {
       method: "GET",
     }, config.timeoutMs);
     const latencyMs = Date.now() - startedAt;
@@ -196,25 +213,29 @@ export async function runOllamaThoughtTest(
   const fallbackIntent = createMockThoughtIntent(request);
   const fallbackValidation = validatePlayerThoughtIntent(fallbackIntent, request);
   const protocol = getThoughtPromptProtocol(config.promptProtocol);
+  const ollamaRequest: OllamaChatRequest = {
+    model: config.model,
+    messages: [
+      { role: "system", content: createOllamaSessionPrimer() },
+      { role: "user", content: createOllamaThoughtPrompt(request, {}, protocol.id) },
+    ],
+    stream: false,
+    format: protocol.createResponseFormat(request),
+    think: false,
+    options: {
+      temperature: 0.35,
+      num_predict: 512,
+    },
+  };
 
   try {
-    const response = await fetchWithTimeout(`${sanitizeBaseUrl(config.baseUrl)}/api/chat`, {
+    const response = await fetchWithTimeout(createOllamaProxyUrl("chat", config), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: config.model,
-        messages: [
-          { role: "system", content: createOllamaSessionPrimer() },
-          { role: "user", content: createOllamaThoughtPrompt(request, {}, protocol.id) },
-        ],
-        stream: false,
-        format: protocol.createResponseFormat(request),
-        think: false,
-        options: {
-          temperature: 0.35,
-          num_predict: 512,
-        },
-      }),
+        baseUrl: sanitizeBaseUrl(config.baseUrl),
+        request: ollamaRequest,
+      } satisfies OllamaProxyChatRequest),
     }, config.timeoutMs);
     const latencyMs = Date.now() - startedAt;
     if (!response.ok) {
@@ -446,6 +467,11 @@ function unwrapIntentObject(value: unknown): Record<string, unknown> | undefined
 
 function sanitizeBaseUrl(baseUrl: string): string {
   return baseUrl.trim().replace(/\/+$/, "") || "http://127.0.0.1:11434";
+}
+
+function createOllamaProxyUrl(endpoint: "tags" | "chat", config: OllamaConfig): string {
+  const baseUrl = encodeURIComponent(sanitizeBaseUrl(config.baseUrl));
+  return `/api/ollama/${endpoint}?baseUrl=${baseUrl}`;
 }
 
 function isMeter(value: unknown): value is [number, number] {

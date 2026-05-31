@@ -455,42 +455,49 @@ test("performed offsets replay across transport restarts", async ({ page }) => {
 });
 
 test("manual Ollama thought probe is inspectable with a mocked local endpoint", async ({ page }) => {
-  const chatPayloads: Array<{
-    model?: string;
-    messages?: Array<{ role?: string; content?: string }>;
-    stream?: boolean;
-    format?: unknown;
-    think?: boolean;
-    options?: { temperature?: number; num_predict?: number };
+  let directOllamaRequestCount = 0;
+  const proxyChatPayloads: Array<{
+    baseUrl?: string;
+    request?: {
+      model?: string;
+      messages?: Array<{ role?: string; content?: string }>;
+      stream?: boolean;
+      format?: unknown;
+      think?: boolean;
+      options?: { temperature?: number; num_predict?: number };
+    };
   }> = [];
-  const corsHeaders = {
-    "access-control-allow-origin": "*",
-    "access-control-allow-methods": "GET,POST,OPTIONS",
-    "access-control-allow-headers": "content-type",
-    "content-type": "application/json",
-  };
 
-  await page.route("http://127.0.0.1:11434/api/tags", async (route) => {
-    if (route.request().method() === "OPTIONS") {
-      await route.fulfill({ status: 204, headers: corsHeaders });
-      return;
-    }
+  await page.route("http://127.0.0.1:11434/**", async (route) => {
+    directOllamaRequestCount += 1;
+    await route.fulfill({
+      status: 418,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ error: "browser should use local proxy" }),
+    });
+  });
+
+  await page.route("**/api/ollama/tags**", async (route) => {
+    expect(new URL(route.request().url()).searchParams.get("baseUrl")).toBe("http://127.0.0.1:11434");
     await route.fulfill({
       status: 200,
-      headers: corsHeaders,
+      headers: {
+        "content-type": "application/json",
+        "x-grow-ollama-proxy": "smoke",
+      },
       body: JSON.stringify({ models: [{ name: "qwen3:4b-instruct-2507-q4_K_M" }] }),
     });
   });
 
-  await page.route("http://127.0.0.1:11434/api/chat", async (route) => {
-    if (route.request().method() === "OPTIONS") {
-      await route.fulfill({ status: 204, headers: corsHeaders });
-      return;
-    }
-    chatPayloads.push(JSON.parse(route.request().postData() ?? "{}"));
+  await page.route("**/api/ollama/chat**", async (route) => {
+    expect(new URL(route.request().url()).searchParams.get("baseUrl")).toBe("http://127.0.0.1:11434");
+    proxyChatPayloads.push(JSON.parse(route.request().postData() ?? "{}"));
     await route.fulfill({
       status: 200,
-      headers: corsHeaders,
+      headers: {
+        "content-type": "application/json",
+        "x-grow-ollama-proxy": "smoke",
+      },
       body: JSON.stringify({
         model: "qwen3:4b-instruct-2507-q4_K_M",
         message: {
@@ -550,10 +557,13 @@ test("manual Ollama thought probe is inspectable with a mocked local endpoint", 
   expect(probe?.intent?.musicalIdea.sourceStartBeat).not.toBe(999);
   expect((await getTransportState(page)).lookahead.pendingSlotCount).toBe(0);
   expect((await getTransportState(page)).status).toBe("stopped");
+  expect(directOllamaRequestCount).toBe(0);
 
-  expect(chatPayloads).toHaveLength(1);
-  const [chatPayload] = chatPayloads;
+  expect(proxyChatPayloads).toHaveLength(1);
+  const [proxyChatPayload] = proxyChatPayloads;
+  const chatPayload = proxyChatPayload.request ?? {};
   const userMessage = chatPayload.messages?.find((message) => message.role === "user")?.content ?? "";
+  expect(proxyChatPayload.baseUrl).toBe("http://127.0.0.1:11434");
   expect(chatPayload.model).toBe("qwen3:4b-instruct-2507-q4_K_M");
   expect(chatPayload.stream).toBe(false);
   expect(chatPayload.think).toBe(false);
@@ -572,6 +582,15 @@ test("manual Ollama thought probe is inspectable with a mocked local endpoint", 
   expect(userMessage).not.toContain("Request JSON:");
   expect(userMessage).not.toContain('"seed"');
   expect(userMessage).not.toContain('"sourceStartBeat"');
+});
+
+test("local Ollama proxy rejects non-local targets", async ({ request }) => {
+  const response = await request.get("/api/ollama/tags?baseUrl=http://example.com:11434");
+
+  expect(response.status()).toBe(400);
+  expect(response.headers()["x-grow-ollama-proxy"]).toBe("vite-dev");
+  const payload = await response.json() as { error?: string };
+  expect(payload.error).toBe("Ollama proxy only supports localhost targets");
 });
 
 test("inspector help icons explain current controls", async ({ page }) => {
@@ -656,7 +675,7 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   const canvasFrame = page.getByTestId("terrarium-container");
   const canvas = page.getByTestId("terrarium-canvas");
 
-  await expect(page.locator(".brand__subtitle")).toHaveText("Byte 10f-a: projected JSON thoughts");
+  await expect(page.locator(".brand__subtitle")).toHaveText("Byte 10f-b1: local Ollama proxy");
   await expect(button).toHaveText("Start");
   await expect(status).toContainText(
     "mode rehearsal | stopped | 90 BPM | bar 1 | beat 0.0 | lookahead stopped 0.0/8 | pending slots 0",

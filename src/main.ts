@@ -136,11 +136,11 @@ function isHelpTopicId(value: string): value is HelpTopicId {
 }
 
 app.innerHTML = `
-  <section class="app-shell" aria-label="Grow Byte 10f-a">
+  <section class="app-shell" aria-label="Grow Byte 10f-b1">
     <header class="topbar">
       <div class="brand">
         <h1 class="brand__title">Grow</h1>
-        <p class="brand__subtitle">Byte 10f-a: projected JSON thoughts</p>
+        <p class="brand__subtitle">Byte 10f-b1: local Ollama proxy</p>
       </div>
       <div class="transport-controls">
         <fieldset class="mode-control">
