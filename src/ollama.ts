@@ -11,10 +11,17 @@ import {
   type ThoughtResponseLevel,
   type ValidationResult,
 } from "./thought-protocol";
+import {
+  DEFAULT_THOUGHT_PROMPT_PROTOCOL_ID,
+  getThoughtPromptProtocol,
+  isThoughtPromptProtocolId,
+  type ThoughtPromptProtocolId,
+} from "./thought-prompt-protocols";
 
 export interface OllamaConfig {
   baseUrl: string;
   model: string;
+  promptProtocol: ThoughtPromptProtocolId;
   timeoutMs: number;
 }
 
@@ -46,6 +53,7 @@ export interface OllamaThoughtTestResult {
   provider: "none" | "ollama" | "mock-fallback";
   model: string;
   baseUrl: string;
+  promptProtocol: ThoughtPromptProtocolId;
   requestId?: string;
   playerId?: string;
   latencyMs?: number;
@@ -71,7 +79,8 @@ interface OllamaChatResponse {
 }
 
 const DEFAULT_OLLAMA_BASE_URL = import.meta.env?.VITE_GROW_OLLAMA_BASE_URL ?? "http://127.0.0.1:11434";
-const DEFAULT_OLLAMA_MODEL = import.meta.env?.VITE_GROW_OLLAMA_MODEL ?? "gemma4:31b";
+const DEFAULT_OLLAMA_MODEL = import.meta.env?.VITE_GROW_OLLAMA_MODEL ?? "qwen3:4b-instruct-2507-q4_K_M";
+const DEFAULT_PROMPT_PROTOCOL = import.meta.env?.VITE_GROW_THOUGHT_PROMPT_PROTOCOL ?? DEFAULT_THOUGHT_PROMPT_PROTOCOL_ID;
 const DEFAULT_OLLAMA_TIMEOUT_MS = 15_000;
 const SHORT_RESPONSE_RULE =
   "Return only one compact JSON object. No markdown. No prose outside JSON. Keep rationale under 160 characters.";
@@ -79,7 +88,10 @@ const SHORT_RESPONSE_RULE =
 export function createDefaultOllamaConfig(): OllamaConfig {
   return {
     baseUrl: sanitizeBaseUrl(DEFAULT_OLLAMA_BASE_URL),
-    model: DEFAULT_OLLAMA_MODEL.trim() || "gemma4:31b",
+    model: DEFAULT_OLLAMA_MODEL.trim() || "qwen3:4b-instruct-2507-q4_K_M",
+    promptProtocol: isThoughtPromptProtocolId(DEFAULT_PROMPT_PROTOCOL)
+      ? DEFAULT_PROMPT_PROTOCOL
+      : DEFAULT_THOUGHT_PROMPT_PROTOCOL_ID,
     timeoutMs: DEFAULT_OLLAMA_TIMEOUT_MS,
   };
 }
@@ -100,6 +112,7 @@ export function createInitialOllamaThoughtTest(config: OllamaConfig): OllamaThou
     provider: "none",
     model: config.model,
     baseUrl: config.baseUrl,
+    promptProtocol: config.promptProtocol,
     rawResponse: "",
     parse: { status: "idle", errors: [] },
     validation: { valid: false, errors: [] },
@@ -110,7 +123,7 @@ export function createInitialOllamaThoughtTest(config: OllamaConfig): OllamaThou
 export function createOllamaSessionPrimer(): string {
   return [
     "You are Grow's local slow-thinking musical planner.",
-    "You receive one structured PlayerThoughtRequest and return one bounded PlayerThoughtIntent.",
+    "You receive one projected player thought request and return one bounded PlayerThoughtIntent.",
     "The app validates your JSON. Invalid output is ignored and the deterministic mock fallback stays active.",
     SHORT_RESPONSE_RULE,
     "Do not schedule sound. Do not describe audio playback. Only propose a future intent.",
@@ -129,51 +142,9 @@ export function createOllamaThoughtPrompt(
   options: {
     influenceReference?: string;
   } = {},
+  promptProtocol: ThoughtPromptProtocolId = DEFAULT_THOUGHT_PROMPT_PROTOCOL_ID,
 ): string {
-  const reference = options.influenceReference
-    ? `Influence reference: ${options.influenceReference}. Use only abstract transferable technique.`
-    : "Influence reference: use the player's selected memory fragments and current listening frame.";
-  const exampleAction = request.allowedActions.includes("vary_motif")
-    ? "vary_motif"
-    : request.allowedActions[0];
-  const exampleResponseLevel = request.requestLevel === "influence_probe"
-    ? "influence_note"
-    : request.requestLevel === "songcraft_plan"
-      ? "song_sketch"
-      : request.requestLevel === "memory_digest"
-        ? "memory_note"
-        : "variation_intent";
-  return [
-    "Create one PlayerThoughtIntent for this request.",
-    reference,
-    `Allowed responseLevels: play_intent, variation_intent, influence_note, song_sketch, memory_note.`,
-    `Allowed actions for this request: ${request.allowedActions.join(", ")}.`,
-    "Return JSON with this shape:",
-    [
-      "{",
-      '  "id": "short-id",',
-      `  "requestId": ${JSON.stringify(request.id)},`,
-      `  "playerId": ${JSON.stringify(request.playerId)},`,
-      `  "responseLevel": ${JSON.stringify(exampleResponseLevel)},`,
-      `  "action": ${JSON.stringify(exampleAction)},`,
-      '  "confidence": 0.0,',
-      '  "target": { "startAfterBeats": 1, "durationBeats": 1 },',
-      '  "musicalIdea": {',
-      '    "label": "short label",',
-      '    "origin": "imagined",',
-      `    "meter": ${JSON.stringify(request.constraints.meter)},`,
-      `    "tonalContext": ${JSON.stringify(request.constraints.tonalContext)},`,
-      '    "durationBeats": 1,',
-      '    "steps": [{ "kind": "note", "positionBeats": 0, "durationBeats": 0.5, "scaleDegree": 0, "octave": 4, "velocity": 0.5, "tags": ["ollama"] }],',
-      '    "tags": ["ollama-intent"]',
-      "  },",
-      '  "rationale": "short reason"',
-      "}",
-    ].join("\n"),
-    "Do not include musicalIdea.sourceStartBeat; the system will insert it.",
-    `Constraints: max ${request.constraints.maxResponseSteps} steps, max ${request.constraints.maxDurationBeats} beats, scale degrees 0-${request.constraints.tonalContext.scale.length - 1}.`,
-    `Request JSON: ${JSON.stringify(request)}`,
-  ].join("\n\n");
+  return getThoughtPromptProtocol(promptProtocol).createUserPrompt(request, options);
 }
 
 export function createOllamaInfluenceProbePrompt(
@@ -224,6 +195,7 @@ export async function runOllamaThoughtTest(
   const startedAt = Date.now();
   const fallbackIntent = createMockThoughtIntent(request);
   const fallbackValidation = validatePlayerThoughtIntent(fallbackIntent, request);
+  const protocol = getThoughtPromptProtocol(config.promptProtocol);
 
   try {
     const response = await fetchWithTimeout(`${sanitizeBaseUrl(config.baseUrl)}/api/chat`, {
@@ -233,14 +205,14 @@ export async function runOllamaThoughtTest(
         model: config.model,
         messages: [
           { role: "system", content: createOllamaSessionPrimer() },
-          { role: "user", content: createOllamaThoughtPrompt(request) },
+          { role: "user", content: createOllamaThoughtPrompt(request, {}, protocol.id) },
         ],
         stream: false,
-        format: "json",
+        format: protocol.createResponseFormat(request),
         think: false,
         options: {
           temperature: 0.35,
-          num_predict: 700,
+          num_predict: 512,
         },
       }),
     }, config.timeoutMs);
@@ -268,6 +240,7 @@ export async function runOllamaThoughtTest(
       provider: "ollama",
       model: config.model,
       baseUrl: config.baseUrl,
+      promptProtocol: protocol.id,
       requestId: request.id,
       playerId: request.playerId,
       latencyMs,
@@ -366,6 +339,7 @@ function createFailedThoughtTest(
     provider: "mock-fallback",
     model: config.model,
     baseUrl: config.baseUrl,
+    promptProtocol: config.promptProtocol,
     requestId: request.id,
     playerId: request.playerId,
     latencyMs,

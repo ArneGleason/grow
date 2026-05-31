@@ -110,7 +110,7 @@ This matters because local models vary in what they tolerate. A compact card may
 
 First adapter set:
 
-- `projected-json`: default safe protocol with only validation-critical request fields.
+- `projected-json`: default safe protocol with only validation-critical request fields. Implemented first for the manual Ollama probe.
 - `music-card`: compact musical line protocol, useful when a model preserves required fields.
 - `split-cards`: protocol card plus request card, experimental.
 - `full-json`: debug/reference only, not a production default.

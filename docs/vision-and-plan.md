@@ -14,7 +14,7 @@ The project is exploratory. Drift is allowed. The repo should keep enough memory
 
 - First prototype: browser-first.
 - First musical language: tonal/modal and rhythm-linked from the start.
-- Local model target: Ollama-backed and configurable. Gemma 4 31B is the initial large-model reference, while faster local candidates can be tested and selected per prompt protocol.
+- Local model target: Ollama-backed and configurable. Gemma 4 31B remains a large-model reference, while `qwen3:4b-instruct-2507-q4_K_M` is the current fast default for projected JSON thought probes.
 - Human avatar: language-driven producer proxy. Players can comply, resist, ignore, reinterpret, or develop changing attitudes toward producer suggestions.
 - Capture: lightweight rolling best-moments capture, not a large permanent archive.
 - First running slice: rule-based PixiJS/Tone.js terrarium with one pulse player. Next foundation: musical events and listening frames before adding multiple players.

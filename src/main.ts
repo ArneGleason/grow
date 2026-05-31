@@ -42,6 +42,7 @@ import type {
   ThoughtRequestLevel,
 } from "./thought-protocol";
 import type { PlayerThoughtSeed } from "./thought-seeds";
+import { getThoughtPromptProtocol, isThoughtPromptProtocolId } from "./thought-prompt-protocols";
 import {
   getState,
   initTransport,
@@ -86,7 +87,7 @@ const HELP_TOPICS = {
   },
   ollama: {
     title: "Ollama",
-    body: "Ollama is the local model boundary for slow player thoughts. Check verifies the local server and model, while Send thought runs one validated manual request without scheduling model output into the music.",
+    body: "Ollama is the local model boundary for slow player thoughts. Check verifies the local server and model, while Send thought runs one validated manual projected-JSON request without scheduling model output into the music.",
   },
   players: {
     title: "Players",
@@ -135,11 +136,11 @@ function isHelpTopicId(value: string): value is HelpTopicId {
 }
 
 app.innerHTML = `
-  <section class="app-shell" aria-label="Grow Byte 10e-v">
+  <section class="app-shell" aria-label="Grow Byte 10f-a">
     <header class="topbar">
       <div class="brand">
         <h1 class="brand__title">Grow</h1>
-        <p class="brand__subtitle">Byte 10e-v: visual heat</p>
+        <p class="brand__subtitle">Byte 10f-a: projected JSON thoughts</p>
       </div>
       <div class="transport-controls">
         <fieldset class="mode-control">
@@ -251,6 +252,8 @@ ${renderHelpButton("ollama", "Ollama thought probe")}
             <dd data-testid="ollama-health-status">unknown</dd>
             <dt>Model</dt>
             <dd data-testid="ollama-model-status">unknown</dd>
+            <dt>Protocol</dt>
+            <dd data-testid="ollama-protocol-status">projected-json</dd>
             <dt>Latency</dt>
             <dd data-testid="ollama-latency">none</dd>
             <dt>Parse</dt>
@@ -262,7 +265,7 @@ ${renderHelpButton("ollama", "Ollama thought probe")}
             <dt>Errors</dt>
             <dd data-testid="ollama-errors">none</dd>
             <dt>Primer</dt>
-            <dd data-testid="ollama-primer-summary">JSON intent; scaleDegree 0..scale-1 plus octave; system owns sourceStartBeat.</dd>
+            <dd data-testid="ollama-primer-summary">Projected JSON intent; scaleDegree 0..scale-1 plus octave; system owns sourceStartBeat.</dd>
             <dt>Raw</dt>
             <dd><pre class="raw-response" data-testid="ollama-raw-response">none</pre></dd>
           </dl>
@@ -345,6 +348,7 @@ const ollamaHealthButton = requireElement<HTMLButtonElement>("[data-testid='olla
 const ollamaSendThoughtButton = requireElement<HTMLButtonElement>("[data-testid='ollama-send-thought']");
 const ollamaHealthStatus = requireElement<HTMLElement>("[data-testid='ollama-health-status']");
 const ollamaModelStatus = requireElement<HTMLElement>("[data-testid='ollama-model-status']");
+const ollamaProtocolStatus = requireElement<HTMLElement>("[data-testid='ollama-protocol-status']");
 const ollamaLatency = requireElement<HTMLElement>("[data-testid='ollama-latency']");
 const ollamaParseResult = requireElement<HTMLElement>("[data-testid='ollama-parse-result']");
 const ollamaValidationResult = requireElement<HTMLElement>("[data-testid='ollama-validation-result']");
@@ -764,6 +768,7 @@ function renderOllama(): void {
   ollamaSendThoughtButton.disabled = ollamaRequestInFlight;
   ollamaHealthStatus.textContent = `${ollamaHealth.status}: ${ollamaHealth.message}`;
   ollamaModelStatus.textContent = `${ollamaConfig.model} @ ${ollamaConfig.baseUrl}`;
+  ollamaProtocolStatus.textContent = `${ollamaConfig.promptProtocol} (${getThoughtPromptProtocol(ollamaConfig.promptProtocol).label})`;
   ollamaLatency.textContent = formatOllamaLatency(ollamaThoughtTest, ollamaHealth);
   ollamaParseResult.textContent = formatOllamaParse(ollamaThoughtTest.parse);
   ollamaValidationResult.textContent = formatOllamaValidation(ollamaThoughtTest);
@@ -819,9 +824,13 @@ function readOllamaConfigFromInputs(): OllamaConfig {
 }
 
 function setOllamaConfig(nextConfig: Partial<OllamaConfig>): OllamaConfig {
+  const promptProtocol = nextConfig.promptProtocol && isThoughtPromptProtocolId(nextConfig.promptProtocol)
+    ? nextConfig.promptProtocol
+    : ollamaConfig.promptProtocol;
   ollamaConfig = {
     ...ollamaConfig,
     ...nextConfig,
+    promptProtocol,
   };
   ollamaBaseUrlInput.value = ollamaConfig.baseUrl;
   ollamaModelInput.value = ollamaConfig.model;
@@ -877,7 +886,7 @@ function getInfluenceProbePrompt(playerId = "melody"): string {
   const request = getCurrentThoughtRequest(playerId, "influence_probe");
   return createOllamaInfluenceProbePrompt(
     request,
-    "a remembered influence or genre named by the player, translated into abstract technique only",
+    "a remembered influence or genre named by the player, translated into abstract transferable technique only",
   );
 }
 

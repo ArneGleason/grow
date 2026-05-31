@@ -799,6 +799,36 @@ Implementation notes:
 - Smoke coverage asserts initial quiet visuals, active visual heat while playing, bounded halo values, and reset after stop.
 - Byte 10e-v deliberately does not change the musical event ledger, taste rules, lookahead scheduling, or audio output.
 
+### Byte 10f-a: Projected JSON Prompt Adapter
+
+Status: implemented.
+
+Make the manual Ollama probe use the first compact model-facing adapter.
+
+Scope:
+
+- Switch the default model target to `qwen3:4b-instruct-2507-q4_K_M`.
+- Add a tiny prompt protocol registry with one active adapter: `projected-json`.
+- Replace the full `Request JSON: ...` prompt with a projected request that carries IDs, allowed actions, constraints, focus, disposition, selected memory, listening summary, taste summary, and compact motif steps.
+- Use Ollama `format` as a JSON-schema object for the intent shape instead of bare `"json"`.
+- Keep the canonical `PlayerThoughtRequest`/`PlayerThoughtIntent` validator path and deterministic mock fallback.
+- Surface the selected prompt protocol in the inspector.
+- Do not add the backend proxy, model picker, calibration harness, automatic thought loop, or music scheduling yet.
+
+Review focus:
+
+- whether the prompt adapter is a thin model-facing projection rather than a second thought contract,
+- whether the schema constrains model output without making the coerce-and-validate path brittle,
+- whether the default model remains configurable per machine,
+- whether playback and lookahead remain untouched.
+
+Implementation notes:
+
+- `src/thought-prompt-protocols.ts` owns the `projected-json` adapter, projected request shape, compact motif arrays, and response JSON schema.
+- `src/ollama.ts` now defaults to `qwen3:4b-instruct-2507-q4_K_M`, sends projected prompts with `think: false`, uses `num_predict: 512`, and records the prompt protocol on thought-test results.
+- The inspector shows `projected-json (Projected JSON)` through `ollama-protocol-status`.
+- Smoke coverage asserts the mocked `/api/chat` payload uses the qwen model, a schema `format`, projected request text, no full request JSON, no serialized `seed`, and no quoted `sourceStartBeat`.
+
 ### Byte 10f: Ollama Backend Proxy And Prompt Protocol Registry
 
 Status: planned.

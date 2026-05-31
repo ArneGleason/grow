@@ -33,10 +33,10 @@ Grow currently runs as a browser app with:
 - A bounded agitation/contagion signal so the ensemble can expose shared heat before it changes behavior.
 - Terrarium visual heat: the room warms with mix agitation and player halos respond to caught heat.
 - A strict thought protocol for future Ollama-authored musical ideas.
-- A manual local Ollama probe with validation and mock fallback.
+- A manual local Ollama probe with projected JSON prompts, validation, and mock fallback.
 - Context help in the inspector so the app can explain its growing set of controls.
 
-The current milestone is around Byte 10e-v: the band is still rule-based, but its timing, expression, shared heat, and terrarium visuals have started to breathe.
+The current milestone is around Byte 10f-a: the band is still rule-based, but the local-model boundary now sends a compact projected request to a faster default Ollama model.
 
 ## What Is Not Here Yet
 
@@ -66,7 +66,8 @@ Grow is designed around local Ollama models so the exploratory loop can run with
 The app currently includes a manual Ollama thought probe and keeps a deterministic mock responder as fallback. Recent local experiments suggest:
 
 - Short structured prompts should use `think: false` when available.
-- A projected JSON prompt shape is the safest starting point.
+- A projected JSON prompt shape is the safest starting point and is now the default manual probe protocol.
+- The default fast model target is `qwen3:4b-instruct-2507-q4_K_M`, while exact tags remain configurable per machine.
 - Smaller fast models may be more useful for in-song ideas than larger slower reasoning models.
 - Different models tolerate different prompt protocols, so Grow is moving toward a prompt protocol registry and calibration harness while keeping one canonical internal thought contract.
 

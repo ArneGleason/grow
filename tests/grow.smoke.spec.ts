@@ -16,6 +16,10 @@ import {
   type PlayerThoughtIntent,
   type PlayerThoughtRequest,
 } from "../src/thought-protocol";
+import {
+  createProjectedThoughtRequest,
+  getThoughtPromptProtocol,
+} from "../src/thought-prompt-protocols";
 import type { PlayerThoughtSeed } from "../src/thought-seeds";
 
 type TransportState = {
@@ -158,6 +162,9 @@ type TasteEvaluation = {
 type OllamaThoughtProbe = {
   status: string;
   provider: string;
+  promptProtocol: string;
+  requestId?: string;
+  playerId?: string;
   rawResponse: string;
   validation: { valid: boolean; errors: string[] };
   intent?: PlayerThoughtIntent;
@@ -448,6 +455,14 @@ test("performed offsets replay across transport restarts", async ({ page }) => {
 });
 
 test("manual Ollama thought probe is inspectable with a mocked local endpoint", async ({ page }) => {
+  const chatPayloads: Array<{
+    model?: string;
+    messages?: Array<{ role?: string; content?: string }>;
+    stream?: boolean;
+    format?: unknown;
+    think?: boolean;
+    options?: { temperature?: number; num_predict?: number };
+  }> = [];
   const corsHeaders = {
     "access-control-allow-origin": "*",
     "access-control-allow-methods": "GET,POST,OPTIONS",
@@ -463,7 +478,7 @@ test("manual Ollama thought probe is inspectable with a mocked local endpoint", 
     await route.fulfill({
       status: 200,
       headers: corsHeaders,
-      body: JSON.stringify({ models: [{ name: "gemma4:31b" }] }),
+      body: JSON.stringify({ models: [{ name: "qwen3:4b-instruct-2507-q4_K_M" }] }),
     });
   });
 
@@ -472,11 +487,12 @@ test("manual Ollama thought probe is inspectable with a mocked local endpoint", 
       await route.fulfill({ status: 204, headers: corsHeaders });
       return;
     }
+    chatPayloads.push(JSON.parse(route.request().postData() ?? "{}"));
     await route.fulfill({
       status: 200,
       headers: corsHeaders,
       body: JSON.stringify({
-        model: "gemma4:31b",
+        model: "qwen3:4b-instruct-2507-q4_K_M",
         message: {
           role: "assistant",
           content: JSON.stringify({
@@ -528,11 +544,34 @@ test("manual Ollama thought probe is inspectable with a mocked local endpoint", 
 
   expect(probe?.status).toBe("valid");
   expect(probe?.provider).toBe("ollama");
+  expect(probe?.promptProtocol).toBe("projected-json");
   expect(probe?.validation.valid).toBe(true);
   expect(probe?.fallbackValidation?.valid).toBe(true);
   expect(probe?.intent?.musicalIdea.sourceStartBeat).not.toBe(999);
   expect((await getTransportState(page)).lookahead.pendingSlotCount).toBe(0);
   expect((await getTransportState(page)).status).toBe("stopped");
+
+  expect(chatPayloads).toHaveLength(1);
+  const [chatPayload] = chatPayloads;
+  const userMessage = chatPayload.messages?.find((message) => message.role === "user")?.content ?? "";
+  expect(chatPayload.model).toBe("qwen3:4b-instruct-2507-q4_K_M");
+  expect(chatPayload.stream).toBe(false);
+  expect(chatPayload.think).toBe(false);
+  expect(chatPayload.options?.num_predict).toBeLessThanOrEqual(512);
+  expect(chatPayload.format).toMatchObject({
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      requestId: { enum: [probe?.requestId] },
+      playerId: { enum: [probe?.playerId] },
+    },
+  });
+  expect(userMessage).toContain("Request projection:");
+  expect(userMessage).toContain('"v":"grow.thought/1"');
+  expect(userMessage).toContain('"motif"');
+  expect(userMessage).not.toContain("Request JSON:");
+  expect(userMessage).not.toContain('"seed"');
+  expect(userMessage).not.toContain('"sourceStartBeat"');
 });
 
 test("inspector help icons explain current controls", async ({ page }) => {
@@ -617,7 +656,7 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   const canvasFrame = page.getByTestId("terrarium-container");
   const canvas = page.getByTestId("terrarium-canvas");
 
-  await expect(page.locator(".brand__subtitle")).toHaveText("Byte 10e-v: visual heat");
+  await expect(page.locator(".brand__subtitle")).toHaveText("Byte 10f-a: projected JSON thoughts");
   await expect(button).toHaveText("Start");
   await expect(status).toContainText(
     "mode rehearsal | stopped | 90 BPM | bar 1 | beat 0.0 | lookahead stopped 0.0/8 | pending slots 0",
@@ -687,7 +726,8 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   await expect(page.getByTestId("thought-request-melody-level")).toContainText("in_song_short");
   await expect(page.getByTestId("thought-intent-melody-action")).not.toHaveText("none");
   await expect(page.getByTestId("ollama-base-url-input")).toHaveValue("http://127.0.0.1:11434");
-  await expect(page.getByTestId("ollama-model-input")).toHaveValue("gemma4:31b");
+  await expect(page.getByTestId("ollama-model-input")).toHaveValue("qwen3:4b-instruct-2507-q4_K_M");
+  await expect(page.getByTestId("ollama-protocol-status")).toHaveText("projected-json (Projected JSON)");
   await expect(page.getByTestId("ollama-health-status")).toContainText("unknown");
   await expect(page.getByTestId("ollama-validation-result")).toHaveText("idle");
   await expect(page.getByTestId("ollama-primer-summary")).toContainText("scaleDegree");
@@ -716,10 +756,23 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   const initialThoughtRequests = await getThoughtRequests(page);
   const initialHookIntents = await getMockThoughtIntents(page);
   const initialMockIntents = initialThoughtRequests.map((request) => createMockThoughtIntent(request));
+  const projectedMelodyRequest = createProjectedThoughtRequest(
+    initialThoughtRequests.find((request) => request.playerId === "melody") ?? initialThoughtRequests[0],
+  );
+  const projectedPrompt = getThoughtPromptProtocol("projected-json").createUserPrompt(
+    initialThoughtRequests.find((request) => request.playerId === "melody") ?? initialThoughtRequests[0],
+  );
   expect(initialThoughtRequests.map((request) => request.playerId).sort()).toEqual(["bass", "melody", "pulse"]);
   expect(initialThoughtRequests.every((request) => request.requestLevel === "in_song_short")).toBe(true);
   expect(initialThoughtRequests.every((request) => request.seed.playerId === request.playerId)).toBe(true);
   expect(initialThoughtRequests.every((request) => validatePlayerThoughtRequest(request).valid)).toBe(true);
+  expect(projectedMelodyRequest.v).toBe("grow.thought/1");
+  expect(projectedMelodyRequest.player).toBe("melody");
+  expect(projectedMelodyRequest.memory.length).toBe(2);
+  expect(Array.isArray(projectedMelodyRequest.motif)).toBe(true);
+  expect(JSON.stringify(projectedMelodyRequest)).not.toContain("sourceStartBeat");
+  expect(projectedPrompt).toContain("Request projection:");
+  expect(projectedPrompt).not.toContain("Request JSON:");
   expect(initialHookIntents.map((intent) => intent.playerId).sort()).toEqual(["bass", "melody", "pulse"]);
   expect(initialMockIntents.map((intent) => intent.playerId).sort()).toEqual(["bass", "melody", "pulse"]);
   expect(initialMockIntents.every((intent) => {
