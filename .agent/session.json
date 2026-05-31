@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Move inspector context help inline",
-  "status": "byte10d-implemented-ready-review-plus-live-ollama-fast-model-probe",
-  "updatedAt": "2026-05-31T14:40:59Z",
+  "lastTask": "Polish Grow layout controls",
+  "status": "byte10d-implemented-plus-ui-polish",
+  "updatedAt": "2026-05-31T15:00:09Z",
   "lastHandoff": ".agent/handoffs/2026-05-31-copy-paste-claude-byte-10d-review.md",
   "branch": "main",
-  "commit": "19831e9",
+  "commit": "774714d",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 10d is implemented and ready for Claude review. Local Ollama is reachable outside the Codex sandbox at `127.0.0.1:11434`, with `gemma4:31b`, `qwen3:4b-instruct-2507-q4_K_M`, and `gemma3:4b-it-q4_K_M` installed. Live prompt tests show short structured requests should send `think: false`; projected JSON is the safest prompt shape so far. The plan now calls for Byte 10f to add a prompt protocol registry plus model/protocol calibration harness while keeping one canonical thought validator path. The app also has reusable inspector context help, and the help panel now moves inline under the clicked section."
+    "summary": "Byte 10d is implemented and ready for Claude review. Local Ollama is reachable outside the Codex sandbox at `127.0.0.1:11434`, with `gemma4:31b`, `qwen3:4b-instruct-2507-q4_K_M`, and `gemma3:4b-it-q4_K_M` installed. Live prompt tests show short structured requests should send `think: false`; projected JSON is the safest prompt shape so far. The plan now calls for Byte 10f to add a prompt protocol registry plus model/protocol calibration harness while keeping one canonical thought validator path. The app also has reusable inline inspector context help. Current UI polish aligns the top controls, makes the terrarium canvas fill its stage with player-focused scaling, and adds a constrained draggable inspector divider."
   }
 }
