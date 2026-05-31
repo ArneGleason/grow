@@ -8,7 +8,7 @@ Use this file for known risks, open questions, and review focus. Keep entries sh
 - Should the local checkout move to `/Users/arnegleason/code/github.com/arnegleason/grow` before the first commit?
 - Will the product need GitHub as a repository remote only, or also as an app/API integration?
 - If an app/API integration is needed, should it use a GitHub App, OAuth app, or temporary local token?
-- What exact local Ollama model tag should map to "Gemma 4 31B"?
+- Confirm exact Ollama model tags per machine before real-model work. Current known tags: MacBook target `gemma4:31b`; Mac Mini review machine `gemma4:26b`.
 - What should the first capture rolling window length be?
 - Should first best-moment detection be heuristic-only, human-marked-only, or include an observer player?
 - How should player resistance to producer requests be bounded so it feels alive without getting annoying?
@@ -37,15 +37,14 @@ Use this file for known risks, open questions, and review focus. Keep entries sh
 - Claude reviewed `docs/implementation-plan.md`; current Byte 1 guidance is stationary pulse player + percussive beat + explicit Tone.js lifecycle cleanup before adding movement or more players.
 - First implementation review should pay special attention to repeated start/stop cycles and whether scheduled Tone.js objects are disposed rather than stacked.
 - Byte 6c is approved. Forward note: when richer mode behavior arrives, grow `SessionModePolicy` explicitly; if it gains several fields, consider passing the whole policy object rather than one transport handler per policy field.
-- Planning review focus after Byte 6c: player thinking now precedes producer work. Review whether the new Byte 7-12 arc is small enough: profiles/backstory -> musical-excerpt thought protocol -> Ollama health/primer -> one slow-thinking player -> song sketch/piece construction -> thought memory/persistence prep.
+- Planning review focus after Byte 9b: deterministic aliveness now precedes automatic model-driven music. Review whether the next arc is small enough: reproducible-aliveness principle -> velocity modulation -> performed offset model -> audible microtiming/physical difficulty -> agitation/contagion -> backend/prompt tuning -> one slow-thinking player.
 - Byte 6b feel note: posture lags the audible silence by up to the 8-beat recent-activity window during a sustained break. This is correct now; revisit only if the break should read visually faster.
 - Byte 6b smoke waits through an 8-beat drain and is intentionally longer. If it gets flaky, prefer probing latest recorded beat/dwell gaps over shortening the behavioral window.
 - Byte 5 naming cleanup is implemented. Future review should check that `lookahead.pendingSlotCount`, visible `Pending`, and listening `Heard` labels stay distinct as Byte 6 adds more state.
 - Byte 5 forward risk to keep visible: the lookahead refill uses wall-clock `setInterval`, so background tabs may drain the queue safely but drop newly scheduled notes until foregrounded.
 - Byte 5 commitment boundary to keep visible: pitch/timing are committed into the lookahead queue, while rest/velocity taste decisions still happen at fire time.
 - Byte 9a is approved. Claude verified validator hardening catches model-like bad output: `scaleDegree >= scale.length`, out-of-scale pitch classes, pitch/degree disagreement, and `musicalIdea.durationBeats > maxDurationBeats`.
-- Byte 9b is implemented and awaiting review. Review focus: local Ollama boundary, prompt/primer clarity, manual probe failure behavior, JSON parse/validation surfacing, influence-probe wording, and proof that model output is still inspection-only.
-- Byte 9b must not schedule Ollama output into music yet. Confirm there are no transport/lookahead/taste/session behavior changes beyond test coverage and the new inspector/hook surface.
-- Byte 9b primer should keep the `MusicalExcerpt.steps[].scaleDegree` convention explicit: pitch-class index `0..scale.length - 1` plus a separate `octave`, distinct from the wrapping `noteFromScaleDegree()` helper.
-- Byte 9b manual-test display should make both invalid model output and unavailable Ollama harmless, with deterministic mock fallback still valid.
-- Byte 9b added pitch-embedded-octave disagreement validation; reviewer should confirm this is useful and not over-strict.
+- Byte 9b is approved. Claude verified a real Mac Mini `gemma4:26b` call safely returned invalid/empty content after about 22 seconds, with parse/validation errors visible and deterministic mock fallback valid.
+- Byte 10a review focus: the reproducible-aliveness principle should clearly protect replayability while making room for deterministic heat, expressive mistakes, and bounded micro-variation.
+- Byte 10b review focus: velocity modulators should be deterministic, bounded, inspectable, and audible without touching timing, lookahead lifecycle, Ollama, or session behavior.
+- Before the automatic slow-thinking loop, add a local backend/proxy, handle reasoning-model output such as `message.thinking`, trim the prompt projection, add mocked invalid/unavailable Ollama tests, and surface available models as a picker.

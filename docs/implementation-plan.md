@@ -194,7 +194,7 @@ Implementation notes:
 
 ### Byte 3: Three Rule-Based Players
 
-Status: implemented.
+Status: implemented and approved.
 
 Add pulse, bass, and melody players.
 
@@ -560,7 +560,7 @@ Connect to local Ollama without letting it drive music yet.
 
 ### Byte 9a: Validator Hardening Before Ollama
 
-Status: implemented.
+Status: implemented and approved.
 
 Tighten the thought protocol validators before any Ollama-authored intent is accepted.
 
@@ -617,8 +617,148 @@ Implementation notes:
 - The manual test sends a current `melody` `in_song_short` request to local Ollama, parses/normalizes the JSON, validates it, and keeps deterministic mock fallback available.
 - Model output is not scheduled into audio or lookahead. Transport, taste, session modes, and playback behavior remain unchanged.
 - Byte 9b also adds the small optional validator check that rejects pitch-embedded octave disagreement with the explicit `octave` field.
+- Claude's Byte 9b review approved the byte with no required fixes. Real local testing on `mac-mini-pro-m4` used `gemma4:26b`, while the MacBook target remains `gemma4:31b`. The real model call safely returned invalid output with a valid mock fallback after roughly 22 seconds, confirming that model output must stay async, delayed-now, and non-blocking.
+- Forward notes from review: move automatic model calls behind a local backend proxy, handle reasoning-model `message.thinking`/empty-content behavior, trim the prompt projection, add mocked invalid and unavailable smoke cases, display available Ollama models as a picker, and consider separating health latency from thought latency.
 
-### Byte 10: One Slow-Thinking Player Loop
+## Reproducible Aliveness Before Automatic Player Loop
+
+Before model output drives music, Grow should add deterministic expressive life that does not depend on Ollama.
+
+Relevant principle doc: `docs/principles/reproducible-aliveness.md`.
+
+The distinction to protect:
+
+- reproducibility means the same state can replay, fork, and debug the same way,
+- regularity means the performance is flat or perfectly grid-snapped,
+- reproducibility is required,
+- regularity is only a feel setting.
+
+The real Byte 9b model probe took roughly 22 seconds on the Mac Mini. That makes the delayed-now/lookahead design more important, not less: the LLM should change future musical intent occasionally, while deterministic player feel keeps the world alive moment to moment.
+
+### Byte 10a: Reproducible Aliveness Principle
+
+Status: planned.
+
+Make the creative/review lens explicit before adding more behavior.
+
+Scope:
+
+- Add or refine the principle doc for reproducible aliveness.
+- Define grid truth vs performed truth.
+- Define deterministic heat and expressive mistakes.
+- Add review language: deterministic, bounded, inspectable, musically useful.
+- Keep this docs-only unless a tiny type placeholder is needed.
+
+Review focus:
+
+- whether this correctly separates reproducibility from regularity,
+- whether it gives reviewers permission to protect expressive imperfection rather than only grid purity.
+
+### Byte 10b: Velocity Modulator Bank
+
+Status: planned.
+
+Add the smallest audible deterministic-aliveness layer.
+
+Scope:
+
+- Add per-player deterministic modulators for velocity/dynamics only.
+- Use layered cycles: long beat cycle, medium beat cycle, short beat cycle, and one event-indexed step cycle.
+- Cross-couple the cycles lightly so dynamics breathe without obvious repetition.
+- Apply bounded velocity shaping at the note-decision or scheduled-event boundary.
+- Expose current dynamic factor or modulator summary in an inspector/dev hook.
+- Keep note timing, lookahead lifecycle, Ollama, session modes, and pitch choices unchanged.
+
+Review focus:
+
+- whether the music breathes without becoming random,
+- whether the modulators are replayable from beat/player/event index,
+- whether velocity stays bounded and inspectable.
+
+### Byte 10c: Performed Offset Data Model
+
+Status: planned.
+
+Prepare micro-timing without breaking ledger truth.
+
+Scope:
+
+- Keep `MusicalEvent.absoluteBeat` as grid/replay/analysis truth.
+- Add a separate performed-offset concept, such as `performedOffsetBeats`.
+- Keep offset values deterministic, bounded, and derivable from player/material state.
+- Surface offset in debug data before relying on it musically.
+- Do not let performed offsets mutate listening-frame ordering or ledger provenance.
+
+Review focus:
+
+- whether replay can reproduce the same offset,
+- whether analysis can stay grid-stable while performance can swing,
+- whether tests distinguish grid truth from performed truth.
+
+### Byte 10d: Audible Microtiming And Physical Difficulty
+
+Status: planned.
+
+Let players push or drag in a deterministic, player-specific way.
+
+Scope:
+
+- Apply performed offsets at synth fire time only.
+- Derive part of the offset from musical difficulty: leap size, register jump, density, repeated-note pressure, or phrase-ending rush.
+- Weight difficulty through disposition traits such as caution, disruption, and steadiness.
+- Keep offsets small and bounded.
+- Add smoke/probe coverage that proves no transport leak and reproducible offset values.
+
+Review focus:
+
+- whether the timing feels human without corrupting the transport,
+- whether hard material reliably produces recognizable player feel,
+- whether the ledger remains a trustworthy replay source.
+
+### Byte 10e: Agitation And Contagion
+
+Status: planned.
+
+Let one player's heat become something the ensemble hears.
+
+Scope:
+
+- Add a listening-frame metric such as `mix.agitation`.
+- Derive it from bounded signals like timing variance, velocity spikes, density pressure, and recent push/drag.
+- Let disposition govern contagion: responsiveness catches, caution damps, disruption amplifies, steadiness anchors.
+- Surface agitation in inspector/dev hooks.
+- Optionally let visuals respond subtly to agitation.
+
+Review focus:
+
+- whether agitation builds and releases musically,
+- whether contagion is bounded and cannot run away into noise or silence,
+- whether player dispositions become load-bearing rather than decorative.
+
+### Byte 10f: Ollama Backend Proxy And Prompt Tuning
+
+Status: planned.
+
+Make the manual Ollama probe ready for automatic slow-thinking use.
+
+Scope:
+
+- Move model calls behind a tiny local backend/proxy before any automatic loop.
+- Handle reasoning-model output such as `message.thinking` and empty `message.content`.
+- Send a trimmed request projection instead of the full `PlayerThoughtRequest` object.
+- Add mocked invalid-response and unavailable-Ollama smoke cases.
+- Surface `availableModels` in the UI, preferably as a picker.
+- Consider separating health latency and thought latency in the inspector.
+- Keep deterministic mock fallback.
+- Still do not schedule model output into music in this byte.
+
+Review focus:
+
+- whether the backend/proxy removes browser CORS/environment uncertainty,
+- whether real local models return parseable bounded JSON more often,
+- whether failure remains harmless and visible.
+
+### Byte 11: One Slow-Thinking Player Loop
 
 Let one player occasionally ask Ollama for a future musical intent.
 
@@ -639,7 +779,7 @@ Review focus:
 - whether the player still feels musical when the model is slow or unavailable,
 - whether the inspectable trail explains what happened.
 
-### Byte 11: Song Sketch / Piece Construction Stub
+### Byte 12: Song Sketch / Piece Construction Stub
 
 Let players work on a larger song idea without requiring full persistence yet.
 
@@ -657,7 +797,7 @@ Review focus:
 - whether piece data can later be practiced, referenced, and iterated,
 - whether the structure stays small enough to persist later.
 
-### Byte 12: Thought Memory And Persistence Prep
+### Byte 13: Thought Memory And Persistence Prep
 
 Prepare to preserve player identity, backstory fragments, thoughts, and useful motifs.
 
@@ -674,7 +814,7 @@ Review focus:
 - whether persistence stays small and queryable,
 - whether it supports replay/debugging without archiving everything.
 
-### Byte 13: Producer Marker, No LLM
+### Byte 14: Producer Marker, No LLM
 
 Add the producer proxy visually and with a rule-based command interpreter.
 
@@ -690,7 +830,7 @@ Review focus:
 - whether natural-language input feels like it enters the world,
 - whether the proxy is distinct from a control panel.
 
-### Byte 14: Producer Interpretation
+### Byte 15: Producer Interpretation
 
 Add one safe prompt-to-action path for the producer, using the existing thought/action protocol where possible.
 
@@ -706,7 +846,7 @@ Review focus:
 - safety of action schema,
 - inspectability of prompt interpretation.
 
-### Byte 15: Minimal Persistence
+### Byte 16: Minimal Persistence
 
 Add SQLite only after there is something worth preserving.
 

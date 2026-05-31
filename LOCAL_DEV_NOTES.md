@@ -176,6 +176,9 @@ Resume work:
 - `window.ollama.checkHealth()` checks local model availability; `window.ollama.runManualThoughtTest("melody")` sends one current `in_song_short` thought request and records raw latency, raw response, parse result, validation result, and mock fallback status. It does not schedule anything into the transport.
 - `window.ollama.getInfluenceProbePrompt("melody")` produces a fixture-level `influence_probe` prompt that asks for abstract transferable technique rather than direct style copying.
 - Byte 9b also rejects `MusicalExcerpt` steps where a pitch's embedded octave disagrees with the explicit `octave` field.
+- Byte 9b review approved the Ollama probe. Claude verified the Mac Mini model tag is `gemma4:26b`, while the MacBook target remains `gemma4:31b`; keep the tag configurable per machine.
+- Real local `gemma4:26b` testing returned invalid/empty content after about 22 seconds with a valid mock fallback. Before the automatic slow-thinking loop, move model calls behind a local backend/proxy, handle reasoning-model `message.thinking`, trim the prompt, add mocked invalid/unavailable smoke cases, and surface `availableModels` as a picker.
+- Reproducible aliveness is now a planning principle: keep replay/debug determinism, but allow deterministic heat through velocity modulation, performed offsets, physical-difficulty microtiming, and agitation/contagion.
 - Before runtime key/mode changes, remember that transport patterns currently materialize from tonal context at `initTransport`/start time; tonal changes will need pattern re-materialization.
 - PixiJS v8 clamps alpha to 1.0, so note-on flashes should not rely on `alpha > 1`. Use scale, tint, or a resting alpha below 1.0 so the flash has visible headroom.
 - Use `git ls-files --cached --others --exclude-standard | sort` for the file inventory now that ignored `node_modules/` and `dist/` trees exist.

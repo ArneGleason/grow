@@ -26,14 +26,15 @@ The repo is initialized with the Studio Pattern so future work has a clear place
 - Byte 7 player thought seeds added and approved: each player now has disposition/backstory material, a deterministic compact thought-context selector, a Thoughts inspector section, and `window.thinking.getSeeds()` for review before any Ollama call exists.
 - Byte 8 thought protocol added and approved: `MusicalExcerpt`, `PlayerThoughtRequest`, and `PlayerThoughtIntent` are structured and validated, with deterministic mock intents visible through the inspector and `window.thinking`.
 - Byte 9a validation hardening added and approved: thought validators now reject out-of-scale pitches/degrees and over-horizon musical ideas before any Ollama-authored intent can be trusted.
-- Byte 9b Ollama probe added: the app can check local Ollama health, send one manual thought request, display raw/parsed/validated results, and keep mock fallback without scheduling model output into music.
+- Byte 9b Ollama probe added and approved: the app can check local Ollama health, send one manual thought request, display raw/parsed/validated results, and keep mock fallback without scheduling model output into music.
+- Planning update: deterministic reproducible aliveness comes before automatic model-driven music, starting with velocity modulators and then microtiming/agitation work.
 
 ## First Work
 
 1. Install dependencies with `npm install`.
 2. Run the first byte with `npm run dev`.
 3. Verify repeated start/stop does not duplicate the beat or event subscription.
-4. Review Byte 9b before allowing any Ollama output to affect lookahead or audible player behavior.
+4. Start Byte 10a/10b by documenting reproducible aliveness and adding deterministic velocity modulation before allowing Ollama output to affect audible player behavior.
 5. Wire any future GitHub app/API access using the least-privileged credential model for the job.
 
 ## Run
@@ -65,7 +66,7 @@ npm run smoke
 - `.agent/`: project memory, session state, handoffs, and workflows.
 - `.agent/reviews/`: review notes received through the Studio Pattern relay.
 - `docs/implementation-plan.md`: small-byte implementation sequence and first build candidate.
-- `docs/principles/`: foundational interaction principles for listening, inner music, subjective taste, and player thinking.
+- `docs/principles/`: foundational interaction principles for listening, inner music, subjective taste, player thinking, and reproducible aliveness.
 - `docs/vision-and-plan.md`: the initial creative and technical direction for Grow.
 - `docs/time-and-lookahead.md`: delayed-now and lookahead-buffer model for player thinking and playback.
 - `docs/session-modes.md`: explicit break, solo practice, rehearsal, performance, reflection, and piece model.

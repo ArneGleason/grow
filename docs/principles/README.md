@@ -18,3 +18,4 @@ Use these docs for ideas that shape several implementation phases. Keep feature 
 - `inner-music.md`: players can privately imagine, revise, and later commit musical material.
 - `subjective-taste.md`: judgments like good, bad, boring, or neat come from player temperaments applied to shared listening frames.
 - `player-thinking.md`: local LLM reasoning should produce compact, inspectable, future musical intents for players rather than live audio or hidden narration.
+- `reproducible-aliveness.md`: Grow should protect replayability while using deterministic heat, expressive imperfection, and bounded micro-variation so players feel alive rather than merely quantized.
