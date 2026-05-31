@@ -342,7 +342,7 @@ Implementation notes:
 
 ### Byte 5: Lookahead Scheduling
 
-Status: implemented.
+Status: implemented and approved.
 
 Add a tiny lookahead buffer even before Ollama.
 
@@ -366,8 +366,11 @@ Implementation notes:
 - The inspector and status line show lookahead health, lead beats, scheduled-through beat, and pending item count.
 - Stop/restart clears the timer and scheduled transport events; the smoke test checks the queue returns to zero across rapid cycles.
 - The buffer is still deterministic and rule-based. Ollama thinking, buffer underrun behavior, fallback pauses, and session modes remain future bytes.
+- Claude's Byte 5 review approved the one-shot lookahead queue with no required fixes. Forward notes: consolidate or rename the duplicated scheduled-count surface before labels pile up, remember that wall-clock `setInterval` can drain in background tabs, and note that pitch/timing are committed ahead while rest/velocity decisions still happen at fire time.
 
 ### Byte 6: Simple Session Modes
+
+Status: ready to implement.
 
 Add basic mode states:
 

@@ -146,6 +146,9 @@ Resume work:
 - Byte 4b validation should sample `window.taste.getEvaluations()` across several render frames to confirm melody action does not flip rapidly around the rest threshold.
 - Byte 5 validation should check `window.transport.getState().lookahead`, visible `Lookahead` inspector values, a healthy lead while playing, and a zero pending queue after stop/restart cycles.
 - Byte 4b review found that dwell reduces but does not settle melody rest/contrast oscillation. If this becomes distracting, add hysteresis; also harden the smoke assertion to check dwell spacing rather than relying on a short sample window.
+- Byte 5 review approved the one-shot lookahead queue. Before Byte 6 labels pile up, consolidate or rename the duplicated scheduled-count surface: `scheduledEventCount` and `lookahead.scheduledItemCount` currently report the same pending-slot count.
+- Byte 5 lookahead refill uses a 250ms wall-clock interval. Background tabs can throttle it and drain the queue; current behavior is safe but may drop new notes until the tab foregrounds and refills.
+- Byte 5 commits pitch/timing ahead, but taste rest/velocity is still decided at fire time. Later "committed material" work should make that boundary explicit.
 - Before runtime key/mode changes, remember that transport patterns currently materialize from tonal context at `initTransport`/start time; tonal changes will need pattern re-materialization.
 - PixiJS v8 clamps alpha to 1.0, so note-on flashes should not rely on `alpha > 1`. Use scale, tint, or a resting alpha below 1.0 so the flash has visible headroom.
 - Use `git ls-files --cached --others --exclude-standard | sort` for the file inventory now that ignored `node_modules/` and `dist/` trees exist.
