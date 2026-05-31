@@ -164,6 +164,8 @@ Resume work:
 - Byte 8 adds `src/thought-protocol.ts`. Use `window.thinking.getRequests()` and `window.thinking.getMockIntents()` to inspect strict thought protocol objects. Requests wrap seeds and own `requestLevel`; mock intents are pure deterministic protocol output and are not scheduled into sound.
 - Byte 8 `MusicalExcerpt` protocol data uses phrase-relative `positionBeats`; the inspector string is derived display text. Do not reintroduce `absoluteBeat % 4` as protocol data because it loses ordering across bar boundaries.
 - Byte 8 documents disposition as prompt-facing identity only. Taste remains the behavior-facing rule profile until a later byte deliberately wires thought output into behavior.
+- Byte 8 review approved the protocol with no required fixes. Before Byte 9 trusts model-authored intents, tighten validators so `scaleDegree < scale.length`, pitched steps belong to the active scale, and `musicalIdea.durationBeats` cannot exceed the request horizon.
+- Byte 9 should surface `validatePlayerThoughtIntent` errors in the manual Ollama test display, keep the deterministic mock responder as offline fallback, and treat `sourceStartBeat` as provenance/debug while `intent.target` owns placement.
 - Before runtime key/mode changes, remember that transport patterns currently materialize from tonal context at `initTransport`/start time; tonal changes will need pattern re-materialization.
 - PixiJS v8 clamps alpha to 1.0, so note-on flashes should not rely on `alpha > 1`. Use scale, tint, or a resting alpha below 1.0 so the flash has visible headroom.
 - Use `git ls-files --cached --others --exclude-standard | sort` for the file inventory now that ignored `node_modules/` and `dist/` trees exist.

@@ -514,7 +514,7 @@ Implementation notes:
 
 ### Byte 8: Player Thought Protocol, No Ollama
 
-Status: implemented.
+Status: implemented and approved.
 
 Define the contract between a player and the future LLM.
 
@@ -552,6 +552,7 @@ Implementation notes:
 - The mock responder returns valid `imagined` musical ideas but does not schedule them into sound yet. The Thoughts inspector shows request and intent summaries as a pending-intent inspection surface.
 - `window.thinking.getRequests()` and `window.thinking.getMockIntents()` expose the protocol objects for browser review alongside `getSeeds()`.
 - Byte 8 still avoids Ollama, persistence, producer commands, and audio behavior changes.
+- Claude's Byte 8 review approved the byte with no required fixes. Forward notes for Byte 9: tighten validation before trusting model output by checking `scaleDegree < scale.length`, pitch class belongs to the active scale, and `musicalIdea.durationBeats <= maxDurationBeats`; treat `sourceStartBeat` as provenance/debug while `intent.target` owns placement.
 
 ### Byte 9: Ollama Health And Session Primer
 
@@ -559,12 +560,16 @@ Connect to local Ollama without letting it drive music yet.
 
 Scope:
 
+- Tighten the Byte 8 validators before sending or trusting model-authored intents: reject out-of-scale degrees/pitches and over-horizon musical ideas.
 - Add a local backend or thin service boundary for `localhost:11434`.
 - Add configurable model tag, initially targeting the user's local Gemma 4 31B Ollama model.
 - Add health/status UI and dev hooks.
 - Add a session primer that tells the model the protocol, allowed action vocabulary, current musical primitives, output schema, and short-response rule.
 - Add one manual test call that sends a tiny `in_song_short` thought request and displays raw latency, raw response, parse result, and validation result.
+- Surface `validatePlayerThoughtIntent` errors directly in the manual test display.
 - Add one manual or fixture-level `influence_probe` request that asks for an abstract transferable technique, not a direct style clone or copied melody.
+- Keep the deterministic mock responder as the offline/fallback path.
+- Document `sourceStartBeat` as provenance/debug in the prompt contract; the model should use `intent.target` for placement.
 - Do not schedule model output into music yet.
 
 Review focus:

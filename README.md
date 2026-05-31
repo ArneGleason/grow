@@ -24,14 +24,14 @@ The repo is initialized with the Studio Pattern so future work has a clear place
 - Byte 6c session policy boundary added and approved: mode-to-lookahead-refill behavior now lives in an explicit session policy map instead of transport mode literals.
 - Planning update: player thinking now comes before producer work, with profiles, compact musical-excerpt thought requests, influence probes, Ollama-backed future intents, song sketches, and thought memory as the next arc.
 - Byte 7 player thought seeds added and approved: each player now has disposition/backstory material, a deterministic compact thought-context selector, a Thoughts inspector section, and `window.thinking.getSeeds()` for review before any Ollama call exists.
-- Byte 8 thought protocol added: `MusicalExcerpt`, `PlayerThoughtRequest`, and `PlayerThoughtIntent` are structured and validated, with deterministic mock intents visible through the inspector and `window.thinking`.
+- Byte 8 thought protocol added and approved: `MusicalExcerpt`, `PlayerThoughtRequest`, and `PlayerThoughtIntent` are structured and validated, with deterministic mock intents visible through the inspector and `window.thinking`.
 
 ## First Work
 
 1. Install dependencies with `npm install`.
 2. Run the first byte with `npm run dev`.
 3. Verify repeated start/stop does not duplicate the beat or event subscription.
-4. Review Byte 8 before adding Ollama health/session primer, producer commands, or persistence.
+4. Start Byte 9 with validator tightening, Ollama health/status, a session primer, and manual validation display only.
 5. Wire any future GitHub app/API access using the least-privileged credential model for the job.
 
 ## Run
