@@ -1,60 +1,93 @@
 # Grow
 
-Grow is a new project workspace.
+Grow is a local AI music terrarium.
 
-The repo is initialized with the Studio Pattern so future work has a clear place for project memory, handoffs, review notes, local setup details, and GitHub connection planning.
+The basic picture: a few small players live inside a bounded top-down world. They listen to one another, take breaks, rehearse, perform, leave space, repeat ideas, disrupt ideas, and slowly develop musical habits. The first sounds are simple. The larger goal is stranger and more fun: a little browser-first band that can think ahead with local Ollama models, invent or revise short musical gestures, and eventually respond to a human producer avatar speaking ordinary language into the world.
 
-## Current State
+This is not trying to be a polished music generator that plays pleasant texture forever. Silence, hesitation, disagreement, practice, bad ideas, recovery, and the occasional surprisingly good moment are all part of the point.
 
-- Local git repo initialized on `main`.
-- Studio Pattern scaffold added.
-- Initial vision and phased plan added in `docs/vision-and-plan.md`.
-- GitHub setup notes prepared.
-- Byte 1 app scaffold added: bounded PixiJS terrarium, one pulse player, Tone.js start/stop, and transport status hooks.
-- Byte 2a player registry added: the existing `pulse` participant is now rendered from shared player data.
-- Byte 2 listening foundation added: the pulse emits structured musical events into an in-memory ledger, the app exposes a minimum listening frame, and per-player runtime state lives in world state.
-- Byte 3 rule-based trio added: pulse, bass, and melody now play deterministic patterns into the shared listening frame with simple visual drift.
-- Byte 3b listening cleanup added: player state now represents stable musical posture, listening getters are read-only, `silenceRatio` avoids overlap double-counting, and world state carries `C mixolydian` tonal context.
-- Byte 3c tonal/visual prep added: note hits use a visible Pixi-safe halo pulse, posture/listening share the same 8-beat window, and transport patterns materialize notes from tonal scale degrees.
-- Byte 4 rule-based taste added: players now have inspectable taste evaluations that can repeat, support, simplify, vary, contrast, or rest based on the listening frame.
-- Byte 4b taste stabilization added: taste actions now hold for a minimum beat span so threshold decisions read as phrasing rather than flicker.
-- Byte 5 lookahead buffer added: deterministic player material is committed into an 8-beat scheduled-ahead queue with visible buffer health and bounded cleanup.
-- Byte 6a session mode shell added: break, solo practice, rehearsal, and performance are selectable and inspectable without changing musical behavior yet.
-- Byte 6b first mode behavior added and approved: break drains the lookahead without canceling committed material, and rehearsal resumes refill from the current beat.
-- Byte 6c session policy boundary added and approved: mode-to-lookahead-refill behavior now lives in an explicit session policy map instead of transport mode literals.
-- Planning update: player thinking now comes before producer work, with profiles, compact musical-excerpt thought requests, influence probes, Ollama-backed future intents, song sketches, and thought memory as the next arc.
-- Byte 7 player thought seeds added and approved: each player now has disposition/backstory material, a deterministic compact thought-context selector, a Thoughts inspector section, and `window.thinking.getSeeds()` for review before any Ollama call exists.
-- Byte 8 thought protocol added and approved: `MusicalExcerpt`, `PlayerThoughtRequest`, and `PlayerThoughtIntent` are structured and validated, with deterministic mock intents visible through the inspector and `window.thinking`.
-- Byte 9a validation hardening added and approved: thought validators now reject out-of-scale pitches/degrees and over-horizon musical ideas before any Ollama-authored intent can be trusted.
-- Byte 9b Ollama probe added and approved: the app can check local Ollama health, send one manual thought request, display raw/parsed/validated results, and keep mock fallback without scheduling model output into music.
-- Planning update: deterministic reproducible aliveness comes before automatic model-driven music, starting with velocity modulators and then microtiming/agitation work.
-- Byte 10b velocity modulators added and approved: each scheduled player gesture now gets a deterministic, bounded expression snapshot that shapes velocity only and is visible in the player inspector and transport state.
-- Byte 10c performed-offset data model added and approved: each committed player gesture now gets a deterministic, bounded `performedOffsetBeats` debug snapshot while audible playback still stays on the grid.
-- Byte 10d audible microtiming added: performed offsets now schedule notes slightly ahead/behind the grid in Tone transport ticks, while `absoluteBeat` remains the ledger/listening truth.
-- Prompt-shape experiment added: projected JSON is the current recommendation for the next Ollama prompt-tuning pass.
+## Why This Is Public
 
-## First Work
+Grow is also an experiment in how to make software now, when the process is changing as quickly as the tools.
 
-1. Install dependencies with `npm install`.
-2. Run the first byte with `npm run dev`.
-3. Verify repeated start/stop does not duplicate the beat or event subscription.
-4. Review Byte 10d, then move to Byte 10e agitation/contagion if the timing layer holds up.
-5. Wire any future GitHub app/API access using the least-privileged credential model for the job.
+The project is being built with a Studio Pattern:
 
-## Run
+- Arne is the human in the middle: the person who wants the thing, steers taste, notices drift, routes work, and sparks ideas between agents.
+- Codex on `macbook-pro-m5` usually advances the implementation.
+- Claude Code on `mac-mini-pro-m4` usually reviews, challenges, sanity-checks, and suggests nearby possibilities.
+- Handoffs are intentionally written and manually copied between agents, partly because the friction makes the human read, react, and keep ownership of the direction.
+
+The repo keeps the product and the process visible: implementation bytes, reviews, local experiments, handoffs, principles, and course corrections. Some of that is practical project memory. Some of it is a record of trying to find a fluid working style for a fluid medium.
+
+## What Runs Today
+
+Grow currently runs as a browser app with:
+
+- A PixiJS terrarium canvas with simple player markers.
+- Tone.js transport, synth voices, lookahead scheduling, start/stop lifecycle, and audible microtiming.
+- Three deterministic players: `pulse`, `bass`, and `melody`.
+- A structured musical event ledger and listening frame.
+- Session modes: break, solo practice, rehearsal, and performance.
+- Player taste rules that can repeat, support, simplify, vary, contrast, or rest.
+- Deterministic "reproducible aliveness": velocity movement and slight performed-time offsets.
+- A strict thought protocol for future Ollama-authored musical ideas.
+- A manual local Ollama probe with validation and mock fallback.
+- Context help in the inspector so the app can explain its growing set of controls.
+
+The current milestone is around Byte 10d: the band is still rule-based, but its timing and expression have started to breathe.
+
+## What Is Not Here Yet
+
+These are active directions, not promises that they are already implemented:
+
+- Automatic slow-thinking player loops backed by local Ollama.
+- A language-driven human producer avatar.
+- SQLite checkpoints, forks, and replayable moments.
+- Best-of capture/export.
+- Player-made instruments and effects routing.
+- Multiple bands or terrariums observing each other.
+
+The project is deliberately moving in small bytes so each piece can be heard, seen, reviewed, and changed before the next layer lands.
+
+## How The Toy Thinks About Music
+
+Grow starts from structured musical behavior instead of raw audio analysis.
+
+Players first "hear" notes, beats, roles, density, register, silence, and recent events through a shared listening frame. Raw audio features can come later as a reality check, but the early system is symbolic on purpose: it is easier to inspect, validate, replay, and turn into prompts.
+
+The time model is also deliberate. Grow is not aiming for model decisions on the audio sample clock. Players can think in a delayed-now: observe recent music, ask for a small future idea, validate it, and commit it into a lookahead buffer for a later bar. If thinking is slow, that becomes part of the session rather than a hidden failure.
+
+## Local Model Direction
+
+Grow is designed around local Ollama models so the exploratory loop can run without burning API tokens.
+
+The app currently includes a manual Ollama thought probe and keeps a deterministic mock responder as fallback. Recent local experiments suggest:
+
+- Short structured prompts should use `think: false` when available.
+- A projected JSON prompt shape is the safest starting point.
+- Smaller fast models may be more useful for in-song ideas than larger slower reasoning models.
+- Different models tolerate different prompt protocols, so Grow is moving toward a prompt protocol registry and calibration harness while keeping one canonical internal thought contract.
+
+## Run It
 
 ```sh
 npm install
 npm run dev
 ```
 
-Default URL:
+Default local URL:
 
 ```txt
 http://127.0.0.1:5173
 ```
 
-## Validate
+Ollama is optional for most of the current app. The default local endpoint is:
+
+```txt
+http://127.0.0.1:11434
+```
+
+## Validate It
 
 ```sh
 npm audit
@@ -62,40 +95,54 @@ npm run build
 npm run smoke
 ```
 
+The smoke tests cover the core browser behavior: transport lifecycle, event/listening hooks, session modes, thought protocol surfaces, context help, canvas fit, inspector resizing, and lookahead cleanup.
+
+## Useful Browser Hooks
+
+When the app is running, these globals are useful for inspection:
+
+- `window.transport.getState()`
+- `window.listening.getFrame()`
+- `window.listening.getEvents()`
+- `window.session.getMode()`
+- `window.taste.getEvaluations()`
+- `window.thinking.getSeeds()`
+- `window.thinking.getRequests()`
+- `window.thinking.getMockIntents()`
+- `window.ollama.checkHealth()`
+
+They are intentionally boring and inspectable. The system should be weird because the musical behavior gets interesting, not because the state is hidden.
+
 ## Repository Map
 
-- `AGENTS.md`: fast orientation and working rules for agents.
-- `CLAUDE.md`: Claude Code-specific review and collaboration orientation.
-- `LOCAL_DEV_NOTES.md`: local commands, ports, setup notes, and gotchas.
-- `.agent/`: project memory, session state, handoffs, and workflows.
-- `.agent/reviews/`: review notes received through the Studio Pattern relay.
-- `docs/implementation-plan.md`: small-byte implementation sequence and first build candidate.
-- `docs/experiments/`: localized research notes that should inform later implementation bytes.
-- `docs/principles/`: foundational interaction principles for listening, inner music, subjective taste, player thinking, and reproducible aliveness.
-- `docs/vision-and-plan.md`: the initial creative and technical direction for Grow.
-- `docs/time-and-lookahead.md`: delayed-now and lookahead-buffer model for player thinking and playback.
-- `docs/session-modes.md`: explicit break, solo practice, rehearsal, performance, reflection, and piece model.
-- `docs/producer-proxy.md`: language-driven human avatar that interprets prompts into in-world actions.
-- `docs/future-multi-terrarium.md`: future-only notes for multiple spaces/bands and audience/exchange behavior.
-- `docs/persistence-checkpoints.md`: proposed SQLite event-log, snapshot, and fork design.
-- `docs/github-setup.md`: GitHub repo and integration setup notes.
-- `src/players.ts`: player data types and the initial `pulse`, `bass`, and `melody` registry entries.
-- `src/world-state.ts`: in-memory runtime state owner for players and the musical event ledger.
-- `src/listening.ts`: musical event and listening-frame types plus the recent-event summarizer.
-- `src/expression.ts`: deterministic per-player velocity expression modulators for reproducible aliveness.
-- `src/performed-time.ts`: deterministic per-player performed-offset and physical-difficulty model for audible microtiming.
-- `src/session-mode.ts`: session mode names, labels, and validation helpers.
-- `src/taste.ts`: deterministic player taste evaluation and note-decision logic.
-- `src/ollama.ts`: local Ollama health, prompt/primer, manual thought test, response parsing, validation, and mock fallback boundary.
-- `src/thought-protocol.ts`: structured thought request/intent protocol, musical excerpt markup, validation, and deterministic mock responder.
-- `src/thought-seeds.ts`: deterministic player thought-context seed selection before Ollama is connected.
-- `src/transport.ts`: Tone.js playback lifecycle, deterministic pattern materialization, and lookahead scheduling.
-- `src/music-time.ts`: shared musical timing constants used by posture and listening windows.
-- `src/tonal-context.ts`: default tonal context and scale-degree note materialization.
-- `.env.example`: non-secret environment variable template.
+- `src/`: the running browser app.
+- `tests/`: Playwright smoke tests.
+- `docs/vision-and-plan.md`: the creative and technical north star.
+- `docs/implementation-plan.md`: the small-byte build sequence.
+- `docs/principles/`: design principles for listening, session time, player thinking, taste, and reproducible aliveness.
+- `docs/experiments/`: research notes, including local Ollama prompt-shape experiments.
+- `docs/persistence-checkpoints.md`: proposed event-log, checkpoint, and fork model.
+- `docs/producer-proxy.md`: future human avatar direction.
+- `.agent/`: Studio Pattern memory, handoffs, reviews, session state, and routing notes.
+- `AGENTS.md`, `CLAUDE.md`, `LOCAL_DEV_NOTES.md`: orientation for future AI collaborators.
 
-## GitHub Connection
+## Current Shape Of The Code
 
-This repo is connected to the private GitHub repository [ArneGleason/grow](https://github.com/ArneGleason/grow).
+- `src/players.ts`: durable player definitions.
+- `src/world-state.ts`: in-memory world state and musical event ledger.
+- `src/transport.ts`: Tone.js lifecycle and lookahead scheduling.
+- `src/listening.ts`: listening-frame summaries.
+- `src/taste.ts`: rule-based subjective choices.
+- `src/expression.ts`: deterministic velocity expression.
+- `src/performed-time.ts`: deterministic performed-time offsets.
+- `src/thought-protocol.ts`: thought request/intent schemas and validators.
+- `src/thought-seeds.ts`: compact player thought context.
+- `src/ollama.ts`: local Ollama boundary and mock fallback.
+- `src/terrarium.ts`: PixiJS world rendering.
+- `src/main.ts`: app shell, inspector, controls, and browser hooks.
 
-No product-level GitHub credentials are configured yet. See `docs/github-setup.md` if Grow itself later needs to connect to GitHub as an app or API client.
+## A Note On Drift
+
+Grow began as a vague image: a terrarium with tiny local AI musicians. The point is not to freeze that image too early. The point is to let the idea become specific through implementation, review, experiments, and taste.
+
+That means this README should keep changing. If it starts sounding too certain, it is probably stale.
