@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Implement Byte 10d audible microtiming",
-  "status": "byte10d-implemented-ready-review",
-  "updatedAt": "2026-05-31T13:35:00Z",
+  "lastTask": "Run thought prompt shape experiment",
+  "status": "byte10d-implemented-ready-review-plus-prompt-experiment",
+  "updatedAt": "2026-05-31T14:10:00Z",
   "lastHandoff": ".agent/handoffs/2026-05-31-copy-paste-claude-byte-10d-review.md",
   "branch": "main",
-  "commit": "f8c8662",
+  "commit": "624e3fa",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 10d is implemented and ready for Claude review. Performed offsets now schedule Tone one-shots at shifted transport ticks while `MusicalEvent.absoluteBeat` remains grid truth. Synth fire times clamp late callbacks to `now + epsilon`; events also carry `performedOffsetSeconds` and `timing:audible-offset`. The performed-time model now includes leap, register, and local-density difficulty weighted by disposition, and smoke adds a restart replay assertion for deterministic offsets."
+    "summary": "Byte 10d is implemented and ready for Claude review. Performed offsets now schedule Tone one-shots at shifted transport ticks while `MusicalEvent.absoluteBeat` remains grid truth. A break-time prompt-shape experiment compared full request JSON, projected JSON, music-card, and split-card prompts for future Ollama tuning; projected JSON is the safest first Byte 10f replacement, with card protocols worth live-testing when Ollama is reachable."
   }
 }

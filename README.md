@@ -31,6 +31,7 @@ The repo is initialized with the Studio Pattern so future work has a clear place
 - Byte 10b velocity modulators added and approved: each scheduled player gesture now gets a deterministic, bounded expression snapshot that shapes velocity only and is visible in the player inspector and transport state.
 - Byte 10c performed-offset data model added and approved: each committed player gesture now gets a deterministic, bounded `performedOffsetBeats` debug snapshot while audible playback still stays on the grid.
 - Byte 10d audible microtiming added: performed offsets now schedule notes slightly ahead/behind the grid in Tone transport ticks, while `absoluteBeat` remains the ledger/listening truth.
+- Prompt-shape experiment added: projected JSON is the current recommendation for the next Ollama prompt-tuning pass.
 
 ## First Work
 
@@ -69,6 +70,7 @@ npm run smoke
 - `.agent/`: project memory, session state, handoffs, and workflows.
 - `.agent/reviews/`: review notes received through the Studio Pattern relay.
 - `docs/implementation-plan.md`: small-byte implementation sequence and first build candidate.
+- `docs/experiments/`: localized research notes that should inform later implementation bytes.
 - `docs/principles/`: foundational interaction principles for listening, inner music, subjective taste, player thinking, and reproducible aliveness.
 - `docs/vision-and-plan.md`: the initial creative and technical direction for Grow.
 - `docs/time-and-lookahead.md`: delayed-now and lookahead-buffer model for player thinking and playback.

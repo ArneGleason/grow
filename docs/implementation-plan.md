@@ -787,6 +787,12 @@ Review focus:
 - whether real local models return parseable bounded JSON more often,
 - whether failure remains harmless and visible.
 
+Prompt-shape experiment note:
+
+- `docs/experiments/2026-05-31-thought-prompt-shapes.md` compares the current full JSON prompt with projected JSON, line-card, and split-card shapes.
+- The first recommended production change is projected JSON: it preserves every validation-critical field while cutting the representative prompt from about 979 estimated tokens to about 546.
+- The music-card and split-card shapes are smaller still, but should wait for live-model comparison because they introduce a compact grammar the model must infer.
+
 ### Byte 11: One Slow-Thinking Player Loop
 
 Let one player occasionally ask Ollama for a future musical intent.
