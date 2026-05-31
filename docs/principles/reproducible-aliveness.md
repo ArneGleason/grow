@@ -77,6 +77,8 @@ Player disposition can turn that shared heat into behavior:
 
 This gives player profiles musical force rather than making them prompt flavor only. The first version is inspectable only: it surfaces shared agitation and per-player contagion without changing scheduled musical decisions yet.
 
+When contagion eventually drives behavior, the loop closes: contagion can create more push, density, or accent, which can create more agitation, which can create more contagion. That future loop should use a musical build/release governor, such as a ceiling with slow decay, rather than relying only on a hard per-frame clamp. Some oscillation is desirable there if it is bounded, visible, and replayable.
+
 ## Review Lens
 
 Reviews should distinguish:

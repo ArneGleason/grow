@@ -747,7 +747,7 @@ Implementation notes:
 
 ### Byte 10e: Agitation And Contagion
 
-Status: implemented.
+Status: implemented and approved.
 
 Let one player's heat become something the ensemble hears.
 
@@ -771,6 +771,7 @@ Implementation notes:
 - Each `ListeningFramePlayer` includes a bounded `contagion` summary shaped by disposition: responsiveness catches, caution and steadiness damp, disruption amplifies, and recent activity makes heat more available.
 - The inspector shows `Agitation` in the Listening section and `Heat caught` per player.
 - Byte 10e deliberately does not feed agitation into taste, transport, or scheduling decisions yet.
+- Claude's Byte 10e review approved the read-only agitation layer. Forward notes: when contagion later feeds behavior, use a ceiling plus slow decay governor rather than a hard per-frame clamp; current agitation is density/velocity-led because the audible microtiming offsets are subtle; agitation and per-player contagion are good candidates for terrarium visual intensity before they become audible behavior drivers.
 
 ### Byte 10f: Ollama Backend Proxy And Prompt Protocol Registry
 
