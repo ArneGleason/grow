@@ -16,6 +16,12 @@ import {
   type TasteNoteDecision,
   type TasteNoteDecisionInput,
 } from "./taste";
+import {
+  createMockThoughtIntent,
+  createPlayerThoughtRequest,
+  type PlayerThoughtIntent,
+  type PlayerThoughtRequest,
+} from "./thought-protocol";
 import { createPlayerThoughtSeed, type PlayerThoughtSeed } from "./thought-seeds";
 import { DEFAULT_TONAL_CONTEXT } from "./tonal-context";
 
@@ -135,6 +141,17 @@ export class GrowWorldState {
       frame,
       this.getTasteEvaluation(player.id) ?? createInitialTasteEvaluation(player),
     ));
+  }
+
+  getThoughtRequests(frame: ListeningFrame): readonly PlayerThoughtRequest[] {
+    return this.getThoughtSeeds(frame).map((seed) => createPlayerThoughtRequest(seed));
+  }
+
+  getMockThoughtIntents(
+    frame: ListeningFrame,
+    requests: readonly PlayerThoughtRequest[] = this.getThoughtRequests(frame),
+  ): readonly PlayerThoughtIntent[] {
+    return requests.map((request) => createMockThoughtIntent(request));
   }
 
   getTonalContext(): TonalContext {

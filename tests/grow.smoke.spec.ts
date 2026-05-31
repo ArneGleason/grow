@@ -4,6 +4,15 @@ import {
   shouldSessionModeRefillLookahead,
   type SessionMode,
 } from "../src/session-mode";
+import {
+  createMockThoughtIntent,
+  validateMusicalExcerpt,
+  validatePlayerThoughtIntent,
+  validatePlayerThoughtRequest,
+  type PlayerThoughtIntent,
+  type PlayerThoughtRequest,
+} from "../src/thought-protocol";
+import type { PlayerThoughtSeed } from "../src/thought-seeds";
 
 type TransportState = {
   status: "stopped" | "playing";
@@ -51,34 +60,6 @@ type TasteEvaluation = {
     rhythmicStability: number;
   };
   updatedAtBeat: number;
-};
-
-type PlayerThoughtSeed = {
-  playerId: string;
-  role: string;
-  requestLevel: string;
-  disposition: string;
-  selectedFragments: Array<{ id: string; text: string; tags: string[] }>;
-  listeningSummary: {
-    eventCount: number;
-    ensembleDensity: number;
-    silenceRatio: number;
-    brightness: number;
-    focusPlayerId?: string;
-  };
-  tasteSummary: {
-    action: string;
-    affinity: number;
-    reason: string;
-  };
-  recentMotif: {
-    label: string;
-    eventCount: number;
-    contour: string;
-    rhythm: string;
-    excerpt: string;
-  };
-  promptFocus: string;
 };
 
 async function getTransportState(page: Page): Promise<TransportState> {
@@ -139,6 +120,36 @@ async function getThoughtSeeds(page: Page): Promise<readonly PlayerThoughtSeed[]
   }
 
   return seeds;
+}
+
+async function getThoughtRequests(page: Page): Promise<readonly PlayerThoughtRequest[]> {
+  const requests = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      thinking?: { getRequests(): readonly PlayerThoughtRequest[] };
+    };
+    return appWindow.thinking?.getRequests();
+  });
+
+  if (!requests) {
+    throw new Error("window.thinking.getRequests() was not available");
+  }
+
+  return requests;
+}
+
+async function getMockThoughtIntents(page: Page): Promise<readonly PlayerThoughtIntent[]> {
+  const intents = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      thinking?: { getMockIntents(): readonly PlayerThoughtIntent[] };
+    };
+    return appWindow.thinking?.getMockIntents();
+  });
+
+  if (!intents) {
+    throw new Error("window.thinking.getMockIntents() was not available");
+  }
+
+  return intents;
 }
 
 async function getSessionMode(page: Page): Promise<SessionMode> {
@@ -229,7 +240,7 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   const status = page.getByTestId("transport-status");
   const canvas = page.getByTestId("terrarium-canvas");
 
-  await expect(page.locator(".brand__subtitle")).toHaveText("Byte 7: player thought seeds");
+  await expect(page.locator(".brand__subtitle")).toHaveText("Byte 8: thought protocol mock");
   await expect(button).toHaveText("Start");
   await expect(status).toContainText(
     "mode rehearsal | stopped | 90 BPM | bar 1 | beat 0.0 | lookahead stopped 0.0/8 | pending slots 0",
@@ -291,11 +302,27 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   await expect(page.getByTestId("thought-seed-pulse-focus")).not.toHaveText("");
   await expect(page.getByTestId("thought-seed-bass-fragments")).not.toHaveText("");
   await expect(page.getByTestId("thought-seed-melody-motif")).toContainText("resting");
+  await expect(page.getByTestId("thought-request-melody-level")).toContainText("in_song_short");
+  await expect(page.getByTestId("thought-intent-melody-action")).not.toHaveText("none");
   const initialThoughtSeeds = await getThoughtSeeds(page);
   expect(initialThoughtSeeds.map((seed) => seed.playerId).sort()).toEqual(["bass", "melody", "pulse"]);
-  expect(initialThoughtSeeds.every((seed) => seed.requestLevel === "in_song_short")).toBe(true);
   expect(initialThoughtSeeds.every((seed) => seed.selectedFragments.length === 2)).toBe(true);
   expect(initialThoughtSeeds.every((seed) => seed.disposition.length > 0)).toBe(true);
+  expect(initialThoughtSeeds.every((seed) => seed.recentMotif.displayExcerpt === "resting")).toBe(true);
+  expect(initialThoughtSeeds.every((seed) => validateMusicalExcerpt(seed.recentMotif.excerpt).valid)).toBe(true);
+  const initialThoughtRequests = await getThoughtRequests(page);
+  const initialHookIntents = await getMockThoughtIntents(page);
+  const initialMockIntents = initialThoughtRequests.map((request) => createMockThoughtIntent(request));
+  expect(initialThoughtRequests.map((request) => request.playerId).sort()).toEqual(["bass", "melody", "pulse"]);
+  expect(initialThoughtRequests.every((request) => request.requestLevel === "in_song_short")).toBe(true);
+  expect(initialThoughtRequests.every((request) => request.seed.playerId === request.playerId)).toBe(true);
+  expect(initialThoughtRequests.every((request) => validatePlayerThoughtRequest(request).valid)).toBe(true);
+  expect(initialHookIntents.map((intent) => intent.playerId).sort()).toEqual(["bass", "melody", "pulse"]);
+  expect(initialMockIntents.map((intent) => intent.playerId).sort()).toEqual(["bass", "melody", "pulse"]);
+  expect(initialMockIntents.every((intent) => {
+    const request = initialThoughtRequests.find((candidate) => candidate.id === intent.requestId);
+    return request ? validatePlayerThoughtIntent(intent, request).valid : false;
+  })).toBe(true);
   await expect(page.getByTestId("listening-tonal-context")).toHaveText("C mixolydian");
   await expect(page.getByTestId("listening-event-count")).toHaveText("0");
   await expect(page.getByTestId("lookahead-health")).toHaveText("stopped");
@@ -374,7 +401,25 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   const melodySeed = activeThoughtSeeds.find((seed) => seed.playerId === "melody");
   expect(melodySeed?.promptFocus.length).toBeGreaterThan(0);
   expect(melodySeed?.listeningSummary.eventCount).toBeGreaterThan(0);
-  expect(melodySeed?.recentMotif.excerpt).not.toBe("resting");
+  expect(melodySeed?.recentMotif.displayExcerpt).not.toBe("resting");
+  expect(melodySeed?.recentMotif.excerpt.steps.length).toBeGreaterThan(0);
+  expect(melodySeed?.recentMotif.excerpt.steps.every((step, index, steps) => (
+    index === 0 || step.positionBeats >= steps[index - 1].positionBeats
+  ))).toBe(true);
+  expect(melodySeed?.recentMotif.excerpt.steps.every((step) => step.positionBeats >= 0)).toBe(true);
+  const activeThoughtRequests = await getThoughtRequests(page);
+  const activeHookIntents = await getMockThoughtIntents(page);
+  const activeMockIntents = activeThoughtRequests.map((request) => createMockThoughtIntent(request));
+  const melodyRequest = activeThoughtRequests.find((request) => request.playerId === "melody");
+  const melodyIntent = activeMockIntents.find((intent) => intent.playerId === "melody");
+  expect(activeHookIntents.map((intent) => intent.playerId).sort()).toEqual(["bass", "melody", "pulse"]);
+  expect(melodyRequest?.excerpts[0].steps.length).toBeGreaterThan(0);
+  expect(melodyRequest && validatePlayerThoughtRequest(melodyRequest).valid).toBe(true);
+  expect(melodyRequest && melodyIntent && validatePlayerThoughtIntent(melodyIntent, melodyRequest).valid).toBe(true);
+  expect(melodyIntent?.musicalIdea.origin).toBe("imagined");
+  expect(melodyRequest && JSON.stringify(createMockThoughtIntent(melodyRequest))).toBe(
+    melodyRequest && JSON.stringify(createMockThoughtIntent(melodyRequest)),
+  );
 
   await expect
     .poll(async () => {

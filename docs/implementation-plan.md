@@ -482,7 +482,7 @@ Relevant principle doc: `docs/principles/player-thinking.md`.
 
 ### Byte 7: Player Profiles And Thought Seeds
 
-Status: implemented.
+Status: implemented and approved.
 
 Give each player persistent-feeling creative material without calling Ollama yet.
 
@@ -506,13 +506,15 @@ Implementation notes:
 
 - `src/players.ts` now gives each player a compact `thinking` profile with numeric disposition traits and three memory/backstory fragments.
 - `src/thought-seeds.ts` assembles deterministic `PlayerThoughtSeed` objects from disposition, selected memory fragments, current listening metrics, taste evaluation, recent self motif, and a focus player.
-- The thought seed request level is intentionally limited to `in_song_short`; Byte 8 should define the full protocol and additional request levels before any Ollama call is made.
+- Byte 8 should define the full request protocol and additional request levels before any Ollama call is made.
 - The inspector shows a `Thoughts` section with each player's focus, motif summary, and selected fragments.
 - `window.thinking.getSeeds()` exposes the current thought seeds for browser probes and review.
 - Sound behavior, lookahead refill, session behavior, and taste decisions are unchanged by this byte.
 - Claude's Byte 7 review approved the byte with no required fixes. Forward notes for Byte 8: promote the current ad-hoc motif excerpt string into validatable phrase-relative `MusicalExcerpt` markup, reconcile or explicitly separate `PlayerDisposition` and `PlayerTasteProfile`, and define whether `PlayerThoughtSeed` is wrapped by or embedded in `PlayerThoughtRequest`.
 
 ### Byte 8: Player Thought Protocol, No Ollama
+
+Status: implemented.
 
 Define the contract between a player and the future LLM.
 
@@ -540,6 +542,16 @@ Review focus:
 - whether invalid or overlarge responses are easy to reject,
 - whether this avoids vague prose that the app cannot use.
 - whether the mock responder is deterministic and testable without Ollama.
+
+Implementation notes:
+
+- `src/thought-protocol.ts` now owns `MusicalExcerpt`, `PlayerThoughtRequest`, `PlayerThoughtIntent`, request/response levels, allowed action vocabulary, validators, formatting helpers, and a deterministic mock responder.
+- `MusicalExcerpt` uses phrase-relative `positionBeats`, preserving order across bar boundaries while keeping `sourceStartBeat` as metadata.
+- `PlayerThoughtRequest` wraps a deterministic `PlayerThoughtSeed` and owns `requestLevel`, horizon, constraints, allowed actions, and excerpts. The seed no longer carries `requestLevel`.
+- `PlayerThinkingProfile.disposition` is explicitly prompt-facing identity for now; `PlayerTasteProfile` remains the behavior-facing rule profile.
+- The mock responder returns valid `imagined` musical ideas but does not schedule them into sound yet. The Thoughts inspector shows request and intent summaries as a pending-intent inspection surface.
+- `window.thinking.getRequests()` and `window.thinking.getMockIntents()` expose the protocol objects for browser review alongside `getSeeds()`.
+- Byte 8 still avoids Ollama, persistence, producer commands, and audio behavior changes.
 
 ### Byte 9: Ollama Health And Session Primer
 

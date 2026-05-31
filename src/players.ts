@@ -40,6 +40,7 @@ export interface PlayerMemoryFragment {
 }
 
 export interface PlayerThinkingProfile {
+  // Prompt-facing identity only for now; taste remains the behavior-facing rule profile.
   disposition: PlayerDisposition;
   memoryFragments: PlayerMemoryFragment[];
 }

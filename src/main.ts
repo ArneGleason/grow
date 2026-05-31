@@ -12,6 +12,7 @@ import {
 } from "./session-mode";
 import { createTerrariumView, type TerrariumView } from "./terrarium";
 import type { PlayerTasteEvaluation } from "./taste";
+import type { PlayerThoughtIntent, PlayerThoughtRequest } from "./thought-protocol";
 import type { PlayerThoughtSeed } from "./thought-seeds";
 import {
   getState,
@@ -48,11 +49,11 @@ const sessionModeControls = SESSION_MODE_OPTIONS.map((mode) => `
 `).join("");
 
 app.innerHTML = `
-  <section class="app-shell" aria-label="Grow Byte 7">
+  <section class="app-shell" aria-label="Grow Byte 8">
     <header class="topbar">
       <div class="brand">
         <h1 class="brand__title">Grow</h1>
-        <p class="brand__subtitle">Byte 7: player thought seeds</p>
+        <p class="brand__subtitle">Byte 8: thought protocol mock</p>
       </div>
       <div class="transport-controls">
         <fieldset class="mode-control" aria-label="Session mode">
@@ -166,6 +167,8 @@ const playerTasteSummaryNodes = new Map<string, HTMLElement>();
 const thoughtSeedFocusNodes = new Map<string, HTMLElement>();
 const thoughtSeedMotifNodes = new Map<string, HTMLElement>();
 const thoughtSeedFragmentsNodes = new Map<string, HTMLElement>();
+const thoughtRequestNodes = new Map<string, HTMLElement>();
+const thoughtIntentNodes = new Map<string, HTMLElement>();
 const pendingPlayerFlashes = new Set<string>();
 
 function createDefinition(
@@ -260,14 +263,22 @@ function renderPlayerInspector(
   }
 }
 
-function renderThoughtSeeds(seeds: readonly PlayerThoughtSeed[]): void {
-  const nextPlayerIds = seeds.map((seed) => seed.playerId).join("|");
+function renderThoughts(
+  requests: readonly PlayerThoughtRequest[],
+  intents: readonly PlayerThoughtIntent[],
+): void {
+  const nextPlayerIds = requests.map((request) => request.playerId).join("|");
+  const intentsByPlayer = new Map(intents.map((intent) => [intent.playerId, intent]));
 
   if (renderedThoughtSeedIds !== nextPlayerIds) {
     thoughtSeedFocusNodes.clear();
     thoughtSeedMotifNodes.clear();
     thoughtSeedFragmentsNodes.clear();
-    const cards = seeds.map((seed) => {
+    thoughtRequestNodes.clear();
+    thoughtIntentNodes.clear();
+    const cards = requests.map((request) => {
+      const seed = request.seed;
+      const intent = intentsByPlayer.get(seed.playerId);
       const card = document.createElement("article");
       card.className = "player-inspector";
       card.dataset.testid = `thought-seed-card-${seed.playerId}`;
@@ -277,6 +288,12 @@ function renderThoughtSeeds(seeds: readonly PlayerThoughtSeed[]): void {
         ...createDefinition("Player", seed.playerId, `thought-seed-${seed.playerId}-player`),
         ...createDefinition("Focus", seed.promptFocus, `thought-seed-${seed.playerId}-focus`),
         ...createDefinition("Motif", formatThoughtMotif(seed), `thought-seed-${seed.playerId}-motif`),
+        ...createDefinition("Request", formatThoughtRequest(request), `thought-request-${seed.playerId}-level`),
+        ...createDefinition(
+          "Intent",
+          intent ? formatThoughtIntent(intent) : "none",
+          `thought-intent-${seed.playerId}-action`,
+        ),
         ...createDefinition(
           "Memory",
           formatThoughtFragments(seed),
@@ -299,6 +316,14 @@ function renderThoughtSeeds(seeds: readonly PlayerThoughtSeed[]): void {
       if (fragmentsNode) {
         thoughtSeedFragmentsNodes.set(seed.playerId, fragmentsNode);
       }
+      const requestNode = dl.querySelector<HTMLElement>(`[data-testid='thought-request-${seed.playerId}-level']`);
+      if (requestNode) {
+        thoughtRequestNodes.set(seed.playerId, requestNode);
+      }
+      const intentNode = dl.querySelector<HTMLElement>(`[data-testid='thought-intent-${seed.playerId}-action']`);
+      if (intentNode) {
+        thoughtIntentNodes.set(seed.playerId, intentNode);
+      }
       return card;
     });
 
@@ -306,7 +331,9 @@ function renderThoughtSeeds(seeds: readonly PlayerThoughtSeed[]): void {
     renderedThoughtSeedIds = nextPlayerIds;
   }
 
-  for (const seed of seeds) {
+  for (const request of requests) {
+    const seed = request.seed;
+    const intent = intentsByPlayer.get(seed.playerId);
     const focusNode = thoughtSeedFocusNodes.get(seed.playerId);
     if (focusNode) {
       focusNode.textContent = seed.promptFocus;
@@ -319,11 +346,28 @@ function renderThoughtSeeds(seeds: readonly PlayerThoughtSeed[]): void {
     if (fragmentsNode) {
       fragmentsNode.textContent = formatThoughtFragments(seed);
     }
+    const requestNode = thoughtRequestNodes.get(seed.playerId);
+    if (requestNode) {
+      requestNode.textContent = formatThoughtRequest(request);
+    }
+    const intentNode = thoughtIntentNodes.get(seed.playerId);
+    if (intentNode) {
+      intentNode.textContent = intent ? formatThoughtIntent(intent) : "none";
+    }
   }
 }
 
 function formatThoughtMotif(seed: PlayerThoughtSeed): string {
-  return `${seed.recentMotif.contour}/${seed.recentMotif.rhythm}: ${seed.recentMotif.excerpt}`;
+  return `${seed.recentMotif.contour}/${seed.recentMotif.rhythm}: ${seed.recentMotif.displayExcerpt}`;
+}
+
+function formatThoughtRequest(request: PlayerThoughtRequest): string {
+  const stepCount = request.excerpts.reduce((sum, excerpt) => sum + excerpt.steps.length, 0);
+  return `${request.requestLevel} | ${request.horizonBeats} beats | ${stepCount} steps`;
+}
+
+function formatThoughtIntent(intent: PlayerThoughtIntent): string {
+  return `${intent.responseLevel}/${intent.action} | ${intent.confidence.toFixed(2)}`;
 }
 
 function formatThoughtFragments(seed: PlayerThoughtSeed): string {
@@ -373,9 +417,10 @@ function renderWorld(state: GrowTransportState = getState()): void {
   });
   world.syncTasteEvaluations(frame);
   const evaluations = world.getTasteEvaluations();
-  const thoughtSeeds = world.getThoughtSeeds(frame);
+  const thoughtRequests = world.getThoughtRequests(frame);
+  const thoughtIntents = world.getMockThoughtIntents(frame, thoughtRequests);
   renderPlayerInspector(players, evaluations);
-  renderThoughtSeeds(thoughtSeeds);
+  renderThoughts(thoughtRequests, thoughtIntents);
   renderListening(frame);
   for (const { player, state: playerState } of players) {
     terrarium?.setPlayerState(player.id, playerState);
@@ -480,6 +525,8 @@ declare global {
     };
     thinking?: {
       getSeeds(): readonly PlayerThoughtSeed[];
+      getRequests(): readonly PlayerThoughtRequest[];
+      getMockIntents(): readonly PlayerThoughtIntent[];
     };
     session?: {
       getMode(): SessionMode;
@@ -516,6 +563,26 @@ window.thinking = {
       transportStatus: state.status,
     });
     return world.getThoughtSeeds(frame);
+  },
+  getRequests: () => {
+    const state = getState();
+    const frame = world.getListeningFrame({
+      tempo: state.bpm,
+      meter: [4, 4],
+      currentBeat: state.currentBeat,
+      transportStatus: state.status,
+    });
+    return world.getThoughtRequests(frame);
+  },
+  getMockIntents: () => {
+    const state = getState();
+    const frame = world.getListeningFrame({
+      tempo: state.bpm,
+      meter: [4, 4],
+      currentBeat: state.currentBeat,
+      transportStatus: state.status,
+    });
+    return world.getMockThoughtIntents(frame);
   },
 };
 

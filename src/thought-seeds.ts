@@ -1,21 +1,24 @@
 import type { ListeningFrame, MusicalEvent } from "./listening";
 import type { Player, PlayerMemoryFragment } from "./players";
 import type { PlayerTasteEvaluation } from "./taste";
-
-export type ThoughtRequestLevel = "in_song_short";
+import {
+  createMusicalExcerptFromEvents,
+  formatMusicalExcerpt,
+  type MusicalExcerpt,
+} from "./thought-protocol";
 
 export interface ThoughtMotifSummary {
   label: string;
   eventCount: number;
   contour: "none" | "steady" | "rising" | "falling" | "mixed";
   rhythm: "none" | "whole-beat" | "offbeat" | "mixed";
-  excerpt: string;
+  excerpt: MusicalExcerpt;
+  displayExcerpt: string;
 }
 
 export interface PlayerThoughtSeed {
   playerId: string;
   role: Player["role"];
-  requestLevel: ThoughtRequestLevel;
   generatedAtBeat: number;
   disposition: string;
   selectedFragments: PlayerMemoryFragment[];
@@ -47,7 +50,6 @@ export function createPlayerThoughtSeed(
   return {
     playerId: player.id,
     role: player.role,
-    requestLevel: "in_song_short",
     generatedAtBeat: frame.timeWindow.toBeat,
     disposition: summarizeDisposition(player),
     selectedFragments,
@@ -85,21 +87,40 @@ function summarizeRecentMotif(player: Player, frame: ListeningFrame): ThoughtMot
     .slice(-6);
 
   if (events.length === 0) {
+    const excerpt = createMusicalExcerptFromEvents({
+      label: "no recent self phrase",
+      origin: "self",
+      events: [],
+      meter: frame.meter,
+      tonalContext: frame.tonalContext,
+      tags: [player.id, "resting"],
+    });
     return {
       label: "no recent self phrase",
       eventCount: 0,
       contour: "none",
       rhythm: "none",
-      excerpt: "resting",
+      excerpt,
+      displayExcerpt: formatMusicalExcerpt(excerpt),
     };
   }
+
+  const excerpt = createMusicalExcerptFromEvents({
+    label: `${player.id} recent ${events.length}`,
+    origin: "self",
+    events,
+    meter: frame.meter,
+    tonalContext: frame.tonalContext,
+    tags: [player.id, player.role, ...player.tags],
+  });
 
   return {
     label: `${player.id} recent ${events.length}`,
     eventCount: events.length,
     contour: inferContour(events),
     rhythm: inferRhythm(events),
-    excerpt: events.map(formatEventExcerpt).join(" "),
+    excerpt,
+    displayExcerpt: formatMusicalExcerpt(excerpt),
   };
 }
 
@@ -159,12 +180,6 @@ function pitchHeight(pitch?: string): number | undefined {
   if (semitone === undefined) return undefined;
 
   return Number(octave) * 12 + semitone;
-}
-
-function formatEventExcerpt(event: MusicalEvent): string {
-  const beat = round(event.absoluteBeat % 4).toFixed(1);
-  if (event.kind === "rest") return `r@${beat}`;
-  return `${event.pitch ?? "note"}@${beat}/${event.durationBeats}`;
 }
 
 function chooseFocusPlayer(player: Player, frame: ListeningFrame): string | undefined {
