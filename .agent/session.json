@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Record Claude Byte 10b review",
-  "status": "byte10b-approved-ready-byte10c",
-  "updatedAt": "2026-05-31T12:23:00Z",
-  "lastHandoff": ".agent/handoffs/2026-05-31-copy-paste-claude-byte-10b-review.md",
+  "lastTask": "Implement Byte 10c performed-offset data model",
+  "status": "byte10c-implemented-ready-review",
+  "updatedAt": "2026-05-31T12:38:00Z",
+  "lastHandoff": ".agent/handoffs/2026-05-31-copy-paste-claude-byte-10c-review.md",
   "branch": "main",
-  "commit": "pending-byte10b-review-record-commit",
+  "commit": "byte10c-review-commit-on-main",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 10b is approved and the Claude review artifact is preserved. Claude verified deterministic expression replay across two runs, bounded velocity ranges, audible variation, unchanged grid timing, clean rests, and green validation. Byte 10c should be performed-offset data only: compute offsets at schedule/commit time, preserve `MusicalEvent.absoluteBeat` as grid truth, surface offsets in debug/events, and choose one canonical per-player event index so future velocity and timing expression stay aligned during break drains."
+    "summary": "Byte 10c implements performed-offset data only. `src/performed-time.ts` calculates deterministic bounded `performedOffsetBeats` snapshots at schedule/commit time. Transport now assigns a canonical per-player `eventIndex` when committing a lookahead slot, and both velocity expression and performed timing read that same index. Events carry `eventIndex`, `performedOffsetBeats`, and `performedTiming`, while `absoluteBeat` remains grid truth. `window.transport.getState().performedTiming.latest` and the player `Offset` inspector row expose debug data. Synth fire time is unchanged and still grid-scheduled."
   }
 }

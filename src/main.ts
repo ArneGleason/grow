@@ -15,6 +15,10 @@ import {
   type OllamaThoughtParseResult,
   type OllamaThoughtTestResult,
 } from "./ollama";
+import {
+  formatPerformedTimingSnapshot,
+  type PlayerPerformedTimingSnapshot,
+} from "./performed-time";
 import { PLAYER_REGISTRY } from "./players";
 import {
   DEFAULT_SESSION_MODE,
@@ -72,11 +76,11 @@ const sessionModeControls = SESSION_MODE_OPTIONS.map((mode) => `
 `).join("");
 
 app.innerHTML = `
-  <section class="app-shell" aria-label="Grow Byte 10b">
+  <section class="app-shell" aria-label="Grow Byte 10c">
     <header class="topbar">
       <div class="brand">
         <h1 class="brand__title">Grow</h1>
-        <p class="brand__subtitle">Byte 10b: deterministic velocity modulators</p>
+        <p class="brand__subtitle">Byte 10c: performed-offset data model</p>
       </div>
       <div class="transport-controls">
         <fieldset class="mode-control" aria-label="Session mode">
@@ -238,6 +242,7 @@ const playerStateNodes = new Map<string, HTMLElement>();
 const playerTasteActionNodes = new Map<string, HTMLElement>();
 const playerTasteSummaryNodes = new Map<string, HTMLElement>();
 const playerExpressionNodes = new Map<string, HTMLElement>();
+const playerTimingNodes = new Map<string, HTMLElement>();
 const thoughtSeedFocusNodes = new Map<string, HTMLElement>();
 const thoughtSeedMotifNodes = new Map<string, HTMLElement>();
 const thoughtSeedFragmentsNodes = new Map<string, HTMLElement>();
@@ -269,6 +274,7 @@ function renderPlayerInspector(
   players: readonly RuntimePlayer[],
   evaluations: readonly PlayerTasteEvaluation[],
   expressions: readonly PlayerExpressionSnapshot[],
+  performedTimings: readonly PlayerPerformedTimingSnapshot[],
 ): void {
   const nextPlayerIds = players.map(({ player }) => player.id).join("|");
   const evaluationsByPlayer = new Map(evaluations.map((evaluation) => [
@@ -279,15 +285,21 @@ function renderPlayerInspector(
     expression.playerId,
     expression,
   ]));
+  const timingsByPlayer = new Map(performedTimings.map((timing) => [
+    timing.playerId,
+    timing,
+  ]));
 
   if (renderedPlayerIds !== nextPlayerIds) {
     playerStateNodes.clear();
     playerTasteActionNodes.clear();
     playerTasteSummaryNodes.clear();
     playerExpressionNodes.clear();
+    playerTimingNodes.clear();
     const cards = players.map(({ player, state }) => {
       const evaluation = evaluationsByPlayer.get(player.id);
       const expression = expressionsByPlayer.get(player.id);
+      const timing = timingsByPlayer.get(player.id);
       const card = document.createElement("article");
       card.className = "player-inspector";
       card.dataset.testid = `player-card-${player.id}`;
@@ -303,6 +315,11 @@ function renderPlayerInspector(
           "Dynamics",
           formatExpressionSnapshot(expression),
           `player-${player.id}-expression`,
+        ),
+        ...createDefinition(
+          "Offset",
+          formatPerformedTimingSnapshot(timing),
+          `player-${player.id}-offset`,
         ),
         ...createDefinition(
           "Why",
@@ -334,6 +351,12 @@ function renderPlayerInspector(
       if (expressionNode) {
         playerExpressionNodes.set(player.id, expressionNode);
       }
+      const timingNode = dl.querySelector<HTMLElement>(
+        `[data-testid='player-${player.id}-offset']`,
+      );
+      if (timingNode) {
+        playerTimingNodes.set(player.id, timingNode);
+      }
       return card;
     });
 
@@ -358,6 +381,10 @@ function renderPlayerInspector(
     const expressionNode = playerExpressionNodes.get(player.id);
     if (expressionNode) {
       expressionNode.textContent = formatExpressionSnapshot(expressionsByPlayer.get(player.id));
+    }
+    const timingNode = playerTimingNodes.get(player.id);
+    if (timingNode) {
+      timingNode.textContent = formatPerformedTimingSnapshot(timingsByPlayer.get(player.id));
     }
   }
 }
@@ -676,7 +703,7 @@ function renderWorld(state: GrowTransportState = getState()): void {
   const evaluations = world.getTasteEvaluations();
   const thoughtRequests = world.getThoughtRequests(frame);
   const thoughtIntents = world.getMockThoughtIntents(frame, thoughtRequests);
-  renderPlayerInspector(players, evaluations, state.expression.latest);
+  renderPlayerInspector(players, evaluations, state.expression.latest, state.performedTiming.latest);
   renderThoughts(thoughtRequests, thoughtIntents);
   renderListening(frame);
   renderOllama();

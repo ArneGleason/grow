@@ -686,7 +686,7 @@ Implementation notes:
 
 ### Byte 10c: Performed Offset Data Model
 
-Status: planned.
+Status: implemented.
 
 Prepare micro-timing without breaking ledger truth.
 
@@ -705,6 +705,14 @@ Review focus:
 - whether replay can reproduce the same offset,
 - whether analysis can stay grid-stable while performance can swing,
 - whether tests distinguish grid truth from performed truth.
+
+Implementation notes:
+
+- `src/performed-time.ts` owns a pure deterministic performed-offset calculator.
+- Transport now commits a single per-player `eventIndex` at schedule time; both velocity expression and performed timing read that committed index.
+- `MusicalEvent.absoluteBeat` remains grid truth, while `MusicalEvent.performedOffsetBeats` and `MusicalEvent.performedTiming` carry the future performed-time data.
+- `window.transport.getState().performedTiming.latest` exposes the latest committed timing snapshots, and the inspector renders a debug-only `Offset` row via `player-*-offset`.
+- Byte 10c deliberately does not audibly shift notes; synths still fire at scheduled grid time.
 
 ### Byte 10d: Audible Microtiming And Physical Difficulty
 

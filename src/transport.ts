@@ -4,6 +4,10 @@ import {
   type PlayerExpressionSnapshot,
 } from "./expression";
 import type { MusicalEvent, TonalContext } from "./listening";
+import {
+  calculatePerformedTiming,
+  type PlayerPerformedTimingSnapshot,
+} from "./performed-time";
 import { getPlayerById } from "./players";
 import { DEFAULT_SESSION_MODE, type SessionMode } from "./session-mode";
 import type { TasteNoteDecision, TasteNoteDecisionInput } from "./taste";
@@ -30,6 +34,9 @@ export interface GrowTransportState {
   lookahead: GrowLookaheadState;
   expression: {
     latest: readonly PlayerExpressionSnapshot[];
+  };
+  performedTiming: {
+    latest: readonly PlayerPerformedTimingSnapshot[];
   };
 }
 
@@ -90,6 +97,13 @@ interface ScheduledSnapshot {
   absoluteBeat: number;
 }
 
+interface CommittedScheduledNote {
+  note: ScheduledNote;
+  snapshot: ScheduledSnapshot;
+  eventIndex: number;
+  performedTiming: PlayerPerformedTimingSnapshot;
+}
+
 let Tone: typeof ToneNS | null = null;
 let pulseSynth: ToneNS.MembraneSynth | null = null;
 let bassSynth: ToneNS.MonoSynth | null = null;
@@ -103,8 +117,9 @@ let activePatterns: readonly PlayerPattern[] = [];
 let lookaheadTimerId = 0;
 let nextScheduleBeat = 0;
 let scheduledThroughBeat = 0;
-const expressionEventIndexes = new Map<string, number>();
+const committedEventIndexes = new Map<string, number>();
 const latestExpressionByPlayer = new Map<string, PlayerExpressionSnapshot>();
+const latestPerformedTimingByPlayer = new Map<string, PlayerPerformedTimingSnapshot>();
 
 const PLAYER_PATTERN_SOURCES: readonly PlayerPatternSource[] = [
   {
@@ -298,18 +313,13 @@ function getScheduledSnapshot(absoluteBeat: number): ScheduledSnapshot {
 }
 
 function emitNoteEvent(
-  snapshot: {
-    transportPosition: string;
-    bar: number;
-    beat: number;
-    absoluteBeat: number;
-  },
-  note: ScheduledNote,
+  committed: CommittedScheduledNote,
   decision: TasteNoteDecision,
   expression: PlayerExpressionSnapshot,
   velocity: number,
 ): void {
   if (status !== "playing") return;
+  const { note, snapshot } = committed;
   const player = getPlayerById(note.playerId);
   if (!player) return;
 
@@ -322,11 +332,14 @@ function emitNoteEvent(
     bar: snapshot.bar,
     beat: snapshot.beat,
     absoluteBeat: snapshot.absoluteBeat,
+    eventIndex: committed.eventIndex,
     durationBeats: note.durationBeats,
+    performedOffsetBeats: committed.performedTiming.performedOffsetBeats,
     velocity,
     pitch: decision.shouldPlay ? note.pitch : undefined,
     expression,
-    tags: [...player.tags, `taste:${decision.action}`, "expression:velocity"],
+    performedTiming: committed.performedTiming,
+    tags: [...player.tags, `taste:${decision.action}`, "expression:velocity", "timing:offset-data"],
     createdAtMs: performance.now(),
   };
   eventSerial += 1;
@@ -431,9 +444,9 @@ function ensureMelodySynth(tone: typeof ToneNS): ToneNS.Synth {
 function triggerScheduledNote(
   tone: typeof ToneNS,
   scheduledTime: ToneNS.Unit.Time,
-  note: ScheduledNote,
-  snapshot: ScheduledSnapshot,
+  committed: CommittedScheduledNote,
 ): void {
+  const { note, snapshot } = committed;
   const player = getPlayerById(note.playerId);
   if (!player) return;
 
@@ -447,7 +460,7 @@ function triggerScheduledNote(
   const expression = calculatePlayerExpression({
     player,
     absoluteBeat: snapshot.absoluteBeat,
-    eventIndex: getNextExpressionEventIndex(note.playerId),
+    eventIndex: committed.eventIndex,
     baseVelocity: note.velocity,
     tasteVelocityMultiplier: decision.velocityMultiplier,
   });
@@ -466,13 +479,7 @@ function triggerScheduledNote(
     ensureMelodySynth(tone).triggerAttackRelease(note.pitch, note.duration, scheduledTime, velocity);
   }
 
-  emitNoteEvent(snapshot, note, decision, appliedExpression, velocity);
-}
-
-function getNextExpressionEventIndex(playerId: string): number {
-  const eventIndex = expressionEventIndexes.get(playerId) ?? 0;
-  expressionEventIndexes.set(playerId, eventIndex + 1);
-  return eventIndex;
+  emitNoteEvent(committed, decision, appliedExpression, velocity);
 }
 
 function getFirstFutureGridBeat(currentBeat: number): number {
@@ -493,10 +500,37 @@ function getPatternStep(pattern: PlayerPattern, absoluteBeat: number): Scheduled
   return pattern.events[stepIndex];
 }
 
+function getNextCommittedEventIndex(playerId: string): number {
+  const eventIndex = committedEventIndexes.get(playerId) ?? 0;
+  committedEventIndexes.set(playerId, eventIndex + 1);
+  return eventIndex;
+}
+
+function commitScheduledNote(note: ScheduledNote, snapshot: ScheduledSnapshot): CommittedScheduledNote | undefined {
+  const player = getPlayerById(note.playerId);
+  if (!player) return undefined;
+
+  const eventIndex = getNextCommittedEventIndex(note.playerId);
+  const performedTiming = calculatePerformedTiming({
+    player,
+    absoluteBeat: snapshot.absoluteBeat,
+    eventIndex,
+    durationBeats: note.durationBeats,
+    baseVelocity: note.velocity,
+  });
+  latestPerformedTimingByPlayer.set(note.playerId, performedTiming);
+
+  return {
+    note,
+    snapshot,
+    eventIndex,
+    performedTiming,
+  };
+}
+
 function schedulePatternNote(
   tone: typeof ToneNS,
-  note: ScheduledNote,
-  snapshot: ScheduledSnapshot,
+  committed: CommittedScheduledNote,
 ): void {
   const transport = tone.getTransport();
   const draw = tone.getDraw();
@@ -504,9 +538,9 @@ function schedulePatternNote(
   eventId = transport.scheduleOnce((time) => {
     scheduledEventIds.delete(eventId);
     if (status !== "playing") return;
-    triggerScheduledNote(tone, time, note, snapshot);
+    triggerScheduledNote(tone, time, committed);
     draw.schedule(() => emitTick(), time);
-  }, snapshot.transportPosition);
+  }, committed.snapshot.transportPosition);
   scheduledEventIds.add(eventId);
 }
 
@@ -525,7 +559,10 @@ function scheduleLookahead(tone: typeof ToneNS): void {
     for (const pattern of activePatterns) {
       const note = getPatternStep(pattern, snapshot.absoluteBeat);
       if (note) {
-        schedulePatternNote(tone, note, snapshot);
+        const committed = commitScheduledNote(note, snapshot);
+        if (committed) {
+          schedulePatternNote(tone, committed);
+        }
       }
     }
     scheduledThroughBeat = snapshot.absoluteBeat;
@@ -557,8 +594,9 @@ function disposeLookaheadSchedule(tone: typeof ToneNS | null = Tone): void {
   activePatterns = [];
   nextScheduleBeat = 0;
   scheduledThroughBeat = 0;
-  expressionEventIndexes.clear();
+  committedEventIndexes.clear();
   latestExpressionByPlayer.clear();
+  latestPerformedTimingByPlayer.clear();
 }
 
 export function initTransport(
@@ -591,8 +629,9 @@ export async function startTransport(): Promise<GrowTransportState> {
   transport.position = "0:0:0";
   status = "playing";
   eventSerial = 0;
-  expressionEventIndexes.clear();
+  committedEventIndexes.clear();
   latestExpressionByPlayer.clear();
+  latestPerformedTimingByPlayer.clear();
   nextScheduleBeat = 0;
   scheduledThroughBeat = 0;
   activePatterns = buildPlayerPatterns(activeTonalContext);
@@ -647,6 +686,9 @@ export function getState(): GrowTransportState {
     lookahead: getLookaheadState(currentBeat),
     expression: {
       latest: [...latestExpressionByPlayer.values()],
+    },
+    performedTiming: {
+      latest: [...latestPerformedTimingByPlayer.values()],
     },
   };
 }
