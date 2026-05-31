@@ -1,6 +1,7 @@
 import type * as ToneNS from "tone";
 import type { MusicalEvent, TonalContext } from "./listening";
 import { getPlayerById } from "./players";
+import { DEFAULT_SESSION_MODE, type SessionMode } from "./session-mode";
 import type { TasteNoteDecision, TasteNoteDecisionInput } from "./taste";
 import { DEFAULT_TONAL_CONTEXT, noteFromScaleDegree } from "./tonal-context";
 
@@ -18,6 +19,7 @@ export interface GrowLookaheadState {
 
 export interface GrowTransportState {
   status: TransportStatus;
+  sessionMode: SessionMode;
   bpm: number;
   bar: number;
   currentBeat: number;
@@ -28,6 +30,7 @@ export interface TransportHandlers {
   tick?: (state: GrowTransportState) => void;
   musicalEvent?: (event: MusicalEvent) => void;
   noteDecision?: (input: TasteNoteDecisionInput) => TasteNoteDecision | undefined;
+  sessionMode?: () => SessionMode;
 }
 
 export interface TransportOptions {
@@ -261,6 +264,14 @@ function emitTick(): void {
   handlers.tick?.(getState());
 }
 
+function getActiveSessionMode(): SessionMode {
+  return handlers.sessionMode?.() ?? DEFAULT_SESSION_MODE;
+}
+
+function shouldRefillLookahead(): boolean {
+  return getActiveSessionMode() !== "break";
+}
+
 function getScheduledSnapshot(absoluteBeat: number): ScheduledSnapshot {
   const snappedBeat = snapBeat(absoluteBeat);
   const totalSixteenths = Math.round(snappedBeat * 4);
@@ -472,6 +483,7 @@ function schedulePatternNote(
 
 function scheduleLookahead(tone: typeof ToneNS): void {
   if (status !== "playing") return;
+  if (!shouldRefillLookahead()) return;
 
   const currentBeat = getCurrentBeat();
   if (nextScheduleBeat < currentBeat) {
@@ -595,6 +607,7 @@ export function getState(): GrowTransportState {
   const currentBeat = getCurrentBeat();
   return {
     status,
+    sessionMode: getActiveSessionMode(),
     bpm: BPM,
     bar: Math.floor(currentBeat / BEATS_PER_BAR) + 1,
     currentBeat,

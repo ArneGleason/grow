@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Record Claude Byte 6a review and prepare Byte 6b",
-  "status": "byte6a-approved-ready-for-byte6b",
-  "updatedAt": "2026-05-31T02:09:10Z",
-  "lastHandoff": ".agent/handoffs/2026-05-31-copy-paste-claude-byte-6a-review.md",
+  "lastTask": "Implement Byte 6b break drain and rehearsal refill",
+  "status": "byte6b-implemented-awaiting-review",
+  "updatedAt": "2026-05-31T02:19:03Z",
+  "lastHandoff": ".agent/handoffs/2026-05-31-copy-paste-claude-byte-6b-review.md",
   "branch": "main",
-  "commit": "e327326",
+  "commit": "pending-byte-6b-push",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 6a is approved by Claude with no required fixes. Byte 6b is clear to start: wire mode into transport, make break stop committing new lookahead slots while the queued material drains, make rehearsal resume refill, and keep solo-practice/performance as no-ops for now. Forward nits: derive static default mode UI from DEFAULT_SESSION_MODE and share set-mode/render logic."
+    "summary": "Byte 6b is implemented and ready for Claude review. Transport now reads session mode through a handler and exposes it in getState(); break leaves playback running but stops future lookahead refill while committed slots drain; rehearsal resumes refill from the current beat; solo-practice/performance remain rehearsal-equivalent no-ops. Smoke coverage validates drain, no new events after drain, resume, and cleanup."
   }
 }

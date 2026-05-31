@@ -2,6 +2,7 @@ import "./style.css";
 import type { ListeningFrame, MusicalEvent } from "./listening";
 import { PLAYER_REGISTRY } from "./players";
 import {
+  DEFAULT_SESSION_MODE,
   getSessionModeLabel,
   isSessionMode,
   SESSION_MODE_OPTIONS,
@@ -30,6 +31,7 @@ function requireElement<T extends Element>(selector: string): T {
 
 const app = requireElement<HTMLDivElement>("#app");
 const world = new GrowWorldState(PLAYER_REGISTRY);
+const defaultSessionModeLabel = getSessionModeLabel(DEFAULT_SESSION_MODE);
 const sessionModeControls = SESSION_MODE_OPTIONS.map((mode) => `
           <label class="mode-option" data-testid="session-mode-${mode.id}-option">
             <input
@@ -37,17 +39,18 @@ const sessionModeControls = SESSION_MODE_OPTIONS.map((mode) => `
               name="session-mode"
               type="radio"
               value="${mode.id}"
+              ${mode.id === DEFAULT_SESSION_MODE ? "checked" : ""}
             />
             <span>${mode.label}</span>
           </label>
 `).join("");
 
 app.innerHTML = `
-  <section class="app-shell" aria-label="Grow Byte 6a">
+  <section class="app-shell" aria-label="Grow Byte 6b">
     <header class="topbar">
       <div class="brand">
         <h1 class="brand__title">Grow</h1>
-        <p class="brand__subtitle">Byte 6a: session modes</p>
+        <p class="brand__subtitle">Byte 6b: break drains the lookahead</p>
       </div>
       <div class="transport-controls">
         <fieldset class="mode-control" aria-label="Session mode">
@@ -88,7 +91,7 @@ ${sessionModeControls}
           <h2>Session</h2>
           <dl>
             <dt>Mode</dt>
-            <dd data-testid="session-mode-current">Rehearsal</dd>
+            <dd data-testid="session-mode-current">${defaultSessionModeLabel}</dd>
           </dl>
         </section>
 
@@ -272,7 +275,7 @@ function renderSessionMode(): void {
 
 function renderStatus(state: GrowTransportState): void {
   button.textContent = state.status === "playing" ? "Stop" : "Start";
-  status.value = `mode ${getSessionModeLabel(world.getSessionMode()).toLowerCase()} | ${state.status} | ${state.bpm} BPM | bar ${state.bar} | beat ${state.currentBeat.toFixed(1)} | lookahead ${state.lookahead.health} ${state.lookahead.leadBeats.toFixed(1)}/${state.lookahead.targetBeats.toFixed(0)} | pending slots ${state.lookahead.pendingSlotCount}`;
+  status.value = `mode ${getSessionModeLabel(state.sessionMode).toLowerCase()} | ${state.status} | ${state.bpm} BPM | bar ${state.bar} | beat ${state.currentBeat.toFixed(1)} | lookahead ${state.lookahead.health} ${state.lookahead.leadBeats.toFixed(1)}/${state.lookahead.targetBeats.toFixed(0)} | pending slots ${state.lookahead.pendingSlotCount}`;
 }
 
 function renderWorld(state: GrowTransportState = getState()): void {
@@ -336,10 +339,17 @@ function queueRender(): void {
   });
 }
 
+function applySessionMode(mode: SessionMode): SessionMode {
+  world.setSessionMode(mode);
+  renderWorld();
+  return world.getSessionMode();
+}
+
 initTransport({
   tick: handleTransportState,
   musicalEvent: handleMusicalEvent,
   noteDecision: (input) => world.getTasteNoteDecision(input),
+  sessionMode: () => world.getSessionMode(),
 }, {
   tonalContext: world.getTonalContext(),
 });
@@ -368,8 +378,7 @@ sessionModeControl.addEventListener("change", (event) => {
   if (!(input instanceof HTMLInputElement) || input.name !== "session-mode") return;
   if (!isSessionMode(input.value)) return;
 
-  world.setSessionMode(input.value);
-  renderWorld();
+  applySessionMode(input.value);
 });
 
 terrarium = await createTerrariumView(container, world.getPlayers());
@@ -414,8 +423,7 @@ window.session = {
   getModes: () => SESSION_MODE_OPTIONS,
   setMode: (mode) => {
     if (isSessionMode(mode)) {
-      world.setSessionMode(mode);
-      renderWorld();
+      return applySessionMode(mode);
     }
     return world.getSessionMode();
   },

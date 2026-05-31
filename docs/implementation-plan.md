@@ -417,7 +417,7 @@ Implementation notes:
 
 ### Byte 6b: First Mode Behavior
 
-Status: next candidate.
+Status: implemented.
 
 Make the modes do one small thing each, starting with break and rehearsal.
 
@@ -428,6 +428,15 @@ Proposed scope:
 - `break -> rehearsal`: resume lookahead refill from the current beat.
 - Keep committed slots rather than hard-canceling them when entering break.
 - Let existing health/posture machinery reveal the drain: `healthy -> thin -> empty`, then player posture ages toward rest.
+
+Implementation notes:
+
+- `src/transport.ts` now reads the current session mode through a handler and exposes `sessionMode` on `window.transport.getState()`.
+- `break` leaves the transport running but stops refilling future lookahead slots. Already-scheduled notes/rests are allowed to fire, then the queue reaches `empty`.
+- `rehearsal` resumes lookahead refill from the current beat. Stale beats are skipped instead of backfilled.
+- `solo-practice` and `performance` intentionally remain rehearsal-equivalent no-ops until later, more specific behavior bytes.
+- The static initial mode UI now derives from `DEFAULT_SESSION_MODE`, and DOM mode changes plus `window.session.setMode()` share one helper path.
+- The smoke test covers break drain, no new events after drain, rehearsal resume, and continued cleanup.
 
 ### Byte 7: Producer Marker, No LLM
 
