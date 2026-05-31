@@ -143,6 +143,7 @@ Resume work:
 - Byte 3b validation should include confirming all three player states remain `performing` after they have participated recently, rather than blinking between `performing` and `resting` between staccato notes.
 - Byte 3c validation should include confirming emitted event pitch classes belong to `window.listening.getFrame().tonalContext.scale` and that the note-on halo flash is visible by eye.
 - Byte 4 validation should include `window.taste.getEvaluations()`, taste summaries/reasons in the inspector, at least one taste-driven `rest` event, and continued cleanup of scheduled sequences across start/stop cycles.
+- Byte 4b validation should sample `window.taste.getEvaluations()` across several render frames to confirm melody action does not flip rapidly around the rest threshold.
 - Before runtime key/mode changes, remember that transport patterns currently materialize from tonal context at `initTransport`/start time; tonal changes will need pattern re-materialization.
 - PixiJS v8 clamps alpha to 1.0, so note-on flashes should not rely on `alpha > 1`. Use scale, tint, or a resting alpha below 1.0 so the flash has visible headroom.
 - Use `git ls-files --cached --others --exclude-standard | sort` for the file inventory now that ignored `node_modules/` and `dist/` trees exist.

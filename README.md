@@ -17,13 +17,14 @@ The repo is initialized with the Studio Pattern so future work has a clear place
 - Byte 3b listening cleanup added: player state now represents stable musical posture, listening getters are read-only, `silenceRatio` avoids overlap double-counting, and world state carries `C mixolydian` tonal context.
 - Byte 3c tonal/visual prep added: note hits use a visible Pixi-safe halo pulse, posture/listening share the same 8-beat window, and transport patterns materialize notes from tonal scale degrees.
 - Byte 4 rule-based taste added: players now have inspectable taste evaluations that can repeat, support, simplify, vary, contrast, or rest based on the listening frame.
+- Byte 4b taste stabilization added: taste actions now hold for a minimum beat span so threshold decisions read as phrasing rather than flicker.
 
 ## First Work
 
 1. Install dependencies with `npm install`.
 2. Run the first byte with `npm run dev`.
 3. Verify repeated start/stop does not duplicate the beat or event subscription.
-4. Review Byte 4 before adding lookahead scheduling, producer commands, Ollama, or persistence.
+4. Review Byte 4b before adding lookahead scheduling, producer commands, Ollama, or persistence.
 5. Wire any future GitHub app/API access using the least-privileged credential model for the job.
 
 ## Run

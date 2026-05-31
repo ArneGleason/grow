@@ -76,3 +76,5 @@ The first implementation keeps taste deterministic and small:
 - rest events are explicit musical events, but listening metrics count only sounding note events for density, brightness, and silence.
 
 Density should use the actual available listening-window length during warm-up. Dividing the first few beats by a full future window makes the room look artificially sparse and delays taste reactions that should already be audible.
+
+Taste actions need some temporal inertia. If a player can switch actions every frame at a hard threshold, the result reads as UI hunting rather than musical decision-making. Start with a small action dwell or hysteresis band; later this can become a player trait such as decisiveness or restlessness.

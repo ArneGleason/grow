@@ -36,4 +36,4 @@ Use this file for known risks, open questions, and review focus. Keep entries sh
 - Scope guidance from Arne: keep Grow solo for now, but leave a future hook for multiple terrariums/bands that can observe, inspire, or react to each other.
 - Claude reviewed `docs/implementation-plan.md`; current Byte 1 guidance is stationary pulse player + percussive beat + explicit Tone.js lifecycle cleanup before adding movement or more players.
 - First implementation review should pay special attention to repeated start/stop cycles and whether scheduled Tone.js objects are disposed rather than stacked.
-- Current Claude Code/Mac Mini assignment: review Byte 4 subjective taste for inspectable rule-based evaluations, grounded listening metrics, rest-event semantics, deterministic note decisions, and preserved transport lifecycle cleanup.
+- Current Claude Code/Mac Mini assignment: review Byte 4b action dwell for reduced melody taste hunting, inspectable held-action explanations, preserved rest-event semantics, and unchanged transport event timing/lifecycle cleanup.

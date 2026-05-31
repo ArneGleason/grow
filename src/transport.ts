@@ -259,8 +259,12 @@ function getScheduledSnapshot(tone: typeof ToneNS, scheduledTime: ToneNS.Unit.Ti
 }
 
 function emitNoteEvent(
-  tone: typeof ToneNS,
-  scheduledTime: ToneNS.Unit.Time,
+  snapshot: {
+    transportPosition: string;
+    bar: number;
+    beat: number;
+    absoluteBeat: number;
+  },
   note: ScheduledNote,
   decision: TasteNoteDecision,
 ): void {
@@ -268,7 +272,6 @@ function emitNoteEvent(
   const player = getPlayerById(note.playerId);
   if (!player) return;
 
-  const snapshot = getScheduledSnapshot(tone, scheduledTime);
   const event: MusicalEvent = {
     id: `event-${eventSerial}`,
     kind: decision.shouldPlay ? "note" : "rest",
@@ -411,7 +414,7 @@ function triggerScheduledNote(
     ensureMelodySynth(tone).triggerAttackRelease(note.pitch, note.duration, scheduledTime, velocity);
   }
 
-  emitNoteEvent(tone, scheduledTime, note, decision);
+  emitNoteEvent(snapshot, note, decision);
 }
 
 function disposeSequence(): void {

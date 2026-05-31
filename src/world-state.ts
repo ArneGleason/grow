@@ -105,7 +105,10 @@ export class GrowWorldState {
 
   syncTasteEvaluations(frame: ListeningFrame): void {
     for (const player of this.players) {
-      this.tasteEvaluations.set(player.id, evaluatePlayerTaste(player, frame));
+      this.tasteEvaluations.set(
+        player.id,
+        evaluatePlayerTaste(player, frame, this.tasteEvaluations.get(player.id)),
+      );
     }
   }
 

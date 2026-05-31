@@ -25,6 +25,7 @@ type ListeningFrame = {
 type TasteEvaluation = {
   playerId: string;
   action: string;
+  actionSinceBeat: number;
   affinity: number;
   summary: string;
   reasons: string[];
@@ -197,6 +198,13 @@ test("Grow starts three players, hears events, and cleans up the transport", asy
     .toBe(true);
   const tasteFrame = await getListeningFrame(page);
   expect(tasteFrame.recentEvents.some((event) => event.tags.some((tag) => tag.startsWith("taste:")))).toBe(true);
+  const melodyActions = new Set<string>();
+  for (let sample = 0; sample < 6; sample += 1) {
+    const sampledEvaluations = await getTasteEvaluations(page);
+    melodyActions.add(sampledEvaluations.find((evaluation) => evaluation.playerId === "melody")?.action ?? "");
+    await page.waitForTimeout(250);
+  }
+  expect(melodyActions.size).toBe(1);
 
   await page.waitForTimeout(650);
   const postureFrame = await getListeningFrame(page);

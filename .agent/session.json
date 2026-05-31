@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Implement Byte 4 rule-based player taste",
-  "status": "byte4-ready-for-claude-review",
-  "updatedAt": "2026-05-31T00:00:07Z",
-  "lastHandoff": ".agent/handoffs/2026-05-30-copy-paste-claude-byte-4-review.md",
+  "lastTask": "Record Claude Byte 4 review and implement Byte 4b action dwell",
+  "status": "byte4b-ready-for-claude-review",
+  "updatedAt": "2026-05-31T00:16:43Z",
+  "lastHandoff": ".agent/handoffs/2026-05-30-copy-paste-claude-byte-4b-review.md",
   "branch": "main",
-  "commit": "byte4-implementation-commit-on-main",
+  "commit": "byte4b-implementation-commit-on-main",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 4 is implemented locally: players have deterministic taste profiles, world state derives inspectable taste evaluations from listening frames, transport uses taste note decisions for small velocity/rest choices, and smoke coverage confirms taste hooks plus a rest event while lifecycle cleanup remains intact."
+    "summary": "Byte 4 is approved by Claude. Byte 4b is implemented locally: taste actions now have a minimum beat dwell to reduce threshold hunting, held actions explain themselves, and transport passes scheduled snapshots through note-event emission instead of recomputing them."
   }
 }

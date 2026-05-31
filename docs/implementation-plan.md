@@ -287,7 +287,7 @@ Implementation notes:
 
 ### Byte 4: Subjective Taste, Still Rule-Based
 
-Status: implemented.
+Status: implemented and approved.
 
 Give each player a small deterministic taste profile.
 
@@ -313,6 +313,26 @@ Implementation notes:
 - `src/transport.ts` asks for a taste note decision at each scheduled note, allowing tiny deterministic choices such as lower velocity or a structured rest event.
 - `src/listening.ts` now computes basic loudness, energy bands, brightness, and density from note events. Rest events remain in the event ledger but do not count as active sound for density or silence math.
 - The inspector shows each player's current taste action and short reason.
+- Claude's Byte 4 review approved the byte. The required pre-Byte-5 follow-up is to add action dwell or hysteresis so the melody does not hunt around the rest/contrast silence threshold.
+
+### Byte 4b: Taste Action Dwell
+
+Status: implemented.
+
+Small stabilization follow-up before Byte 5 lookahead.
+
+Scope:
+
+- Add a minimum action dwell so taste action changes read as phrasing rather than threshold hunting.
+- Keep listening metrics fresh while holding the visible/action-driving taste action.
+- Pass the scheduled transport snapshot through the note-event path instead of recomputing it twice.
+- Keep all behavior deterministic and keep rest events out of note flashes, posture, and active-sound metrics.
+
+Review focus:
+
+- whether dwell fixes visible action hunting without making players feel stuck,
+- whether held actions remain inspectable and explain why they are being held,
+- whether the note-event snapshot cleanup preserves exact event timing.
 
 ### Byte 5: Lookahead Scheduling
 

@@ -9,6 +9,7 @@ export interface PlayerTasteEvaluation {
   playerId: string;
   role: PlayerRole;
   action: TasteAction;
+  actionSinceBeat: number;
   affinity: number;
   summary: string;
   reasons: string[];
@@ -45,11 +46,14 @@ const DEFAULT_DECISION: TasteNoteDecision = {
   reason: "No taste evaluation yet; keep the deterministic pattern.",
 };
 
+const MIN_ACTION_DWELL_BEATS = 4;
+
 export function createInitialTasteEvaluation(player: Player): PlayerTasteEvaluation {
   return {
     playerId: player.id,
     role: player.role,
     action: "repeat",
+    actionSinceBeat: 0,
     affinity: 0.5,
     summary: "Listening for a shape.",
     reasons: ["No recent listening frame yet."],
@@ -68,6 +72,7 @@ export function createInitialTasteEvaluation(player: Player): PlayerTasteEvaluat
 export function evaluatePlayerTaste(
   player: Player,
   frame: ListeningFrame,
+  previousEvaluation?: PlayerTasteEvaluation,
 ): PlayerTasteEvaluation {
   if (frame.eventCount === 0) {
     return {
@@ -101,10 +106,11 @@ export function evaluatePlayerTaste(
     rhythmicStability,
   });
 
-  return {
+  const candidate: PlayerTasteEvaluation = {
     playerId: player.id,
     role: player.role,
     action,
+    actionSinceBeat: frame.timeWindow.toBeat,
     affinity,
     summary: summarizeAction(action, player, {
       ensembleDensity,
@@ -130,6 +136,8 @@ export function evaluatePlayerTaste(
     },
     updatedAtBeat: frame.timeWindow.toBeat,
   };
+
+  return stabilizeAction(candidate, previousEvaluation);
 }
 
 export function decideNoteFromTaste(
@@ -244,6 +252,48 @@ function chooseAction(input: {
   }
 
   return "repeat";
+}
+
+function stabilizeAction(
+  candidate: PlayerTasteEvaluation,
+  previousEvaluation: PlayerTasteEvaluation | undefined,
+): PlayerTasteEvaluation {
+  if (previousEvaluation && isInitialEvaluation(previousEvaluation)) {
+    return {
+      ...candidate,
+      actionSinceBeat: candidate.updatedAtBeat,
+    };
+  }
+
+  if (!previousEvaluation || previousEvaluation.action === candidate.action) {
+    return {
+      ...candidate,
+      actionSinceBeat: previousEvaluation?.actionSinceBeat ?? candidate.updatedAtBeat,
+    };
+  }
+
+  const actionAgeBeats = candidate.updatedAtBeat - previousEvaluation.actionSinceBeat;
+  if (actionAgeBeats >= MIN_ACTION_DWELL_BEATS) {
+    return {
+      ...candidate,
+      actionSinceBeat: candidate.updatedAtBeat,
+    };
+  }
+
+  return {
+    ...candidate,
+    action: previousEvaluation.action,
+    actionSinceBeat: previousEvaluation.actionSinceBeat,
+    summary: `Holding ${previousEvaluation.action} for phrasing before ${candidate.action}.`,
+    reasons: [
+      ...candidate.reasons,
+      `held ${previousEvaluation.action} for ${Math.max(0, actionAgeBeats).toFixed(1)} of ${MIN_ACTION_DWELL_BEATS} beats`,
+    ],
+  };
+}
+
+function isInitialEvaluation(evaluation: PlayerTasteEvaluation): boolean {
+  return evaluation.summary === "Listening for a shape.";
 }
 
 function calculateAffinity(input: {
