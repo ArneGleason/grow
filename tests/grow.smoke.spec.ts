@@ -11,14 +11,32 @@ type TransportState = {
 type ListeningFrame = {
   eventCount: number;
   tonalContext: { tonic: string; mode: string; scale: readonly string[] };
-  mix: { silenceRatio: number };
+  mix: { silenceRatio: number; brightness: number; transientDensity: number };
   recentEvents: Array<{
     playerId: string;
     kind: string;
     pitch?: string;
     absoluteBeat: number;
+    tags: string[];
   }>;
   players: Array<{ id: string; state: string; recentEvents: unknown[] }>;
+};
+
+type TasteEvaluation = {
+  playerId: string;
+  action: string;
+  affinity: number;
+  summary: string;
+  reasons: string[];
+  metrics: {
+    playerDensity: number;
+    ensembleDensity: number;
+    silenceRatio: number;
+    brightness: number;
+    pitchVariety: number;
+    rhythmicStability: number;
+  };
+  updatedAtBeat: number;
 };
 
 async function getTransportState(page: Page): Promise<TransportState> {
@@ -51,6 +69,21 @@ async function getListeningFrame(page: Page): Promise<ListeningFrame> {
   return frame;
 }
 
+async function getTasteEvaluations(page: Page): Promise<readonly TasteEvaluation[]> {
+  const evaluations = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      taste?: { getEvaluations(): readonly TasteEvaluation[] };
+    };
+    return appWindow.taste?.getEvaluations();
+  });
+
+  if (!evaluations) {
+    throw new Error("window.taste.getEvaluations() was not available");
+  }
+
+  return evaluations;
+}
+
 test("Grow starts three players, hears events, and cleans up the transport", async ({ page }) => {
   const consoleErrors: string[] = [];
   const pageErrors: string[] = [];
@@ -71,7 +104,7 @@ test("Grow starts three players, hears events, and cleans up the transport", asy
   const canvas = page.getByTestId("terrarium-canvas");
 
   await expect(page.locator(".brand__subtitle")).toHaveText(
-    "Byte 3c: visible hits and tonal wiring",
+    "Byte 4: rule-based player taste",
   );
   await expect(button).toHaveText("Start");
   await expect(status).toContainText("stopped | 90 BPM | bar 1 | beat 0.0 | scheduled 0");
@@ -80,10 +113,13 @@ test("Grow starts three players, hears events, and cleans up the transport", asy
   await expect(page.getByTestId("player-pulse-role")).toHaveText("pulse");
   await expect(page.getByTestId("player-pulse-sound")).toHaveText("root pulse");
   await expect(page.getByTestId("player-pulse-state")).toHaveText("waiting");
+  await expect(page.getByTestId("player-pulse-taste-action")).toHaveText("repeat");
+  await expect(page.getByTestId("player-pulse-taste-summary")).toContainText("Listening");
   await expect(page.getByTestId("player-bass-name")).toHaveText("bass");
   await expect(page.getByTestId("player-bass-role")).toHaveText("bass");
   await expect(page.getByTestId("player-bass-sound")).toHaveText("modal bass");
   await expect(page.getByTestId("player-bass-state")).toHaveText("waiting");
+  await expect(page.getByTestId("player-bass-taste-action")).toHaveText("repeat");
   await expect(page.getByTestId("player-melody-name")).toHaveText("melody");
   await expect(page.getByTestId("player-melody-role")).toHaveText("melody");
   await expect(page.getByTestId("player-melody-sound")).toHaveText("modal line");
@@ -118,6 +154,9 @@ test("Grow starts three players, hears events, and cleans up the transport", asy
   });
   expect(frame.mix.silenceRatio).toBeGreaterThanOrEqual(0);
   expect(frame.mix.silenceRatio).toBeLessThanOrEqual(1);
+  expect(frame.mix.brightness).toBeGreaterThanOrEqual(0);
+  expect(frame.mix.brightness).toBeLessThanOrEqual(1);
+  expect(frame.mix.transientDensity).toBeGreaterThan(0);
   expect(frame.players.map((player) => player.id).sort()).toEqual(["bass", "melody", "pulse"]);
   expect(frame.players.find((player) => player.id === "pulse")?.recentEvents.length).toBeGreaterThan(0);
   expect(frame.players.find((player) => player.id === "bass")?.recentEvents.length).toBeGreaterThan(0);
@@ -136,6 +175,28 @@ test("Grow starts three players, hears events, and cleans up the transport", asy
       return Math.abs(snappedHalfBeat - Math.round(snappedHalfBeat)) < 0.000001;
     }),
   ).toBe(true);
+
+  await expect
+    .poll(async () => {
+      const evaluations = await getTasteEvaluations(page);
+      return evaluations.map((evaluation) => evaluation.playerId).sort().join(",");
+    })
+    .toBe("bass,melody,pulse");
+  const evaluations = await getTasteEvaluations(page);
+  expect(evaluations.every((evaluation) => evaluation.summary.length > 0)).toBe(true);
+  expect(evaluations.every((evaluation) => evaluation.reasons.length > 0)).toBe(true);
+  expect(evaluations.every((evaluation) => evaluation.affinity >= 0 && evaluation.affinity <= 1)).toBe(true);
+  expect(evaluations.map((evaluation) => evaluation.action)).toContain("repeat");
+  await expect(page.getByTestId("player-melody-taste-summary")).not.toHaveText("Listening for a shape.");
+
+  await expect
+    .poll(async () => {
+      const tasteFrame = await getListeningFrame(page);
+      return tasteFrame.recentEvents.some((event) => event.kind === "rest");
+    }, { timeout: 7_000 })
+    .toBe(true);
+  const tasteFrame = await getListeningFrame(page);
+  expect(tasteFrame.recentEvents.some((event) => event.tags.some((tag) => tag.startsWith("taste:")))).toBe(true);
 
   await page.waitForTimeout(650);
   const postureFrame = await getListeningFrame(page);

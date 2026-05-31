@@ -66,3 +66,13 @@ type PlayerEvaluation = {
 
 The exact labels can change. The important rule is that the system should be able to explain why a player reacted.
 
+## Byte 4 Learning
+
+The first implementation keeps taste deterministic and small:
+
+- taste profiles live with player identity while there are only three players,
+- evaluations live in world state because they are runtime reactions,
+- note decisions happen at the transport boundary so taste can influence sound without rewriting the scheduler,
+- rest events are explicit musical events, but listening metrics count only sounding note events for density, brightness, and silence.
+
+Density should use the actual available listening-window length during warm-up. Dividing the first few beats by a full future window makes the room look artificially sparse and delays taste reactions that should already be audible.

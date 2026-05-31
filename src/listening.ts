@@ -103,6 +103,9 @@ export class MusicalEventLedger {
     const recentEvents = this.events.filter(
       (event) => event.absoluteBeat >= fromBeat && event.absoluteBeat <= toBeat,
     );
+    const noteEvents = recentEvents.filter((event) => event.kind === "note");
+    const densityBeats = Math.max(1, toBeat - fromBeat);
+    const energy = summarizeEnergy(noteEvents);
 
     return {
       id: `frame-${recentEvents.length}-${toBeat.toFixed(2)}`,
@@ -112,24 +115,25 @@ export class MusicalEventLedger {
       meter: options.meter,
       tonalContext: options.tonalContext,
       mix: {
-        loudness: 0,
-        silenceRatio: calculateSilenceRatio(recentEvents, fromBeat, toBeat),
-        lowEnergy: 0,
-        midEnergy: 0,
-        highEnergy: 0,
-        brightness: 0,
-        transientDensity: recentEvents.length / Math.max(1, windowBeats),
+        loudness: calculateLoudness(noteEvents),
+        silenceRatio: calculateSilenceRatio(noteEvents, fromBeat, toBeat),
+        lowEnergy: energy.low,
+        midEnergy: energy.mid,
+        highEnergy: energy.high,
+        brightness: energy.brightness,
+        transientDensity: noteEvents.length / densityBeats,
       },
       eventCount: recentEvents.length,
       recentEvents,
       players: options.players.map((player) => {
         const playerEvents = recentEvents.filter((event) => event.playerId === player.id);
+        const playerNoteEvents = playerEvents.filter((event) => event.kind === "note");
         return {
           id: player.id,
           role: player.role,
           state: player.state,
           recentEvents: playerEvents,
-          density: playerEvents.length / Math.max(1, windowBeats),
+          density: playerNoteEvents.length / densityBeats,
           register: inferRegister(player.tags),
           tags: player.tags,
         };
@@ -161,6 +165,52 @@ function calculateSilenceRatio(
   const activeBeats = measureIntervalUnion(intervals);
 
   return Math.max(0, Math.min(1, 1 - activeBeats / windowLength));
+}
+
+function calculateLoudness(events: readonly MusicalEvent[]): number {
+  if (events.length === 0) return 0;
+  const totalVelocity = events.reduce((sum, event) => sum + event.velocity, 0);
+
+  return Math.max(0, Math.min(1, totalVelocity / events.length));
+}
+
+function summarizeEnergy(events: readonly MusicalEvent[]): {
+  low: number;
+  mid: number;
+  high: number;
+  brightness: number;
+} {
+  if (events.length === 0) {
+    return { low: 0, mid: 0, high: 0, brightness: 0 };
+  }
+
+  const counts = events.reduce(
+    (summary, event) => {
+      summary[inferPitchRegister(event.pitch)] += event.velocity;
+      return summary;
+    },
+    { low: 0, mid: 0, high: 0 },
+  );
+  const total = Math.max(0.000001, counts.low + counts.mid + counts.high);
+  const low = counts.low / total;
+  const mid = counts.mid / total;
+  const high = counts.high / total;
+
+  return {
+    low,
+    mid,
+    high,
+    brightness: Math.max(0, Math.min(1, mid * 0.5 + high)),
+  };
+}
+
+function inferPitchRegister(pitch?: string): "low" | "mid" | "high" {
+  const octave = pitch?.match(/-?\d+$/)?.[0];
+  if (!octave) return "mid";
+  const octaveNumber = Number(octave);
+  if (octaveNumber <= 2) return "low";
+  if (octaveNumber >= 4) return "high";
+  return "mid";
 }
 
 function measureIntervalUnion(intervals: readonly { start: number; end: number }[]): number {

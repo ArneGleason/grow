@@ -15,6 +15,15 @@ export interface PlayerVisual {
   labelOffsetY: number;
 }
 
+export interface PlayerTasteProfile {
+  densityTarget: number;
+  densityTolerance: number;
+  repetitionPreference: number;
+  brightnessPreference: "low" | "mid" | "high";
+  rhythmicStabilityPreference: number;
+  noveltyPreference: number;
+}
+
 export interface Player {
   id: string;
   displayName: string;
@@ -23,6 +32,7 @@ export interface Player {
   instrumentId: string;
   position: WorldPoint;
   visual: PlayerVisual;
+  taste: PlayerTasteProfile;
   tags: string[];
 }
 
@@ -39,6 +49,14 @@ export const PULSE_PLAYER: Player = {
     haloRadius: 28,
     bodyRadius: 17,
     labelOffsetY: 26,
+  },
+  taste: {
+    densityTarget: 1,
+    densityTolerance: 0.55,
+    repetitionPreference: 0.95,
+    brightnessPreference: "low",
+    rhythmicStabilityPreference: 0.95,
+    noveltyPreference: 0.08,
   },
   tags: ["low", "steady", "quarter-note"],
 };
@@ -57,6 +75,14 @@ export const BASS_PLAYER: Player = {
     bodyRadius: 18,
     labelOffsetY: 28,
   },
+  taste: {
+    densityTarget: 0.8,
+    densityTolerance: 0.38,
+    repetitionPreference: 0.72,
+    brightnessPreference: "low",
+    rhythmicStabilityPreference: 0.74,
+    noveltyPreference: 0.24,
+  },
   tags: ["low", "support", "modal"],
 };
 
@@ -73,6 +99,14 @@ export const MELODY_PLAYER: Player = {
     haloRadius: 26,
     bodyRadius: 15,
     labelOffsetY: 25,
+  },
+  taste: {
+    densityTarget: 0.85,
+    densityTolerance: 0.32,
+    repetitionPreference: 0.42,
+    brightnessPreference: "high",
+    rhythmicStabilityPreference: 0.58,
+    noveltyPreference: 0.58,
   },
   tags: ["mid", "motif", "modal"],
 };

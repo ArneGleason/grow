@@ -2,6 +2,7 @@ import "./style.css";
 import type { ListeningFrame, MusicalEvent } from "./listening";
 import { PLAYER_REGISTRY } from "./players";
 import { createTerrariumView, type TerrariumView } from "./terrarium";
+import type { PlayerTasteEvaluation } from "./taste";
 import {
   getState,
   initTransport,
@@ -23,11 +24,11 @@ const app = requireElement<HTMLDivElement>("#app");
 const world = new GrowWorldState(PLAYER_REGISTRY);
 
 app.innerHTML = `
-  <section class="app-shell" aria-label="Grow Byte 3c">
+  <section class="app-shell" aria-label="Grow Byte 4">
     <header class="topbar">
       <div class="brand">
         <h1 class="brand__title">Grow</h1>
-        <p class="brand__subtitle">Byte 3c: visible hits and tonal wiring</p>
+        <p class="brand__subtitle">Byte 4: rule-based player taste</p>
       </div>
       <div class="transport-controls">
         <button
@@ -95,6 +96,8 @@ let previousTransportStatus = getState().status;
 let renderedPlayerIds = "";
 let renderFrameId: number | null = null;
 const playerStateNodes = new Map<string, HTMLElement>();
+const playerTasteActionNodes = new Map<string, HTMLElement>();
+const playerTasteSummaryNodes = new Map<string, HTMLElement>();
 const pendingPlayerFlashes = new Set<string>();
 
 function createDefinition(
@@ -114,12 +117,22 @@ function createDefinition(
   return [dt, dd];
 }
 
-function renderPlayerInspector(players: readonly RuntimePlayer[]): void {
+function renderPlayerInspector(
+  players: readonly RuntimePlayer[],
+  evaluations: readonly PlayerTasteEvaluation[],
+): void {
   const nextPlayerIds = players.map(({ player }) => player.id).join("|");
+  const evaluationsByPlayer = new Map(evaluations.map((evaluation) => [
+    evaluation.playerId,
+    evaluation,
+  ]));
 
   if (renderedPlayerIds !== nextPlayerIds) {
     playerStateNodes.clear();
+    playerTasteActionNodes.clear();
+    playerTasteSummaryNodes.clear();
     const cards = players.map(({ player, state }) => {
+      const evaluation = evaluationsByPlayer.get(player.id);
       const card = document.createElement("article");
       card.className = "player-inspector";
       card.dataset.testid = `player-card-${player.id}`;
@@ -130,12 +143,30 @@ function renderPlayerInspector(players: readonly RuntimePlayer[]): void {
         ...createDefinition("Role", player.role, `player-${player.id}-role`),
         ...createDefinition("Sound", player.soundLabel, `player-${player.id}-sound`),
         ...createDefinition("State", state, `player-${player.id}-state`),
+        ...createDefinition("Taste", evaluation?.action ?? "repeat", `player-${player.id}-taste-action`),
+        ...createDefinition(
+          "Why",
+          evaluation?.summary ?? "Listening for a shape.",
+          `player-${player.id}-taste-summary`,
+        ),
       );
 
       card.append(dl);
       const stateNode = dl.querySelector<HTMLElement>(`[data-testid='player-${player.id}-state']`);
       if (stateNode) {
         playerStateNodes.set(player.id, stateNode);
+      }
+      const tasteActionNode = dl.querySelector<HTMLElement>(
+        `[data-testid='player-${player.id}-taste-action']`,
+      );
+      if (tasteActionNode) {
+        playerTasteActionNodes.set(player.id, tasteActionNode);
+      }
+      const tasteSummaryNode = dl.querySelector<HTMLElement>(
+        `[data-testid='player-${player.id}-taste-summary']`,
+      );
+      if (tasteSummaryNode) {
+        playerTasteSummaryNodes.set(player.id, tasteSummaryNode);
       }
       return card;
     });
@@ -148,6 +179,15 @@ function renderPlayerInspector(players: readonly RuntimePlayer[]): void {
     const stateNode = playerStateNodes.get(player.id);
     if (stateNode) {
       stateNode.textContent = state;
+    }
+    const evaluation = evaluationsByPlayer.get(player.id);
+    const tasteActionNode = playerTasteActionNodes.get(player.id);
+    if (tasteActionNode && evaluation) {
+      tasteActionNode.textContent = evaluation.action;
+    }
+    const tasteSummaryNode = playerTasteSummaryNodes.get(player.id);
+    if (tasteSummaryNode && evaluation) {
+      tasteSummaryNode.textContent = evaluation.summary;
     }
   }
 }
@@ -171,12 +211,15 @@ function renderWorld(state: GrowTransportState = getState()): void {
   syncWorldFromTransport(state);
   renderStatus(state);
   const players = world.getPlayers();
-  renderPlayerInspector(players);
-  renderListening(world.getListeningFrame({
+  const frame = world.getListeningFrame({
     tempo: state.bpm,
     meter: [4, 4],
     currentBeat: state.currentBeat,
-  }));
+  });
+  world.syncTasteEvaluations(frame);
+  const evaluations = world.getTasteEvaluations();
+  renderPlayerInspector(players, evaluations);
+  renderListening(frame);
   for (const { player, state: playerState } of players) {
     terrarium?.setPlayerState(player.id, playerState);
   }
@@ -189,12 +232,14 @@ function renderWorld(state: GrowTransportState = getState()): void {
 function syncWorldFromTransport(state: GrowTransportState): void {
   if (state.status === "playing" && previousTransportStatus === "stopped") {
     world.clearMusicalEvents();
+    world.resetTasteEvaluations();
   }
 
   world.syncPlayerStates(state.status, state.currentBeat);
 
   if (state.status === "stopped" && previousTransportStatus === "playing") {
     world.clearMusicalEvents();
+    world.resetTasteEvaluations();
     world.syncPlayerStates(state.status, state.currentBeat);
   }
 
@@ -207,7 +252,9 @@ function handleTransportState(): void {
 
 function handleMusicalEvent(event: MusicalEvent): void {
   world.recordMusicalEvent(event);
-  pendingPlayerFlashes.add(event.playerId);
+  if (event.kind === "note") {
+    pendingPlayerFlashes.add(event.playerId);
+  }
   queueRender();
 }
 
@@ -222,6 +269,7 @@ function queueRender(): void {
 initTransport({
   tick: handleTransportState,
   musicalEvent: handleMusicalEvent,
+  noteDecision: (input) => world.getTasteNoteDecision(input),
 }, {
   tonalContext: world.getTonalContext(),
 });
@@ -254,6 +302,9 @@ declare global {
       getFrame(): ListeningFrame;
       getEvents(): readonly MusicalEvent[];
     };
+    taste?: {
+      getEvaluations(): readonly PlayerTasteEvaluation[];
+    };
   }
 }
 
@@ -270,6 +321,10 @@ window.listening = {
   getEvents: () => world.getMusicalEvents(),
 };
 
+window.taste = {
+  getEvaluations: () => world.getTasteEvaluations(),
+};
+
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
     if (renderFrameId !== null) {
@@ -278,5 +333,6 @@ if (import.meta.hot) {
     terrarium?.destroy();
     terrarium = null;
     window.listening = undefined;
+    window.taste = undefined;
   });
 }

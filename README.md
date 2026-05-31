@@ -16,13 +16,14 @@ The repo is initialized with the Studio Pattern so future work has a clear place
 - Byte 3 rule-based trio added: pulse, bass, and melody now play deterministic patterns into the shared listening frame with simple visual drift.
 - Byte 3b listening cleanup added: player state now represents stable musical posture, listening getters are read-only, `silenceRatio` avoids overlap double-counting, and world state carries `C mixolydian` tonal context.
 - Byte 3c tonal/visual prep added: note hits use a visible Pixi-safe halo pulse, posture/listening share the same 8-beat window, and transport patterns materialize notes from tonal scale degrees.
+- Byte 4 rule-based taste added: players now have inspectable taste evaluations that can repeat, support, simplify, vary, contrast, or rest based on the listening frame.
 
 ## First Work
 
 1. Install dependencies with `npm install`.
 2. Run the first byte with `npm run dev`.
 3. Verify repeated start/stop does not duplicate the beat or event subscription.
-4. Review Byte 3c before adding subjective taste, player evaluations, or Ollama.
+4. Review Byte 4 before adding lookahead scheduling, producer commands, Ollama, or persistence.
 5. Wire any future GitHub app/API access using the least-privileged credential model for the job.
 
 ## Run
@@ -65,6 +66,7 @@ npm run smoke
 - `src/players.ts`: player data types and the initial `pulse`, `bass`, and `melody` registry entries.
 - `src/world-state.ts`: in-memory runtime state owner for players and the musical event ledger.
 - `src/listening.ts`: musical event and listening-frame types plus the recent-event summarizer.
+- `src/taste.ts`: deterministic player taste evaluation and note-decision logic.
 - `src/music-time.ts`: shared musical timing constants used by posture and listening windows.
 - `src/tonal-context.ts`: default tonal context and scale-degree note materialization.
 - `.env.example`: non-secret environment variable template.

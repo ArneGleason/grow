@@ -7,6 +7,14 @@ import {
 } from "./listening";
 import { RECENT_ACTIVITY_WINDOW_BEATS } from "./music-time";
 import type { Player, PlayerRuntimeState } from "./players";
+import {
+  createInitialTasteEvaluation,
+  decideNoteFromTaste,
+  evaluatePlayerTaste,
+  type PlayerTasteEvaluation,
+  type TasteNoteDecision,
+  type TasteNoteDecisionInput,
+} from "./taste";
 import { DEFAULT_TONAL_CONTEXT } from "./tonal-context";
 
 type TransportStatus = "playing" | "stopped";
@@ -18,6 +26,7 @@ export interface RuntimePlayer {
 
 export class GrowWorldState {
   private readonly playerStates = new Map<string, PlayerRuntimeState>();
+  private readonly tasteEvaluations = new Map<string, PlayerTasteEvaluation>();
   private readonly eventLedger = new MusicalEventLedger();
 
   constructor(
@@ -26,6 +35,7 @@ export class GrowWorldState {
   ) {
     for (const player of players) {
       this.playerStates.set(player.id, "waiting");
+      this.tasteEvaluations.set(player.id, createInitialTasteEvaluation(player));
     }
   }
 
@@ -59,6 +69,12 @@ export class GrowWorldState {
     this.eventLedger.clear();
   }
 
+  resetTasteEvaluations(): void {
+    for (const player of this.players) {
+      this.tasteEvaluations.set(player.id, createInitialTasteEvaluation(player));
+    }
+  }
+
   getMusicalEvents(): readonly MusicalEvent[] {
     return this.eventLedger.getEvents();
   }
@@ -87,6 +103,26 @@ export class GrowWorldState {
     });
   }
 
+  syncTasteEvaluations(frame: ListeningFrame): void {
+    for (const player of this.players) {
+      this.tasteEvaluations.set(player.id, evaluatePlayerTaste(player, frame));
+    }
+  }
+
+  getTasteEvaluations(): readonly PlayerTasteEvaluation[] {
+    return this.players.map((player) => (
+      this.tasteEvaluations.get(player.id) ?? createInitialTasteEvaluation(player)
+    ));
+  }
+
+  getTasteEvaluation(playerId: string): PlayerTasteEvaluation | undefined {
+    return this.tasteEvaluations.get(playerId);
+  }
+
+  getTasteNoteDecision(input: TasteNoteDecisionInput): TasteNoteDecision {
+    return decideNoteFromTaste(this.getTasteEvaluation(input.playerId), input);
+  }
+
   getTonalContext(): TonalContext {
     return this.tonalContext;
   }
@@ -98,18 +134,18 @@ export class GrowWorldState {
   ): PlayerRuntimeState {
     if (status === "stopped") return "waiting";
 
-    const recentEvent = this.findLatestEventForPlayer(playerId);
+    const recentEvent = this.findLatestNoteEventForPlayer(playerId);
     if (!recentEvent) return "resting";
 
     const windowStart = Math.max(0, currentBeat - RECENT_ACTIVITY_WINDOW_BEATS);
     return recentEvent.absoluteBeat >= windowStart ? "performing" : "resting";
   }
 
-  private findLatestEventForPlayer(playerId: string): MusicalEvent | undefined {
+  private findLatestNoteEventForPlayer(playerId: string): MusicalEvent | undefined {
     const events = this.eventLedger.getEvents();
     for (let index = events.length - 1; index >= 0; index -= 1) {
       const event = events[index];
-      if (event.playerId === playerId) {
+      if (event.playerId === playerId && event.kind === "note") {
         return event;
       }
     }

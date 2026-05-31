@@ -287,7 +287,7 @@ Implementation notes:
 
 ### Byte 4: Subjective Taste, Still Rule-Based
 
-Status: ready to implement.
+Status: implemented.
 
 Give each player a small deterministic taste profile.
 
@@ -304,6 +304,15 @@ Review focus:
 - whether taste creates musical variety without pretending to be a full psychology simulation,
 - whether player reactions remain inspectable,
 - whether "good", "bad", "boring", or "interesting" are grounded in listening-frame data.
+
+Implementation notes:
+
+- `Player` data now includes deterministic taste profiles for density, repetition, brightness, rhythmic stability, and novelty.
+- `src/taste.ts` derives inspectable `PlayerTasteEvaluation` objects with action, affinity, summary, reasons, and listening metrics.
+- `GrowWorldState` owns the current taste evaluations and exposes `window.taste.getEvaluations()` through the app.
+- `src/transport.ts` asks for a taste note decision at each scheduled note, allowing tiny deterministic choices such as lower velocity or a structured rest event.
+- `src/listening.ts` now computes basic loudness, energy bands, brightness, and density from note events. Rest events remain in the event ledger but do not count as active sound for density or silence math.
+- The inspector shows each player's current taste action and short reason.
 
 ### Byte 5: Lookahead Scheduling
 

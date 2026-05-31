@@ -1,6 +1,7 @@
 import type * as ToneNS from "tone";
 import type { MusicalEvent, TonalContext } from "./listening";
 import { getPlayerById } from "./players";
+import type { TasteNoteDecision, TasteNoteDecisionInput } from "./taste";
 import { DEFAULT_TONAL_CONTEXT, noteFromScaleDegree } from "./tonal-context";
 
 export type TransportStatus = "stopped" | "playing";
@@ -16,6 +17,7 @@ export interface GrowTransportState {
 export interface TransportHandlers {
   tick?: (state: GrowTransportState) => void;
   musicalEvent?: (event: MusicalEvent) => void;
+  noteDecision?: (input: TasteNoteDecisionInput) => TasteNoteDecision | undefined;
 }
 
 export interface TransportOptions {
@@ -26,6 +28,12 @@ const BPM = 90;
 const BEATS_PER_BAR = 4;
 const BEAT_SNAP = 16;
 const AUDIO_START_TIMEOUT_MS = 3_000;
+const DEFAULT_NOTE_DECISION: TasteNoteDecision = {
+  action: "repeat",
+  shouldPlay: true,
+  velocityMultiplier: 1,
+  reason: "No taste decision supplied.",
+};
 
 interface PatternNote {
   playerId: string;
@@ -254,6 +262,7 @@ function emitNoteEvent(
   tone: typeof ToneNS,
   scheduledTime: ToneNS.Unit.Time,
   note: ScheduledNote,
+  decision: TasteNoteDecision,
 ): void {
   if (status !== "playing") return;
   const player = getPlayerById(note.playerId);
@@ -262,7 +271,7 @@ function emitNoteEvent(
   const snapshot = getScheduledSnapshot(tone, scheduledTime);
   const event: MusicalEvent = {
     id: `event-${eventSerial}`,
-    kind: "note",
+    kind: decision.shouldPlay ? "note" : "rest",
     playerId: player.id,
     instrumentId: player.instrumentId,
     transportPosition: snapshot.transportPosition,
@@ -270,9 +279,11 @@ function emitNoteEvent(
     beat: snapshot.beat,
     absoluteBeat: snapshot.absoluteBeat,
     durationBeats: note.durationBeats,
-    velocity: note.velocity,
-    pitch: note.pitch,
-    tags: player.tags,
+    velocity: decision.shouldPlay
+      ? Math.max(0, Math.min(1, note.velocity * decision.velocityMultiplier))
+      : 0,
+    pitch: decision.shouldPlay ? note.pitch : undefined,
+    tags: [...player.tags, `taste:${decision.action}`],
     createdAtMs: performance.now(),
   };
   eventSerial += 1;
@@ -379,15 +390,28 @@ function triggerScheduledNote(
   scheduledTime: ToneNS.Unit.Time,
   note: ScheduledNote,
 ): void {
-  if (note.playerId === "pulse") {
-    ensurePulseSynth(tone).triggerAttackRelease(note.pitch, note.duration, scheduledTime, note.velocity);
-  } else if (note.playerId === "bass") {
-    ensureBassSynth(tone).triggerAttackRelease(note.pitch, note.duration, scheduledTime, note.velocity);
-  } else if (note.playerId === "melody") {
-    ensureMelodySynth(tone).triggerAttackRelease(note.pitch, note.duration, scheduledTime, note.velocity);
+  const player = getPlayerById(note.playerId);
+  if (!player) return;
+
+  const snapshot = getScheduledSnapshot(tone, scheduledTime);
+  const decision = handlers.noteDecision?.({
+    playerId: note.playerId,
+    role: player.role,
+    pitch: note.pitch,
+    absoluteBeat: snapshot.absoluteBeat,
+    velocity: note.velocity,
+  }) ?? DEFAULT_NOTE_DECISION;
+  const velocity = Math.max(0, Math.min(1, note.velocity * decision.velocityMultiplier));
+
+  if (decision.shouldPlay && note.playerId === "pulse") {
+    ensurePulseSynth(tone).triggerAttackRelease(note.pitch, note.duration, scheduledTime, velocity);
+  } else if (decision.shouldPlay && note.playerId === "bass") {
+    ensureBassSynth(tone).triggerAttackRelease(note.pitch, note.duration, scheduledTime, velocity);
+  } else if (decision.shouldPlay && note.playerId === "melody") {
+    ensureMelodySynth(tone).triggerAttackRelease(note.pitch, note.duration, scheduledTime, velocity);
   }
 
-  emitNoteEvent(tone, scheduledTime, note);
+  emitNoteEvent(tone, scheduledTime, note, decision);
 }
 
 function disposeSequence(): void {
