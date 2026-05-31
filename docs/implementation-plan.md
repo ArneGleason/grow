@@ -583,7 +583,7 @@ Implementation notes:
 
 ### Byte 9b: Ollama Health And Session Primer
 
-Status: implemented.
+Status: implemented and approved.
 
 Scope:
 
@@ -717,7 +717,7 @@ Implementation notes:
 
 ### Byte 10d: Audible Microtiming And Physical Difficulty
 
-Status: implemented.
+Status: implemented and approved.
 
 Let players push or drag in a deterministic, player-specific way.
 
@@ -743,6 +743,7 @@ Implementation notes:
 - `MusicalEvent.performedOffsetSeconds` records the BPM-derived offset, and events retain both `timing:offset-data` and `timing:audible-offset` tags for review.
 - `src/performed-time.ts` now folds pitch leap, role-relative register, local density, and disposition into the bounded offset model.
 - Smoke coverage now includes a restart replay assertion that compares performed offsets by `playerId:eventIndex`.
+- Claude's Byte 10d review approved the audible microtiming layer. Forward notes: choose deliberately whether difficult material should baseline push/rush or drag/slow, record `latestCommittedPitchByPlayer` in future seek-and-continue checkpoint state, consolidate duplicated pitch parsing helpers, and label just-heard dynamics versus next-committed timing debug surfaces.
 
 ### Byte 10e: Agitation And Contagion
 
@@ -777,7 +778,8 @@ Scope:
 - Keep `PlayerThoughtRequest` and `PlayerThoughtIntent` as the canonical internal contract.
 - Add a small prompt protocol registry whose adapters transform a canonical thought request into model-facing prompts and normalize responses back into the same validator path.
 - Start the registry with `projected-json`, `music-card`, `split-cards`, and a debug/reference `full-json`.
-- Default production use to `projected-json` until a calibrated pairing proves better.
+- Default production use to `projected-json` with `qwen3:4b-instruct-2507-q4_K_M` until a calibrated pairing proves better.
+- Use Ollama `format` as a JSON schema for the intended intent shape rather than the bare `"json"` string.
 - Add a small calibration/bakeoff harness that runs fixed thought fixtures against available models and protocol adapters, then scores parse success, validation success, required-field preservation, latency, and compactness.
 - Cache or record the selected model/protocol pairing for later use; do not run calibration inside the musical performance loop.
 - Add mocked invalid-response and unavailable-Ollama smoke cases.
@@ -804,6 +806,7 @@ Prompt-shape experiment note:
 - Live `gemma4:31b` testing showed `think: false` is required for short structured responses; otherwise useful output may sit in `message.thinking` while `message.content` stays empty.
 - Live `qwen3:4b-instruct-2507-q4_K_M` and `gemma3:4b-it-q4_K_M` tests showed that prompt tolerance varies by model: projected JSON was valid and fast on both, Qwen handled music-card cleanly, Gemma 3 omitted one required music-card field, and split-cards failed on Qwen but passed on Gemma 3.
 - Projected JSON remains the safest first implementation target, but Grow should preserve the ability to calibrate prompt protocol per model because model behavior changes over time.
+- Claude's Byte 10d review endorsed the next Ollama path as `qwen3:4b-instruct-2507-q4_K_M` plus structured projected JSON, with deterministic mock fallback preserved.
 
 ### Byte 11: One Slow-Thinking Player Loop
 

@@ -55,11 +55,11 @@ Snapshots describe state at a point:
 - Active instruments and effect chains.
 - Current tempo, key, mode, transport position.
 - Any deterministic random seed or clock information needed for replay.
-- Transport generator state needed to seek to a checkpoint and continue generating, such as per-player committed event indexes, next scheduled beat, scheduled-through beat, and event serial.
+- Transport generator state needed to seek to a checkpoint and continue generating, such as per-player committed event indexes, latest committed pitch per player, next scheduled beat, scheduled-through beat, and event serial.
 
 To rewind, load a snapshot and replay later events. To fork, create a new branch from a snapshot or event sequence and append new events there.
 
-Ledger replay and seek-and-continue are related but not identical. Replaying already-recorded events should use stored event payloads such as `absoluteBeat`, `performedOffsetBeats`, `performedOffsetSeconds`, expression snapshots, and performed-timing snapshots rather than recomputing them. Continuing live generation from a checkpoint must also restore the generator state that decides what future material will be committed next.
+Ledger replay and seek-and-continue are related but not identical. Replaying already-recorded events should use stored event payloads such as `absoluteBeat`, `performedOffsetBeats`, `performedOffsetSeconds`, expression snapshots, and performed-timing snapshots rather than recomputing them. Continuing live generation from a checkpoint must also restore the generator state that decides what future material will be committed next, including the per-player latest committed pitch used by the performed-time leap/difficulty model.
 
 ## Practical First Schema
 

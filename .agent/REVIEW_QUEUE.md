@@ -8,7 +8,7 @@ Use this file for known risks, open questions, and review focus. Keep entries sh
 - Should the local checkout move to `/Users/arnegleason/code/github.com/arnegleason/grow` before the first commit?
 - Will the product need GitHub as a repository remote only, or also as an app/API integration?
 - If an app/API integration is needed, should it use a GitHub App, OAuth app, or temporary local token?
-- Confirm exact Ollama model tags per machine before real-model work. Current known tags: MacBook target `gemma4:31b`; Mac Mini review machine `gemma4:26b`.
+- Confirm exact Ollama model tags per machine before automatic real-model work. Current known useful tags include MacBook `gemma4:31b`, Mac Mini `gemma4:26b`, and fast instruct candidate `qwen3:4b-instruct-2507-q4_K_M`.
 - What should the first capture rolling window length be?
 - Should first best-moment detection be heuristic-only, human-marked-only, or include an observer player?
 - How should player resistance to producer requests be bounded so it feels alive without getting annoying?
@@ -48,8 +48,8 @@ Use this file for known risks, open questions, and review focus. Keep entries sh
 - Byte 10a review focus: the reproducible-aliveness principle should clearly protect replayability while making room for deterministic heat, expressive mistakes, and bounded micro-variation.
 - Byte 10b is approved. Claude verified deterministic replay across two runs, bounded role ranges, audible variation, unchanged grid timing, clean rests, and 4/4 smoke.
 - Byte 10c is approved. Claude verified the shared schedule-time event index, deterministic bounded offsets, data-only playback, clean break/drain behavior, and 5/5 smoke.
-- Byte 10d review focus: verify audible offsets are actually scheduled off-grid without corrupting `absoluteBeat`/listening/order grid truth, validate late-callback clamping, and check that physical-difficulty inputs (leap/register/density plus disposition) feel useful rather than decorative.
-- Forward notes for Byte 10d/persistence: consider injecting expression through a transport handler before expression gains multiple dimensions, checkpoint transport generator state when seek-and-continue lands, and drive audible offsets partly from musical difficulty plus disposition.
-- Before the automatic slow-thinking loop, add a local backend/proxy, handle reasoning-model output such as `message.thinking`, trim the prompt projection, add mocked invalid/unavailable Ollama tests, and surface available models as a picker.
+- Byte 10d is approved. Claude verified audible offsets are scheduled off-grid while `absoluteBeat` stays grid truth, no per-player reorder occurs, offsets replay deterministically, break drain remains clean, and lifecycle stress is leak-free.
+- Forward notes after Byte 10d: decide whether difficult material should baseline push/rush or drag/carefully slow, label `Dynamics` as just-heard versus `Offset` as next-committed, capture `latestCommittedPitchByPlayer` in future seek-and-continue generator state, and consolidate duplicated pitch parsers into a shared music-theory utility.
+- Before the automatic slow-thinking loop, add a local backend/proxy, trim the prompt projection, use `qwen3:4b-instruct-2507-q4_K_M` as the next default candidate with Ollama `format` as a JSON schema rather than bare `"json"`, add mocked invalid/unavailable Ollama tests, and surface available models as a picker.
 - Prompt-shape experiment result: projected JSON is the safest first Byte 10f prompt replacement; music-card/split-card are smaller but need live Ollama validation before becoming the default.
 - Ollama API note: for `gemma4:31b`, include `think: false` in short structured `/api/chat` calls or the response may put reasoning in `message.thinking` and leave `message.content` empty.
