@@ -24,6 +24,26 @@ export interface PlayerTasteProfile {
   noveltyPreference: number;
 }
 
+export interface PlayerDisposition {
+  steadiness: number;
+  disruption: number;
+  caution: number;
+  novelty: number;
+  density: number;
+  responsiveness: number;
+}
+
+export interface PlayerMemoryFragment {
+  id: string;
+  text: string;
+  tags: string[];
+}
+
+export interface PlayerThinkingProfile {
+  disposition: PlayerDisposition;
+  memoryFragments: PlayerMemoryFragment[];
+}
+
 export interface Player {
   id: string;
   displayName: string;
@@ -33,6 +53,7 @@ export interface Player {
   position: WorldPoint;
   visual: PlayerVisual;
   taste: PlayerTasteProfile;
+  thinking: PlayerThinkingProfile;
   tags: string[];
 }
 
@@ -57,6 +78,33 @@ export const PULSE_PLAYER: Player = {
     brightnessPreference: "low",
     rhythmicStabilityPreference: 0.95,
     noveltyPreference: 0.08,
+  },
+  thinking: {
+    disposition: {
+      steadiness: 0.96,
+      disruption: 0.08,
+      caution: 0.8,
+      novelty: 0.12,
+      density: 0.44,
+      responsiveness: 0.52,
+    },
+    memoryFragments: [
+      {
+        id: "pulse-clockroom",
+        text: "keeps time like a clockroom fan that never quite lines up with the wall hum",
+        tags: ["steady", "repeat", "whole-beat"],
+      },
+      {
+        id: "pulse-warm-floor",
+        text: "trusts warmth under the floor more than bright gestures above it",
+        tags: ["low", "support", "space"],
+      },
+      {
+        id: "pulse-quiet-oath",
+        text: "believes a missing beat should feel intentional before anything gets louder",
+        tags: ["rest", "caution", "space"],
+      },
+    ],
   },
   tags: ["low", "steady", "quarter-note"],
 };
@@ -83,6 +131,33 @@ export const BASS_PLAYER: Player = {
     rhythmicStabilityPreference: 0.74,
     noveltyPreference: 0.24,
   },
+  thinking: {
+    disposition: {
+      steadiness: 0.74,
+      disruption: 0.22,
+      caution: 0.62,
+      novelty: 0.34,
+      density: 0.58,
+      responsiveness: 0.78,
+    },
+    memoryFragments: [
+      {
+        id: "bass-hot-water-plant",
+        text: "spent a season counting valves in a hot-water fabrication plant",
+        tags: ["low", "density", "support"],
+      },
+      {
+        id: "bass-loading-dock",
+        text: "likes phrases that arrive like a pallet jack turning a tight corner",
+        tags: ["mixed", "vary", "rhythm"],
+      },
+      {
+        id: "bass-shadow-choir",
+        text: "hears harmony as shadows cast by whatever the melody refuses to say",
+        tags: ["support", "space", "contrast"],
+      },
+    ],
+  },
   tags: ["low", "support", "modal"],
 };
 
@@ -107,6 +182,33 @@ export const MELODY_PLAYER: Player = {
     brightnessPreference: "high",
     rhythmicStabilityPreference: 0.58,
     noveltyPreference: 0.58,
+  },
+  thinking: {
+    disposition: {
+      steadiness: 0.46,
+      disruption: 0.36,
+      caution: 0.34,
+      novelty: 0.72,
+      density: 0.64,
+      responsiveness: 0.66,
+    },
+    memoryFragments: [
+      {
+        id: "melody-elevator-chimes",
+        text: "learned contour from broken elevator chimes in a glass atrium",
+        tags: ["bright", "rising", "vary"],
+      },
+      {
+        id: "melody-storm-window",
+        text: "likes storms because they hide uneven rhythm inside a steady room",
+        tags: ["mixed", "disruption", "rhythm"],
+      },
+      {
+        id: "melody-paper-lantern",
+        text: "keeps a paper-lantern tune for moments when the band gets too crowded",
+        tags: ["rest", "space", "high"],
+      },
+    ],
   },
   tags: ["mid", "motif", "modal"],
 };

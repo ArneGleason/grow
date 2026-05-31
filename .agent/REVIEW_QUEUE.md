@@ -43,3 +43,6 @@ Use this file for known risks, open questions, and review focus. Keep entries sh
 - Byte 5 naming cleanup is implemented. Future review should check that `lookahead.pendingSlotCount`, visible `Pending`, and listening `Heard` labels stay distinct as Byte 6 adds more state.
 - Byte 5 forward risk to keep visible: the lookahead refill uses wall-clock `setInterval`, so background tabs may drain the queue safely but drop newly scheduled notes until foregrounded.
 - Byte 5 commitment boundary to keep visible: pitch/timing are committed into the lookahead queue, while rest/velocity taste decisions still happen at fire time.
+- Byte 7 review focus: check whether `PlayerThinkingProfile` data is compact enough for future prompts, whether `createPlayerThoughtSeed()` selects genuinely useful context rather than decorative flavor text, and whether `window.thinking.getSeeds()` stays side-effect-free.
+- Byte 7 behavior guard: it should not change sound, lookahead refill, taste note decisions, session modes, or transport cleanup. Any audible drift is likely accidental.
+- Byte 8 should not call Ollama yet; it should define strict thought request/intent schemas, musical excerpt markup, validation, and a deterministic mock responder first.

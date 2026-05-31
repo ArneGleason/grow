@@ -23,13 +23,14 @@ The repo is initialized with the Studio Pattern so future work has a clear place
 - Byte 6b first mode behavior added and approved: break drains the lookahead without canceling committed material, and rehearsal resumes refill from the current beat.
 - Byte 6c session policy boundary added and approved: mode-to-lookahead-refill behavior now lives in an explicit session policy map instead of transport mode literals.
 - Planning update: player thinking now comes before producer work, with profiles, compact musical-excerpt thought requests, influence probes, Ollama-backed future intents, song sketches, and thought memory as the next arc.
+- Byte 7 player thought seeds added: each player now has disposition/backstory material, a deterministic compact thought-context selector, a Thoughts inspector section, and `window.thinking.getSeeds()` for review before any Ollama call exists.
 
 ## First Work
 
 1. Install dependencies with `npm install`.
 2. Run the first byte with `npm run dev`.
 3. Verify repeated start/stop does not duplicate the beat or event subscription.
-4. Review Byte 6c before adding richer solo practice, performance rules, producer commands, Ollama, or persistence.
+4. Review Byte 7 before adding the strict player thought protocol, Ollama health calls, producer commands, or persistence.
 5. Wire any future GitHub app/API access using the least-privileged credential model for the job.
 
 ## Run
@@ -74,6 +75,7 @@ npm run smoke
 - `src/listening.ts`: musical event and listening-frame types plus the recent-event summarizer.
 - `src/session-mode.ts`: session mode names, labels, and validation helpers.
 - `src/taste.ts`: deterministic player taste evaluation and note-decision logic.
+- `src/thought-seeds.ts`: deterministic player thought-context seed selection before Ollama is connected.
 - `src/transport.ts`: Tone.js playback lifecycle, deterministic pattern materialization, and lookahead scheduling.
 - `src/music-time.ts`: shared musical timing constants used by posture and listening windows.
 - `src/tonal-context.ts`: default tonal context and scale-degree note materialization.

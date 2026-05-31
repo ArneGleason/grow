@@ -482,7 +482,7 @@ Relevant principle doc: `docs/principles/player-thinking.md`.
 
 ### Byte 7: Player Profiles And Thought Seeds
 
-Status: next candidate after Byte 6c review.
+Status: implemented.
 
 Give each player persistent-feeling creative material without calling Ollama yet.
 
@@ -500,6 +500,16 @@ Review focus:
 - whether the selected context feels musically useful rather than decorative,
 - whether the profile/backstory data is compact enough for prompts,
 - whether this creates a path to persistence without requiring it immediately.
+- whether the deterministic selector stays side-effect-free and does not change playback behavior.
+
+Implementation notes:
+
+- `src/players.ts` now gives each player a compact `thinking` profile with numeric disposition traits and three memory/backstory fragments.
+- `src/thought-seeds.ts` assembles deterministic `PlayerThoughtSeed` objects from disposition, selected memory fragments, current listening metrics, taste evaluation, recent self motif, and a focus player.
+- The thought seed request level is intentionally limited to `in_song_short`; Byte 8 should define the full protocol and additional request levels before any Ollama call is made.
+- The inspector shows a `Thoughts` section with each player's focus, motif summary, and selected fragments.
+- `window.thinking.getSeeds()` exposes the current thought seeds for browser probes and review.
+- Sound behavior, lookahead refill, session behavior, and taste decisions are unchanged by this byte.
 
 ### Byte 8: Player Thought Protocol, No Ollama
 

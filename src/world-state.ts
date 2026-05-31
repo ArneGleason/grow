@@ -16,6 +16,7 @@ import {
   type TasteNoteDecision,
   type TasteNoteDecisionInput,
 } from "./taste";
+import { createPlayerThoughtSeed, type PlayerThoughtSeed } from "./thought-seeds";
 import { DEFAULT_TONAL_CONTEXT } from "./tonal-context";
 
 type TransportStatus = "playing" | "stopped";
@@ -126,6 +127,14 @@ export class GrowWorldState {
 
   getTasteNoteDecision(input: TasteNoteDecisionInput): TasteNoteDecision {
     return decideNoteFromTaste(this.getTasteEvaluation(input.playerId), input);
+  }
+
+  getThoughtSeeds(frame: ListeningFrame): readonly PlayerThoughtSeed[] {
+    return this.players.map((player) => createPlayerThoughtSeed(
+      player,
+      frame,
+      this.getTasteEvaluation(player.id) ?? createInitialTasteEvaluation(player),
+    ));
   }
 
   getTonalContext(): TonalContext {

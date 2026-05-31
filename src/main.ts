@@ -12,6 +12,7 @@ import {
 } from "./session-mode";
 import { createTerrariumView, type TerrariumView } from "./terrarium";
 import type { PlayerTasteEvaluation } from "./taste";
+import type { PlayerThoughtSeed } from "./thought-seeds";
 import {
   getState,
   initTransport,
@@ -47,11 +48,11 @@ const sessionModeControls = SESSION_MODE_OPTIONS.map((mode) => `
 `).join("");
 
 app.innerHTML = `
-  <section class="app-shell" aria-label="Grow Byte 6c">
+  <section class="app-shell" aria-label="Grow Byte 7">
     <header class="topbar">
       <div class="brand">
         <h1 class="brand__title">Grow</h1>
-        <p class="brand__subtitle">Byte 6c: session policy boundary</p>
+        <p class="brand__subtitle">Byte 7: player thought seeds</p>
       </div>
       <div class="transport-controls">
         <fieldset class="mode-control" aria-label="Session mode">
@@ -101,6 +102,11 @@ ${sessionModeControls}
           <div id="player-list" data-testid="player-list"></div>
         </section>
 
+        <section class="inspector-section" aria-label="Thought seeds">
+          <h2>Thoughts</h2>
+          <div id="thought-seed-list" data-testid="thought-seed-list"></div>
+        </section>
+
         <section class="inspector-section" aria-label="Listening frame">
           <h2>Listening</h2>
           <dl>
@@ -139,6 +145,7 @@ const status = requireElement<HTMLOutputElement>("#transport-status");
 const sessionModeControl = requireElement<HTMLDivElement>("[data-testid='session-mode-control']");
 const sessionModeCurrent = requireElement<HTMLElement>("[data-testid='session-mode-current']");
 const playerList = requireElement<HTMLDivElement>("#player-list");
+const thoughtSeedList = requireElement<HTMLDivElement>("#thought-seed-list");
 const listeningEventCount = requireElement<HTMLElement>("[data-testid='listening-event-count']");
 const listeningWindow = requireElement<HTMLElement>("[data-testid='listening-window']");
 const listeningLatestEvent = requireElement<HTMLElement>("[data-testid='listening-latest-event']");
@@ -151,10 +158,14 @@ const lookaheadPendingSlots = requireElement<HTMLElement>("[data-testid='lookahe
 let terrarium: TerrariumView | null = null;
 let previousTransportStatus = getState().status;
 let renderedPlayerIds = "";
+let renderedThoughtSeedIds = "";
 let renderFrameId: number | null = null;
 const playerStateNodes = new Map<string, HTMLElement>();
 const playerTasteActionNodes = new Map<string, HTMLElement>();
 const playerTasteSummaryNodes = new Map<string, HTMLElement>();
+const thoughtSeedFocusNodes = new Map<string, HTMLElement>();
+const thoughtSeedMotifNodes = new Map<string, HTMLElement>();
+const thoughtSeedFragmentsNodes = new Map<string, HTMLElement>();
 const pendingPlayerFlashes = new Set<string>();
 
 function createDefinition(
@@ -249,6 +260,76 @@ function renderPlayerInspector(
   }
 }
 
+function renderThoughtSeeds(seeds: readonly PlayerThoughtSeed[]): void {
+  const nextPlayerIds = seeds.map((seed) => seed.playerId).join("|");
+
+  if (renderedThoughtSeedIds !== nextPlayerIds) {
+    thoughtSeedFocusNodes.clear();
+    thoughtSeedMotifNodes.clear();
+    thoughtSeedFragmentsNodes.clear();
+    const cards = seeds.map((seed) => {
+      const card = document.createElement("article");
+      card.className = "player-inspector";
+      card.dataset.testid = `thought-seed-card-${seed.playerId}`;
+
+      const dl = document.createElement("dl");
+      dl.append(
+        ...createDefinition("Player", seed.playerId, `thought-seed-${seed.playerId}-player`),
+        ...createDefinition("Focus", seed.promptFocus, `thought-seed-${seed.playerId}-focus`),
+        ...createDefinition("Motif", formatThoughtMotif(seed), `thought-seed-${seed.playerId}-motif`),
+        ...createDefinition(
+          "Memory",
+          formatThoughtFragments(seed),
+          `thought-seed-${seed.playerId}-fragments`,
+        ),
+      );
+
+      card.append(dl);
+      const focusNode = dl.querySelector<HTMLElement>(`[data-testid='thought-seed-${seed.playerId}-focus']`);
+      if (focusNode) {
+        thoughtSeedFocusNodes.set(seed.playerId, focusNode);
+      }
+      const motifNode = dl.querySelector<HTMLElement>(`[data-testid='thought-seed-${seed.playerId}-motif']`);
+      if (motifNode) {
+        thoughtSeedMotifNodes.set(seed.playerId, motifNode);
+      }
+      const fragmentsNode = dl.querySelector<HTMLElement>(
+        `[data-testid='thought-seed-${seed.playerId}-fragments']`,
+      );
+      if (fragmentsNode) {
+        thoughtSeedFragmentsNodes.set(seed.playerId, fragmentsNode);
+      }
+      return card;
+    });
+
+    thoughtSeedList.replaceChildren(...cards);
+    renderedThoughtSeedIds = nextPlayerIds;
+  }
+
+  for (const seed of seeds) {
+    const focusNode = thoughtSeedFocusNodes.get(seed.playerId);
+    if (focusNode) {
+      focusNode.textContent = seed.promptFocus;
+    }
+    const motifNode = thoughtSeedMotifNodes.get(seed.playerId);
+    if (motifNode) {
+      motifNode.textContent = formatThoughtMotif(seed);
+    }
+    const fragmentsNode = thoughtSeedFragmentsNodes.get(seed.playerId);
+    if (fragmentsNode) {
+      fragmentsNode.textContent = formatThoughtFragments(seed);
+    }
+  }
+}
+
+function formatThoughtMotif(seed: PlayerThoughtSeed): string {
+  return `${seed.recentMotif.contour}/${seed.recentMotif.rhythm}: ${seed.recentMotif.excerpt}`;
+}
+
+function formatThoughtFragments(seed: PlayerThoughtSeed): string {
+  return seed.selectedFragments.map((fragment) => fragment.text).join(" | ");
+}
+
 function renderListening(frame: ListeningFrame): void {
   const latestEvent = frame.recentEvents.at(-1);
   listeningTonalContext.textContent = `${frame.tonalContext.tonic} ${frame.tonalContext.mode}`;
@@ -292,7 +373,9 @@ function renderWorld(state: GrowTransportState = getState()): void {
   });
   world.syncTasteEvaluations(frame);
   const evaluations = world.getTasteEvaluations();
+  const thoughtSeeds = world.getThoughtSeeds(frame);
   renderPlayerInspector(players, evaluations);
+  renderThoughtSeeds(thoughtSeeds);
   renderListening(frame);
   for (const { player, state: playerState } of players) {
     terrarium?.setPlayerState(player.id, playerState);
@@ -395,6 +478,9 @@ declare global {
     taste?: {
       getEvaluations(): readonly PlayerTasteEvaluation[];
     };
+    thinking?: {
+      getSeeds(): readonly PlayerThoughtSeed[];
+    };
     session?: {
       getMode(): SessionMode;
       getModes(): readonly SessionModeOption[];
@@ -420,6 +506,19 @@ window.taste = {
   getEvaluations: () => world.getTasteEvaluations(),
 };
 
+window.thinking = {
+  getSeeds: () => {
+    const state = getState();
+    const frame = world.getListeningFrame({
+      tempo: state.bpm,
+      meter: [4, 4],
+      currentBeat: state.currentBeat,
+      transportStatus: state.status,
+    });
+    return world.getThoughtSeeds(frame);
+  },
+};
+
 window.session = {
   getMode: () => world.getSessionMode(),
   getModes: () => SESSION_MODE_OPTIONS,
@@ -440,6 +539,7 @@ if (import.meta.hot) {
     terrarium = null;
     window.listening = undefined;
     window.taste = undefined;
+    window.thinking = undefined;
     window.session = undefined;
   });
 }

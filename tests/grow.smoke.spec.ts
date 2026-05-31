@@ -53,6 +53,34 @@ type TasteEvaluation = {
   updatedAtBeat: number;
 };
 
+type PlayerThoughtSeed = {
+  playerId: string;
+  role: string;
+  requestLevel: string;
+  disposition: string;
+  selectedFragments: Array<{ id: string; text: string; tags: string[] }>;
+  listeningSummary: {
+    eventCount: number;
+    ensembleDensity: number;
+    silenceRatio: number;
+    brightness: number;
+    focusPlayerId?: string;
+  };
+  tasteSummary: {
+    action: string;
+    affinity: number;
+    reason: string;
+  };
+  recentMotif: {
+    label: string;
+    eventCount: number;
+    contour: string;
+    rhythm: string;
+    excerpt: string;
+  };
+  promptFocus: string;
+};
+
 async function getTransportState(page: Page): Promise<TransportState> {
   const state = await page.evaluate(() => {
     const appWindow = window as unknown as {
@@ -96,6 +124,21 @@ async function getTasteEvaluations(page: Page): Promise<readonly TasteEvaluation
   }
 
   return evaluations;
+}
+
+async function getThoughtSeeds(page: Page): Promise<readonly PlayerThoughtSeed[]> {
+  const seeds = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      thinking?: { getSeeds(): readonly PlayerThoughtSeed[] };
+    };
+    return appWindow.thinking?.getSeeds();
+  });
+
+  if (!seeds) {
+    throw new Error("window.thinking.getSeeds() was not available");
+  }
+
+  return seeds;
 }
 
 async function getSessionMode(page: Page): Promise<SessionMode> {
@@ -186,7 +229,7 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   const status = page.getByTestId("transport-status");
   const canvas = page.getByTestId("terrarium-canvas");
 
-  await expect(page.locator(".brand__subtitle")).toHaveText("Byte 6c: session policy boundary");
+  await expect(page.locator(".brand__subtitle")).toHaveText("Byte 7: player thought seeds");
   await expect(button).toHaveText("Start");
   await expect(status).toContainText(
     "mode rehearsal | stopped | 90 BPM | bar 1 | beat 0.0 | lookahead stopped 0.0/8 | pending slots 0",
@@ -245,6 +288,14 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   await expect(page.getByTestId("player-melody-role")).toHaveText("melody");
   await expect(page.getByTestId("player-melody-sound")).toHaveText("modal line");
   await expect(page.getByTestId("player-melody-state")).toHaveText("waiting");
+  await expect(page.getByTestId("thought-seed-pulse-focus")).not.toHaveText("");
+  await expect(page.getByTestId("thought-seed-bass-fragments")).not.toHaveText("");
+  await expect(page.getByTestId("thought-seed-melody-motif")).toContainText("resting");
+  const initialThoughtSeeds = await getThoughtSeeds(page);
+  expect(initialThoughtSeeds.map((seed) => seed.playerId).sort()).toEqual(["bass", "melody", "pulse"]);
+  expect(initialThoughtSeeds.every((seed) => seed.requestLevel === "in_song_short")).toBe(true);
+  expect(initialThoughtSeeds.every((seed) => seed.selectedFragments.length === 2)).toBe(true);
+  expect(initialThoughtSeeds.every((seed) => seed.disposition.length > 0)).toBe(true);
   await expect(page.getByTestId("listening-tonal-context")).toHaveText("C mixolydian");
   await expect(page.getByTestId("listening-event-count")).toHaveText("0");
   await expect(page.getByTestId("lookahead-health")).toHaveText("stopped");
@@ -313,6 +364,17 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
       return Math.abs(snappedHalfBeat - Math.round(snappedHalfBeat)) < 0.000001;
     }),
   ).toBe(true);
+  await expect
+    .poll(async () => {
+      const seeds = await getThoughtSeeds(page);
+      return seeds.find((seed) => seed.playerId === "melody")?.recentMotif.eventCount ?? 0;
+    })
+    .toBeGreaterThan(0);
+  const activeThoughtSeeds = await getThoughtSeeds(page);
+  const melodySeed = activeThoughtSeeds.find((seed) => seed.playerId === "melody");
+  expect(melodySeed?.promptFocus.length).toBeGreaterThan(0);
+  expect(melodySeed?.listeningSummary.eventCount).toBeGreaterThan(0);
+  expect(melodySeed?.recentMotif.excerpt).not.toBe("resting");
 
   await expect
     .poll(async () => {
