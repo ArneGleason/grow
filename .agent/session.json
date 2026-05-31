@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Record Claude Byte 10d review",
-  "status": "byte10d-approved-next-direction-open",
-  "updatedAt": "2026-05-31T15:56:24Z",
+  "lastTask": "Implement Byte 10e agitation and contagion",
+  "status": "byte10e-implemented-ready-review",
+  "updatedAt": "2026-05-31T16:05:56Z",
   "lastHandoff": ".agent/handoffs/2026-05-31-copy-paste-claude-byte-10d-review.md",
   "branch": "main",
-  "commit": "e118f1a",
+  "commit": "bdd04b9",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 10d is approved with no required fixes. Claude verified audible microtiming preserves grid-truth `absoluteBeat`, avoids reorder, replays deterministically, and keeps lifecycle/break drain clean. Forward notes: decide push-vs-drag difficulty feel, capture `latestCommittedPitchByPlayer` in future seek-and-continue checkpoint state, consolidate duplicated pitch parsers, and move the next Ollama byte toward `qwen3:4b-instruct-2507-q4_K_M` plus schema-constrained projected JSON while keeping mock fallback. The app also has reusable inline inspector context help, a polished adjustable stage layout, and a public-facing README."
+    "summary": "Byte 10e is implemented and ready for review. The listening frame now exposes bounded mix agitation from timing variance, velocity spikes, density pressure, and push/drag pressure. Each frame player carries disposition-shaped contagion (`responsiveness` catches, `caution`/`steadiness` damp, `disruption` amplifies), surfaced in the inspector as `Heat caught`. This byte deliberately does not feed agitation into taste, transport, or scheduling decisions yet. Byte 10d remains approved; next open paths are reviewing/tuning 10e, then either using agitation in behavior or moving to the Ollama protocol/backend path with `qwen3:4b-instruct-2507-q4_K_M` plus schema-constrained projected JSON."
   }
 }
