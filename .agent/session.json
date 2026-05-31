@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Pull and test qwen3:4b-instruct-2507-q4_K_M",
+  "lastTask": "Pull and test gemma3:4b-it-q4_K_M",
   "status": "byte10d-implemented-ready-review-plus-live-ollama-fast-model-probe",
-  "updatedAt": "2026-05-31T13:50:49Z",
+  "updatedAt": "2026-05-31T13:56:20Z",
   "lastHandoff": ".agent/handoffs/2026-05-31-copy-paste-claude-byte-10d-review.md",
   "branch": "main",
-  "commit": "e35f6b4",
+  "commit": "01e7370",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 10d is implemented and ready for Claude review. Local Ollama is reachable outside the Codex sandbox at `127.0.0.1:11434`, with `gemma4:31b` and `qwen3:4b-instruct-2507-q4_K_M` installed. Live prompt tests show short structured requests should send `think: false`; `qwen3:4b-instruct-2507-q4_K_M` returned valid projected JSON in about 2.7 seconds and valid music-card output in about 1.6 seconds, making it the first strong fast-model candidate."
+    "summary": "Byte 10d is implemented and ready for Claude review. Local Ollama is reachable outside the Codex sandbox at `127.0.0.1:11434`, with `gemma4:31b`, `qwen3:4b-instruct-2507-q4_K_M`, and `gemma3:4b-it-q4_K_M` installed. Live prompt tests show short structured requests should send `think: false`; projected JSON is the safest prompt shape so far, with Qwen 4B returning valid output in about 2.7 seconds and Gemma 3 4B returning valid output in about 2.3 seconds."
   }
 }
