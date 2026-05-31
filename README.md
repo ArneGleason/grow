@@ -29,7 +29,7 @@ The repo is initialized with the Studio Pattern so future work has a clear place
 - Byte 9b Ollama probe added and approved: the app can check local Ollama health, send one manual thought request, display raw/parsed/validated results, and keep mock fallback without scheduling model output into music.
 - Planning update: deterministic reproducible aliveness comes before automatic model-driven music, starting with velocity modulators and then microtiming/agitation work.
 - Byte 10b velocity modulators added and approved: each scheduled player gesture now gets a deterministic, bounded expression snapshot that shapes velocity only and is visible in the player inspector and transport state.
-- Byte 10c performed-offset data model added: each committed player gesture now gets a deterministic, bounded `performedOffsetBeats` debug snapshot while audible playback still stays on the grid.
+- Byte 10c performed-offset data model added and approved: each committed player gesture now gets a deterministic, bounded `performedOffsetBeats` debug snapshot while audible playback still stays on the grid.
 
 ## First Work
 

@@ -312,12 +312,12 @@ function renderPlayerInspector(
         ...createDefinition("State", state, `player-${player.id}-state`),
         ...createDefinition("Taste", evaluation?.action ?? "repeat", `player-${player.id}-taste-action`),
         ...createDefinition(
-          "Dynamics",
+          "Dynamics heard",
           formatExpressionSnapshot(expression),
           `player-${player.id}-expression`,
         ),
         ...createDefinition(
-          "Offset",
+          "Offset queued",
           formatPerformedTimingSnapshot(timing),
           `player-${player.id}-offset`,
         ),

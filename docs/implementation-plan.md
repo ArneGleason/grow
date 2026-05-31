@@ -686,7 +686,7 @@ Implementation notes:
 
 ### Byte 10c: Performed Offset Data Model
 
-Status: implemented.
+Status: implemented and approved.
 
 Prepare micro-timing without breaking ledger truth.
 
@@ -713,6 +713,7 @@ Implementation notes:
 - `MusicalEvent.absoluteBeat` remains grid truth, while `MusicalEvent.performedOffsetBeats` and `MusicalEvent.performedTiming` carry the future performed-time data.
 - `window.transport.getState().performedTiming.latest` exposes the latest committed timing snapshots, and the inspector renders a debug-only `Offset` row via `player-*-offset`.
 - Byte 10c deliberately does not audibly shift notes; synths still fire at scheduled grid time.
+- Claude's Byte 10c review approved the data model and cleared Byte 10d. Forward notes: label live debug surfaces so `Dynamics heard` and `Offset queued` are not mistaken for the same musical moment; clamp audible fire time in Byte 10d so a push cannot land in the past or cross a neighbor; and capture transport generator state in future seek-and-continue checkpoints.
 
 ### Byte 10d: Audible Microtiming And Physical Difficulty
 
@@ -723,6 +724,7 @@ Let players push or drag in a deterministic, player-specific way.
 Scope:
 
 - Apply performed offsets at synth fire time only.
+- Convert `performedOffsetBeats` to seconds through BPM, then clamp the final fire time to at least `now + epsilon` and within the safe neighbor-crossing bound.
 - Derive part of the offset from musical difficulty: leap size, register jump, density, repeated-note pressure, or phrase-ending rush.
 - Weight difficulty through disposition traits such as caution, disruption, and steadiness.
 - Keep offsets small and bounded.

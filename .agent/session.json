@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Implement Byte 10c performed-offset data model",
-  "status": "byte10c-implemented-ready-review",
-  "updatedAt": "2026-05-31T12:38:00Z",
+  "lastTask": "Record Claude Byte 10c review",
+  "status": "byte10c-approved-ready-byte10d",
+  "updatedAt": "2026-05-31T12:49:00Z",
   "lastHandoff": ".agent/handoffs/2026-05-31-copy-paste-claude-byte-10c-review.md",
   "branch": "main",
-  "commit": "byte10c-review-commit-on-main",
+  "commit": "pending-byte10c-review-record-commit",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 10c implements performed-offset data only. `src/performed-time.ts` calculates deterministic bounded `performedOffsetBeats` snapshots at schedule/commit time. Transport now assigns a canonical per-player `eventIndex` when committing a lookahead slot, and both velocity expression and performed timing read that same index. Events carry `eventIndex`, `performedOffsetBeats`, and `performedTiming`, while `absoluteBeat` remains grid truth. `window.transport.getState().performedTiming.latest` and the player `Offset` inspector row expose debug data. Synth fire time is unchanged and still grid-scheduled."
+    "summary": "Byte 10c is approved and the Claude review artifact is preserved. Claude verified schedule-time event indexes are shared by event/expression/performedTiming, offsets are deterministic and bounded, playback remains data-only/grid-scheduled, break drains are safe, and smoke is green. Byte 10d is ready: make offsets audible by converting beats to seconds through BPM, clamp fire time so pushes cannot land in the past or cross neighbors, keep grid truth stable, and add replay assertions. UI labels now distinguish `Dynamics heard` from `Offset queued`; persistence docs note seek-and-continue checkpoints must capture transport generator state."
   }
 }
