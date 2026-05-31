@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Pull and test gemma3:4b-it-q4_K_M",
+  "lastTask": "Add prompt protocol calibration to the plan",
   "status": "byte10d-implemented-ready-review-plus-live-ollama-fast-model-probe",
-  "updatedAt": "2026-05-31T13:56:20Z",
+  "updatedAt": "2026-05-31T14:04:47Z",
   "lastHandoff": ".agent/handoffs/2026-05-31-copy-paste-claude-byte-10d-review.md",
   "branch": "main",
-  "commit": "01e7370",
+  "commit": "3e92e9b",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 10d is implemented and ready for Claude review. Local Ollama is reachable outside the Codex sandbox at `127.0.0.1:11434`, with `gemma4:31b`, `qwen3:4b-instruct-2507-q4_K_M`, and `gemma3:4b-it-q4_K_M` installed. Live prompt tests show short structured requests should send `think: false`; projected JSON is the safest prompt shape so far, with Qwen 4B returning valid output in about 2.7 seconds and Gemma 3 4B returning valid output in about 2.3 seconds."
+    "summary": "Byte 10d is implemented and ready for Claude review. Local Ollama is reachable outside the Codex sandbox at `127.0.0.1:11434`, with `gemma4:31b`, `qwen3:4b-instruct-2507-q4_K_M`, and `gemma3:4b-it-q4_K_M` installed. Live prompt tests show short structured requests should send `think: false`; projected JSON is the safest prompt shape so far. The plan now calls for Byte 10f to add a prompt protocol registry plus model/protocol calibration harness while keeping one canonical thought validator path."
   }
 }
