@@ -133,7 +133,7 @@ Review focus:
 
 ### Byte 2a: Player Data Object
 
-Status: implemented.
+Status: implemented and approved.
 
 Make the existing `pulse` participant a data-backed player before adding more behavior.
 
@@ -510,6 +510,7 @@ Implementation notes:
 - The inspector shows a `Thoughts` section with each player's focus, motif summary, and selected fragments.
 - `window.thinking.getSeeds()` exposes the current thought seeds for browser probes and review.
 - Sound behavior, lookahead refill, session behavior, and taste decisions are unchanged by this byte.
+- Claude's Byte 7 review approved the byte with no required fixes. Forward notes for Byte 8: promote the current ad-hoc motif excerpt string into validatable phrase-relative `MusicalExcerpt` markup, reconcile or explicitly separate `PlayerDisposition` and `PlayerTasteProfile`, and define whether `PlayerThoughtSeed` is wrapped by or embedded in `PlayerThoughtRequest`.
 
 ### Byte 8: Player Thought Protocol, No Ollama
 
@@ -520,12 +521,16 @@ Scope:
 - Add a strict `PlayerThoughtRequest` shape.
 - Add a strict `PlayerThoughtIntent` response shape.
 - Add a compact symbolic `MusicalExcerpt` shape so players can send self, heard, imagined, or group material with a prompt.
+- Make `MusicalExcerpt` structured and validatable before adding any mock responder. It should use phrase-relative positions or an equivalent form that can preserve ordering across bar boundaries and round-trip cleanly.
 - Include request levels: `in_song_short`, `influence_probe`, `songcraft_plan`, and `memory_digest`.
 - Include response levels: `play_intent`, `variation_intent`, `influence_note`, `song_sketch`, and `memory_note`.
 - Include allowed action vocabulary such as `rest`, `simplify`, `vary_motif`, `answer_player`, `shift_register`, `change_density`, and `disrupt_for_bars`.
 - Include musical fields the app can validate: scale degrees, rhythm cells, target density, duration bars, target player, and confidence.
 - Add a validator and a deterministic mock responder that returns one valid intent from a request.
 - Add a compiler that can translate the mock intent into the same future scheduling path or into a pending-intent inspection surface.
+- Keep the mock responder pure and keyed off the thought seed so Byte 8 remains reproducible before Ollama arrives in Byte 9.
+- Decide whether `PlayerDisposition` is separate prompt flavor or derived from taste before disposition drives behavior.
+- Decide where `requestLevel` lives so `PlayerThoughtSeed` and `PlayerThoughtRequest` do not develop competing request-level fields.
 
 Review focus:
 
@@ -534,6 +539,7 @@ Review focus:
 - whether request/response levels keep quick in-song thoughts separate from slower planning,
 - whether invalid or overlarge responses are easy to reject,
 - whether this avoids vague prose that the app cannot use.
+- whether the mock responder is deterministic and testable without Ollama.
 
 ### Byte 9: Ollama Health And Session Primer
 
