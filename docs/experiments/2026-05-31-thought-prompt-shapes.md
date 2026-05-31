@@ -44,19 +44,28 @@ Live Ollama results against local `gemma4:31b` with `/api/chat`, `format: "json"
 | music-card | 24550 | stop | 1148 | ok | ok | yes |
 | split-cards | 27232 | length | 1339 | fail | n/a | n/a |
 
+Live Ollama results against local `qwen3:4b-instruct-2507-q4_K_M` with the same settings:
+
+| shape | ms | done | content chars | parse | required fields | action allowed |
+| --- | ---: | --- | ---: | --- | --- | --- |
+| current-full-json | 6803 | stop | 1223 | ok | ok | yes |
+| projected-json | 2651 | stop | 771 | ok | ok | yes |
+| music-card | 1616 | stop | 507 | ok | ok | yes |
+| split-cards | 4501 | length | 1559 | fail | n/a | n/a |
+
 The heuristic is intentionally rough: it rewards constraint coverage and compactness, and slightly favors a JSON projection because it is easiest to parse, log, validate, and debug.
 
 ## Read
 
-The current full JSON shape is too large for the job. It spends a lot of prompt budget on implementation details the model does not need, and in the live test it hit the prediction limit with non-parseable output.
+The current full JSON shape is too large for the job on `gemma4:31b`. It spends a lot of prompt budget on implementation details the model does not need, and in the first live test it hit the prediction limit with non-parseable output. The much smaller `qwen3:4b-instruct-2507-q4_K_M` handled the full JSON prompt, but it was still roughly four times slower than its best compact prompt.
 
-The line-card and split-card shapes are the smallest. The music-card shape worked live, but split-cards hit the prediction limit. The card approach is still worth exploring because it is compact and musically readable, but projected JSON is easier to validate and less surprising.
+The line-card and split-card shapes are the smallest. The music-card shape worked live on both tested models and was the fastest Qwen 4B result. Split-cards hit the prediction limit on both tested models. The card approach is still worth exploring because it is compact, fast, and musically readable, but projected JSON is easier to validate and less surprising.
 
-The projected JSON shape looks like the safest next production candidate. It cuts roughly 44 percent of the prompt size while preserving every validation-critical field in a form that remains familiar to the app and review tooling.
+The projected JSON shape still looks like the safest next production candidate. It cuts roughly 44 percent of the prompt size while preserving every validation-critical field in a form that remains familiar to the app and review tooling. `qwen3:4b-instruct-2507-q4_K_M` is the first strong candidate for a fast local slow-thinking model: it returned valid JSON for projected JSON in about 2.7 seconds and for music-card in about 1.6 seconds.
 
 ## Recommendation
 
-For Byte 10f prompt tuning, replace the full `Request JSON: ${JSON.stringify(request)}` payload with a projected request object and send `think: false` in the Ollama chat request for short structured intents.
+For Byte 10f prompt tuning, replace the full `Request JSON: ${JSON.stringify(request)}` payload with a projected request object and send `think: false` in the Ollama chat request for short structured intents. Keep `qwen3:4b-instruct-2507-q4_K_M` available as the first fast-model target alongside the larger Gemma model.
 
 Suggested first projected shape:
 
