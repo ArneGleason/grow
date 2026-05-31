@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Clean up Byte 5 lookahead naming",
-  "status": "byte5-naming-cleaned-up-ready-for-byte6",
-  "updatedAt": "2026-05-31T01:02:00Z",
-  "lastHandoff": ".agent/handoffs/2026-05-31-copy-paste-claude-byte-5-review.md",
+  "lastTask": "Implement Byte 6a session mode shell",
+  "status": "byte6a-implemented-ready-for-review",
+  "updatedAt": "2026-05-31T01:17:16Z",
+  "lastHandoff": ".agent/handoffs/2026-05-31-copy-paste-claude-byte-6a-review.md",
   "branch": "main",
-  "commit": "pending-byte-5-naming-cleanup",
+  "commit": "pending-byte-6a-commit",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 5 is approved by Claude with no required fixes, and the follow-up naming cleanup is in progress/ready to commit: use lookahead.pendingSlotCount as the canonical queue count, visible Pending for lookahead slots, and Heard for listening events. Byte 6 session modes are next; keep the background-tab interval-drain caveat and fire-time rest/velocity boundary visible."
+    "summary": "Byte 6a is implemented and ready for Claude review. It adds canonical session modes, stores current mode in world state, renders top-bar segmented mode controls plus inspector/status readouts, and exposes window.session hooks. Playback behavior is intentionally unchanged until Byte 6b."
   }
 }

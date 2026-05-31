@@ -7,6 +7,7 @@ import {
 } from "./listening";
 import { RECENT_ACTIVITY_WINDOW_BEATS } from "./music-time";
 import type { Player, PlayerRuntimeState } from "./players";
+import { DEFAULT_SESSION_MODE, type SessionMode } from "./session-mode";
 import {
   createInitialTasteEvaluation,
   decideNoteFromTaste,
@@ -28,6 +29,7 @@ export class GrowWorldState {
   private readonly playerStates = new Map<string, PlayerRuntimeState>();
   private readonly tasteEvaluations = new Map<string, PlayerTasteEvaluation>();
   private readonly eventLedger = new MusicalEventLedger();
+  private sessionMode = DEFAULT_SESSION_MODE;
 
   constructor(
     private readonly players: readonly Player[],
@@ -128,6 +130,14 @@ export class GrowWorldState {
 
   getTonalContext(): TonalContext {
     return this.tonalContext;
+  }
+
+  getSessionMode(): SessionMode {
+    return this.sessionMode;
+  }
+
+  setSessionMode(mode: SessionMode): void {
+    this.sessionMode = mode;
   }
 
   private derivePlayerState(

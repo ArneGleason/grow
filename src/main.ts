@@ -1,6 +1,13 @@
 import "./style.css";
 import type { ListeningFrame, MusicalEvent } from "./listening";
 import { PLAYER_REGISTRY } from "./players";
+import {
+  getSessionModeLabel,
+  isSessionMode,
+  SESSION_MODE_OPTIONS,
+  type SessionMode,
+  type SessionModeOption,
+} from "./session-mode";
 import { createTerrariumView, type TerrariumView } from "./terrarium";
 import type { PlayerTasteEvaluation } from "./taste";
 import {
@@ -23,15 +30,32 @@ function requireElement<T extends Element>(selector: string): T {
 
 const app = requireElement<HTMLDivElement>("#app");
 const world = new GrowWorldState(PLAYER_REGISTRY);
+const sessionModeControls = SESSION_MODE_OPTIONS.map((mode) => `
+          <label class="mode-option" data-testid="session-mode-${mode.id}-option">
+            <input
+              data-testid="session-mode-${mode.id}"
+              name="session-mode"
+              type="radio"
+              value="${mode.id}"
+            />
+            <span>${mode.label}</span>
+          </label>
+`).join("");
 
 app.innerHTML = `
-  <section class="app-shell" aria-label="Grow Byte 5">
+  <section class="app-shell" aria-label="Grow Byte 6a">
     <header class="topbar">
       <div class="brand">
         <h1 class="brand__title">Grow</h1>
-        <p class="brand__subtitle">Byte 5: lookahead buffer</p>
+        <p class="brand__subtitle">Byte 6a: session modes</p>
       </div>
       <div class="transport-controls">
+        <fieldset class="mode-control" aria-label="Session mode">
+          <legend>Mode</legend>
+          <div class="mode-segments" data-testid="session-mode-control">
+${sessionModeControls}
+          </div>
+        </fieldset>
         <button
           class="transport-button"
           id="transport-toggle"
@@ -60,6 +84,14 @@ app.innerHTML = `
       </div>
 
       <aside class="inspector" aria-label="Player inspector">
+        <section class="inspector-section" aria-label="Session">
+          <h2>Session</h2>
+          <dl>
+            <dt>Mode</dt>
+            <dd data-testid="session-mode-current">Rehearsal</dd>
+          </dl>
+        </section>
+
         <section class="inspector-section" aria-label="Players">
           <h2>Players</h2>
           <div id="player-list" data-testid="player-list"></div>
@@ -68,7 +100,7 @@ app.innerHTML = `
         <section class="inspector-section" aria-label="Listening frame">
           <h2>Listening</h2>
           <dl>
-            <dt>Mode</dt>
+            <dt>Tonal</dt>
             <dd data-testid="listening-tonal-context">C mixolydian</dd>
             <dt>Heard</dt>
             <dd data-testid="listening-event-count">0</dd>
@@ -100,6 +132,8 @@ app.innerHTML = `
 const container = requireElement<HTMLDivElement>("#terrarium-container");
 const button = requireElement<HTMLButtonElement>("#transport-toggle");
 const status = requireElement<HTMLOutputElement>("#transport-status");
+const sessionModeControl = requireElement<HTMLDivElement>("[data-testid='session-mode-control']");
+const sessionModeCurrent = requireElement<HTMLElement>("[data-testid='session-mode-current']");
 const playerList = requireElement<HTMLDivElement>("#player-list");
 const listeningEventCount = requireElement<HTMLElement>("[data-testid='listening-event-count']");
 const listeningWindow = requireElement<HTMLElement>("[data-testid='listening-window']");
@@ -228,13 +262,22 @@ function renderLookahead(lookahead: GrowLookaheadState): void {
   lookaheadPendingSlots.textContent = String(lookahead.pendingSlotCount);
 }
 
+function renderSessionMode(): void {
+  const mode = world.getSessionMode();
+  sessionModeCurrent.textContent = getSessionModeLabel(mode);
+  for (const input of sessionModeControl.querySelectorAll<HTMLInputElement>("input[name='session-mode']")) {
+    input.checked = input.value === mode;
+  }
+}
+
 function renderStatus(state: GrowTransportState): void {
   button.textContent = state.status === "playing" ? "Stop" : "Start";
-  status.value = `${state.status} | ${state.bpm} BPM | bar ${state.bar} | beat ${state.currentBeat.toFixed(1)} | lookahead ${state.lookahead.health} ${state.lookahead.leadBeats.toFixed(1)}/${state.lookahead.targetBeats.toFixed(0)} | pending slots ${state.lookahead.pendingSlotCount}`;
+  status.value = `mode ${getSessionModeLabel(world.getSessionMode()).toLowerCase()} | ${state.status} | ${state.bpm} BPM | bar ${state.bar} | beat ${state.currentBeat.toFixed(1)} | lookahead ${state.lookahead.health} ${state.lookahead.leadBeats.toFixed(1)}/${state.lookahead.targetBeats.toFixed(0)} | pending slots ${state.lookahead.pendingSlotCount}`;
 }
 
 function renderWorld(state: GrowTransportState = getState()): void {
   syncWorldFromTransport(state);
+  renderSessionMode();
   renderStatus(state);
   renderLookahead(state.lookahead);
   const players = world.getPlayers();
@@ -320,6 +363,15 @@ button.addEventListener("click", async () => {
   }
 });
 
+sessionModeControl.addEventListener("change", (event) => {
+  const input = event.target;
+  if (!(input instanceof HTMLInputElement) || input.name !== "session-mode") return;
+  if (!isSessionMode(input.value)) return;
+
+  world.setSessionMode(input.value);
+  renderWorld();
+});
+
 terrarium = await createTerrariumView(container, world.getPlayers());
 renderWorld();
 
@@ -331,6 +383,11 @@ declare global {
     };
     taste?: {
       getEvaluations(): readonly PlayerTasteEvaluation[];
+    };
+    session?: {
+      getMode(): SessionMode;
+      getModes(): readonly SessionModeOption[];
+      setMode(mode: string): SessionMode;
     };
   }
 }
@@ -352,6 +409,18 @@ window.taste = {
   getEvaluations: () => world.getTasteEvaluations(),
 };
 
+window.session = {
+  getMode: () => world.getSessionMode(),
+  getModes: () => SESSION_MODE_OPTIONS,
+  setMode: (mode) => {
+    if (isSessionMode(mode)) {
+      world.setSessionMode(mode);
+      renderWorld();
+    }
+    return world.getSessionMode();
+  },
+};
+
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
     if (renderFrameId !== null) {
@@ -361,5 +430,6 @@ if (import.meta.hot) {
     terrarium = null;
     window.listening = undefined;
     window.taste = undefined;
+    window.session = undefined;
   });
 }

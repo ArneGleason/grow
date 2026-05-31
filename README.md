@@ -19,13 +19,14 @@ The repo is initialized with the Studio Pattern so future work has a clear place
 - Byte 4 rule-based taste added: players now have inspectable taste evaluations that can repeat, support, simplify, vary, contrast, or rest based on the listening frame.
 - Byte 4b taste stabilization added: taste actions now hold for a minimum beat span so threshold decisions read as phrasing rather than flicker.
 - Byte 5 lookahead buffer added: deterministic player material is committed into an 8-beat scheduled-ahead queue with visible buffer health and bounded cleanup.
+- Byte 6a session mode shell added: break, solo practice, rehearsal, and performance are selectable and inspectable without changing musical behavior yet.
 
 ## First Work
 
 1. Install dependencies with `npm install`.
 2. Run the first byte with `npm run dev`.
 3. Verify repeated start/stop does not duplicate the beat or event subscription.
-4. Review Byte 5 before adding session modes, producer commands, Ollama, or persistence.
+4. Review Byte 6a before adding mode-specific behavior, producer commands, Ollama, or persistence.
 5. Wire any future GitHub app/API access using the least-privileged credential model for the job.
 
 ## Run
@@ -68,6 +69,7 @@ npm run smoke
 - `src/players.ts`: player data types and the initial `pulse`, `bass`, and `melody` registry entries.
 - `src/world-state.ts`: in-memory runtime state owner for players and the musical event ledger.
 - `src/listening.ts`: musical event and listening-frame types plus the recent-event summarizer.
+- `src/session-mode.ts`: session mode names, labels, and validation helpers.
 - `src/taste.ts`: deterministic player taste evaluation and note-decision logic.
 - `src/transport.ts`: Tone.js playback lifecycle, deterministic pattern materialization, and lookahead scheduling.
 - `src/music-time.ts`: shared musical timing constants used by posture and listening windows.

@@ -68,6 +68,69 @@ button {
   flex-wrap: wrap;
 }
 
+.mode-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.mode-control legend {
+  padding: 0;
+  color: #aeb7a5;
+  font-size: 0.85rem;
+}
+
+.mode-segments {
+  display: flex;
+  overflow: hidden;
+  border: 1px solid rgba(174, 183, 165, 0.28);
+  border-radius: 8px;
+  background: rgba(10, 14, 12, 0.72);
+}
+
+.mode-option {
+  position: relative;
+  cursor: pointer;
+}
+
+.mode-option input {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  opacity: 0;
+}
+
+.mode-option span {
+  display: block;
+  min-width: 62px;
+  padding: 10px 11px;
+  color: #d7dfcf;
+  font-size: 0.86rem;
+  line-height: 1;
+  text-align: center;
+}
+
+.mode-option + .mode-option span {
+  border-left: 1px solid rgba(174, 183, 165, 0.2);
+}
+
+.mode-option:hover span {
+  background: rgba(143, 174, 117, 0.16);
+}
+
+.mode-option input:checked + span {
+  background: #8fae75;
+  color: #10160f;
+}
+
+.mode-option input:focus-visible + span {
+  outline: 3px solid #f6cc6b;
+  outline-offset: -3px;
+}
+
 .transport-button {
   min-width: 104px;
   min-height: 42px;
@@ -180,6 +243,26 @@ button {
 
   .transport-controls {
     justify-content: flex-start;
+  }
+
+  .mode-control {
+    align-items: stretch;
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .mode-segments {
+    width: 100%;
+  }
+
+  .mode-option {
+    flex: 1 1 0;
+  }
+
+  .mode-option span {
+    min-width: 0;
+    padding-inline: 6px;
+    overflow-wrap: anywhere;
   }
 
   .stage {

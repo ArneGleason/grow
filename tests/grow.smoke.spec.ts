@@ -1,5 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
+type SessionMode = "break" | "solo-practice" | "rehearsal" | "performance";
+
 type TransportState = {
   status: "stopped" | "playing";
   bpm: number;
@@ -92,7 +94,22 @@ async function getTasteEvaluations(page: Page): Promise<readonly TasteEvaluation
   return evaluations;
 }
 
-test("Grow starts three players, hears events, and cleans up the transport", async ({ page }) => {
+async function getSessionMode(page: Page): Promise<SessionMode> {
+  const mode = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      session?: { getMode(): SessionMode };
+    };
+    return appWindow.session?.getMode();
+  });
+
+  if (!mode) {
+    throw new Error("window.session.getMode() was not available");
+  }
+
+  return mode;
+}
+
+test("Grow exposes session modes, starts three players, hears events, and cleans up the transport", async ({ page }) => {
   const consoleErrors: string[] = [];
   const pageErrors: string[] = [];
 
@@ -111,11 +128,47 @@ test("Grow starts three players, hears events, and cleans up the transport", asy
   const status = page.getByTestId("transport-status");
   const canvas = page.getByTestId("terrarium-canvas");
 
-  await expect(page.locator(".brand__subtitle")).toHaveText("Byte 5: lookahead buffer");
+  await expect(page.locator(".brand__subtitle")).toHaveText("Byte 6a: session modes");
   await expect(button).toHaveText("Start");
   await expect(status).toContainText(
-    "stopped | 90 BPM | bar 1 | beat 0.0 | lookahead stopped 0.0/8 | pending slots 0",
+    "mode rehearsal | stopped | 90 BPM | bar 1 | beat 0.0 | lookahead stopped 0.0/8 | pending slots 0",
   );
+  await expect(page.getByTestId("session-mode-current")).toHaveText("Rehearsal");
+  await expect(page.getByTestId("session-mode-rehearsal")).toBeChecked();
+  expect(await getSessionMode(page)).toBe("rehearsal");
+  expect(await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      session?: { getModes(): Array<{ id: string }> };
+    };
+    return appWindow.session?.getModes().map((mode) => mode.id).join(",");
+  })).toBe("break,solo-practice,rehearsal,performance");
+  await page.getByTestId("session-mode-break-option").click();
+  await expect(page.getByTestId("session-mode-current")).toHaveText("Break");
+  await expect(page.getByTestId("session-mode-break")).toBeChecked();
+  await expect(status).toContainText("mode break | stopped");
+  expect(await getSessionMode(page)).toBe("break");
+  await expect.poll(async () => (await getTransportState(page)).lookahead.pendingSlotCount).toBe(0);
+  await page.getByTestId("session-mode-performance-option").click();
+  await expect(page.getByTestId("session-mode-current")).toHaveText("Performance");
+  await expect(status).toContainText("mode performance | stopped");
+  expect(await getSessionMode(page)).toBe("performance");
+  expect(await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      session?: { setMode(mode: string): SessionMode };
+    };
+    return appWindow.session?.setMode("solo-practice");
+  })).toBe("solo-practice");
+  await expect(page.getByTestId("session-mode-current")).toHaveText("Solo practice");
+  await expect(page.getByTestId("session-mode-solo-practice")).toBeChecked();
+  expect(await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      session?: { setMode(mode: string): SessionMode };
+    };
+    return appWindow.session?.setMode("not-a-mode");
+  })).toBe("solo-practice");
+  await page.getByTestId("session-mode-rehearsal-option").click();
+  await expect(page.getByTestId("session-mode-current")).toHaveText("Rehearsal");
+  expect(await getSessionMode(page)).toBe("rehearsal");
   await expect(canvas).toBeVisible();
   await expect(page.getByTestId("player-pulse-name")).toHaveText("pulse");
   await expect(page.getByTestId("player-pulse-role")).toHaveText("pulse");
@@ -274,7 +327,7 @@ test("Grow starts three players, hears events, and cleans up the transport", asy
   }
 
   await expect(status).toContainText(
-    "stopped | 90 BPM | bar 1 | beat 0.0 | lookahead stopped 0.0/8 | pending slots 0",
+    "mode rehearsal | stopped | 90 BPM | bar 1 | beat 0.0 | lookahead stopped 0.0/8 | pending slots 0",
   );
   await expect.poll(async () => (await getTransportState(page)).status).toBe("stopped");
   expect(consoleErrors).toEqual([]);

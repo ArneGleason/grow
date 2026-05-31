@@ -370,7 +370,7 @@ Implementation notes:
 
 ### Byte 6: Simple Session Modes
 
-Status: ready to implement.
+Status: started.
 
 Add basic mode states:
 
@@ -386,6 +386,34 @@ Review focus:
 - avoiding nonstop ambience,
 - making silence/rest readable,
 - mode transitions and controls.
+
+### Byte 6a: Session Mode State + Controls
+
+Status: implemented.
+
+Add the session mode shell without changing musical behavior yet.
+
+Scope:
+
+- Define canonical mode ids and labels for `break`, `solo-practice`, `rehearsal`, and `performance`.
+- Store the current mode in `GrowWorldState`.
+- Add a segmented mode control in the top bar.
+- Show the current mode in the inspector and status line.
+- Expose `window.session.getMode()`, `setMode()`, and `getModes()` for browser inspection.
+- Keep playback, lookahead refill, taste, rests, and player posture unchanged in every mode.
+
+Review focus:
+
+- whether the control is readable and compact,
+- whether mode state has a natural owner,
+- whether mode switching is side-effect-free for now,
+- whether this creates a clean hook for Byte 6b behavior.
+
+### Byte 6b: First Mode Behavior
+
+Status: next candidate.
+
+Make the modes do one small thing each, probably starting with break and rehearsal.
 
 ### Byte 7: Producer Marker, No LLM
 

@@ -87,7 +87,7 @@ See `docs/github-setup.md` before adding tokens, OAuth credentials, webhook secr
 
 For software projects, record the testing conventions that future agents should preserve:
 
-- Stable selectors or test IDs: Byte 5 exposes `transport-toggle`, `transport-status`, `terrarium-container`, `terrarium-canvas`, `player-list`, `player-pulse-*`, `player-bass-*`, `player-melody-*`, `listening-event-count`, `listening-window`, `listening-latest-event`, `lookahead-health`, `lookahead-lead`, `lookahead-through`, and `lookahead-pending-slots`.
+- Stable selectors or test IDs: Byte 6a exposes `transport-toggle`, `transport-status`, `session-mode-control`, `session-mode-current`, `session-mode-break`, `session-mode-solo-practice`, `session-mode-rehearsal`, `session-mode-performance`, `terrarium-container`, `terrarium-canvas`, `player-list`, `player-pulse-*`, `player-bass-*`, `player-melody-*`, `listening-event-count`, `listening-window`, `listening-latest-event`, `lookahead-health`, `lookahead-lead`, `lookahead-through`, and `lookahead-pending-slots`.
 - E2E state setup and teardown: TBD.
 - E2E smoke command: `npm run smoke`; Playwright starts or reuses Vite at `http://127.0.0.1:5173/`.
 - Page readiness and realtime waits: wait for `window.transport.getState()` before transport assertions and `window.listening.getFrame()` before listening-frame assertions.
@@ -149,6 +149,7 @@ Resume work:
 - Byte 5 review approved the one-shot lookahead queue. The follow-up naming cleanup removed duplicate `scheduledEventCount`, kept the canonical count at `lookahead.pendingSlotCount`, and disambiguated the visible labels as `Pending` lookahead slots versus `Heard` listening events.
 - Byte 5 lookahead refill uses a 250ms wall-clock interval. Background tabs can throttle it and drain the queue; current behavior is safe but may drop new notes until the tab foregrounds and refills.
 - Byte 5 commits pitch/timing ahead, but taste rest/velocity is still decided at fire time. Later "committed material" work should make that boundary explicit.
+- Byte 6a adds `src/session-mode.ts`, stores current mode in `GrowWorldState`, and exposes `window.session.getMode()`, `window.session.setMode(mode)`, and `window.session.getModes()`. Mode switching is intentionally side-effect-free until Byte 6b.
 - Before runtime key/mode changes, remember that transport patterns currently materialize from tonal context at `initTransport`/start time; tonal changes will need pattern re-materialization.
 - PixiJS v8 clamps alpha to 1.0, so note-on flashes should not rely on `alpha > 1`. Use scale, tint, or a resting alpha below 1.0 so the flash has visible headroom.
 - Use `git ls-files --cached --others --exclude-standard | sort` for the file inventory now that ignored `node_modules/` and `dist/` trees exist.
