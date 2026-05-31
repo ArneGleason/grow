@@ -27,7 +27,7 @@
   "updatedAt": "2026-05-31T14:10:00Z",
   "lastHandoff": ".agent/handoffs/2026-05-31-copy-paste-claude-byte-10d-review.md",
   "branch": "main",
-  "commit": "624e3fa",
+  "commit": "5ce90b7",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
     "summary": "Byte 10d is implemented and ready for Claude review. Performed offsets now schedule Tone one-shots at shifted transport ticks while `MusicalEvent.absoluteBeat` remains grid truth. A break-time prompt-shape experiment compared full request JSON, projected JSON, music-card, and split-card prompts for future Ollama tuning; projected JSON is the safest first Byte 10f replacement, with card protocols worth live-testing when Ollama is reachable."
