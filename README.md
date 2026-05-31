@@ -21,13 +21,14 @@ The repo is initialized with the Studio Pattern so future work has a clear place
 - Byte 5 lookahead buffer added: deterministic player material is committed into an 8-beat scheduled-ahead queue with visible buffer health and bounded cleanup.
 - Byte 6a session mode shell added: break, solo practice, rehearsal, and performance are selectable and inspectable without changing musical behavior yet.
 - Byte 6b first mode behavior added and approved: break drains the lookahead without canceling committed material, and rehearsal resumes refill from the current beat.
+- Byte 6c session policy boundary added: mode-to-lookahead-refill behavior now lives in an explicit session policy map instead of transport mode literals.
 
 ## First Work
 
 1. Install dependencies with `npm install`.
 2. Run the first byte with `npm run dev`.
 3. Verify repeated start/stop does not duplicate the beat or event subscription.
-4. Do the small Byte 6c session-policy cleanup before adding richer solo practice, performance rules, producer commands, Ollama, or persistence.
+4. Review Byte 6c before adding richer solo practice, performance rules, producer commands, Ollama, or persistence.
 5. Wire any future GitHub app/API access using the least-privileged credential model for the job.
 
 ## Run

@@ -442,7 +442,7 @@ Implementation notes:
 
 ### Byte 6c: Session Policy Boundary
 
-Status: next small cleanup candidate.
+Status: implemented.
 
 Keep Byte 6 mode behavior from leaking policy into the transport.
 
@@ -459,6 +459,14 @@ Review focus:
 - whether new modes now fail safe instead of fail open,
 - whether transport stays mechanism-only,
 - whether the policy surface is still small enough for the prototype.
+
+Implementation notes:
+
+- `src/session-mode.ts` now owns `SESSION_MODE_POLICIES`, with `refillsLookahead` explicitly set for every current mode.
+- The policy map uses TypeScript coverage against `SessionMode`, so adding a future mode requires choosing its refill behavior.
+- `src/transport.ts` no longer hardcodes `break` for scheduling. It receives a narrow `shouldRefillLookahead` handler and falls back to refill when no session layer is present.
+- `sessionMode` remains on transport state for display/debugging.
+- The smoke test includes a fast policy-map assertion and still verifies Byte 6b drain/resume behavior.
 
 ### Byte 7: Producer Marker, No LLM
 

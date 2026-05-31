@@ -6,6 +6,7 @@ import {
   getSessionModeLabel,
   isSessionMode,
   SESSION_MODE_OPTIONS,
+  shouldSessionModeRefillLookahead,
   type SessionMode,
   type SessionModeOption,
 } from "./session-mode";
@@ -46,11 +47,11 @@ const sessionModeControls = SESSION_MODE_OPTIONS.map((mode) => `
 `).join("");
 
 app.innerHTML = `
-  <section class="app-shell" aria-label="Grow Byte 6b">
+  <section class="app-shell" aria-label="Grow Byte 6c">
     <header class="topbar">
       <div class="brand">
         <h1 class="brand__title">Grow</h1>
-        <p class="brand__subtitle">Byte 6b: break drains the lookahead</p>
+        <p class="brand__subtitle">Byte 6c: session policy boundary</p>
       </div>
       <div class="transport-controls">
         <fieldset class="mode-control" aria-label="Session mode">
@@ -350,6 +351,7 @@ initTransport({
   musicalEvent: handleMusicalEvent,
   noteDecision: (input) => world.getTasteNoteDecision(input),
   sessionMode: () => world.getSessionMode(),
+  shouldRefillLookahead: () => shouldSessionModeRefillLookahead(world.getSessionMode()),
 }, {
   tonalContext: world.getTonalContext(),
 });

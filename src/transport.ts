@@ -31,6 +31,7 @@ export interface TransportHandlers {
   musicalEvent?: (event: MusicalEvent) => void;
   noteDecision?: (input: TasteNoteDecisionInput) => TasteNoteDecision | undefined;
   sessionMode?: () => SessionMode;
+  shouldRefillLookahead?: () => boolean;
 }
 
 export interface TransportOptions {
@@ -269,7 +270,7 @@ function getActiveSessionMode(): SessionMode {
 }
 
 function shouldRefillLookahead(): boolean {
-  return getActiveSessionMode() !== "break";
+  return handlers.shouldRefillLookahead?.() ?? true;
 }
 
 function getScheduledSnapshot(absoluteBeat: number): ScheduledSnapshot {

@@ -1,6 +1,9 @@
 import { expect, test, type Page } from "@playwright/test";
-
-type SessionMode = "break" | "solo-practice" | "rehearsal" | "performance";
+import {
+  SESSION_MODES,
+  shouldSessionModeRefillLookahead,
+  type SessionMode,
+} from "../src/session-mode";
 
 type TransportState = {
   status: "stopped" | "playing";
@@ -151,6 +154,18 @@ async function getLatestRecordedBeat(page: Page): Promise<number> {
   return latestBeat;
 }
 
+test("session mode refill policy is explicit", () => {
+  expect(SESSION_MODES).toEqual(["break", "solo-practice", "rehearsal", "performance"]);
+  expect(Object.fromEntries(
+    SESSION_MODES.map((mode) => [mode, shouldSessionModeRefillLookahead(mode)]),
+  )).toEqual({
+    break: false,
+    "solo-practice": true,
+    rehearsal: true,
+    performance: true,
+  });
+});
+
 test("Grow exposes session modes, starts three players, hears events, and cleans up the transport", async ({ page }) => {
   test.setTimeout(60_000);
   const consoleErrors: string[] = [];
@@ -171,7 +186,7 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   const status = page.getByTestId("transport-status");
   const canvas = page.getByTestId("terrarium-canvas");
 
-  await expect(page.locator(".brand__subtitle")).toHaveText("Byte 6b: break drains the lookahead");
+  await expect(page.locator(".brand__subtitle")).toHaveText("Byte 6c: session policy boundary");
   await expect(button).toHaveText("Start");
   await expect(status).toContainText(
     "mode rehearsal | stopped | 90 BPM | bar 1 | beat 0.0 | lookahead stopped 0.0/8 | pending slots 0",
