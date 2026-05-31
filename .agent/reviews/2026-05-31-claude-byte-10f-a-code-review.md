@@ -108,3 +108,38 @@ for 10f-a).
   CORS/latency/SQLite), model picker (the `availableModels` list is already fetched), calibration
   harness, and scheduling Ollama-authored intents (which will need the canonical-path + the lookahead
   commit point + a governor if it ever drives behavior).
+
+## Verification addendum (2026-05-31) - real `qwen3:4b-instruct-2507-q4_K_M` confirmed
+
+Arne pulled `qwen3:4b-instruct-2507-q4_K_M` on the mac mini; I verified the actual target model
+end-to-end (the "one confirming run" forward note above - now done).
+
+- **Health:** `ready` (14 ms); the model now appears in `availableModels` alongside
+  gemma4:26b / llama3.2 / qwen2.5-coder:32b / qwen3-coder:30b.
+- **Manual thought test, all three players** (default model + `projected-json` + `think: false` +
+  JSON-schema `format`), via `window.ollama.runManualThoughtTest`:
+
+  | player | status | provider | latency | action | parse / validation |
+  | --- | --- | --- | --- | --- | --- |
+  | melody | valid | ollama | ~5.0 s | vary_motif | ok / 0 errors |
+  | bass | valid | ollama | ~4.2 s | vary_motif | ok / 0 errors |
+  | pulse | valid | ollama | ~4.2 s | vary_motif | ok / 0 errors |
+
+  Each: clean parse, 0 validation errors, in-bounds intent (2 steps, durationBeats 2), and
+  `sourceStartBeat` system-owned (model omitted it per schema; coercion inserted it). ~4-5 s is far
+  faster than gemma4:26b's ~22 s, and there is no empty-content problem - the `think: false` + instruct
+  model fix holds against the actual target.
+- **The projection carries character, and the model uses it.** The rationales reference each player's
+  selected memory fragments plus the tonal context:
+  - melody: "...echoing paper-lantern memory in mixolydian C scale" (its `melody-paper-lantern` fragment),
+  - bass: "...to match harmony shadows..." (its `bass-shadow-choir` fragment),
+  - pulse: "...preserve role stability and tonal warmth..." (its `pulse-warm-floor` fragment).
+- **Harmless observation:** the model copies the schema-enum-locked `requestId` exactly but invents its
+  own `id` (a near-copy of the request id); `id` is intentionally not constrained to equal `requestId`,
+  and validation passes.
+
+Conclusion: the Byte 9b arc ("the model returns empty content") is fully closed - the real local instruct
+model produces valid, in-bounds, character-grounded thought intents through the canonical path, quickly.
+Still manual-probe-only: nothing is scheduled into the music. Remaining next steps unchanged: backend
+proxy before any automatic slow-thinking loop, and a build/release governor when contagion or model
+intents ever drive behavior.
