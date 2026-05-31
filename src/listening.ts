@@ -1,4 +1,4 @@
-import type { PlayerRole, PlayerRuntimeState } from "./players";
+import type { PlayerDisposition, PlayerRole, PlayerRuntimeState } from "./players";
 import { RECENT_ACTIVITY_WINDOW_BEATS } from "./music-time";
 import type { PlayerExpressionSnapshot } from "./expression";
 import type { PlayerPerformedTimingSnapshot } from "./performed-time";
@@ -39,7 +39,26 @@ export interface ListeningFramePlayer {
   recentEvents: MusicalEvent[];
   density: number;
   register: "low" | "mid" | "high";
+  contagion: PlayerContagion;
   tags: string[];
+}
+
+export interface MixAgitationSources {
+  timingVariance: number;
+  velocitySpike: number;
+  densityPressure: number;
+  pushDragPressure: number;
+}
+
+export interface PlayerContagion {
+  level: number;
+  summary: string;
+  components: {
+    catchPressure: number;
+    damping: number;
+    amplification: number;
+    activity: number;
+  };
 }
 
 export interface ListeningFrame {
@@ -60,6 +79,8 @@ export interface ListeningFrame {
     highEnergy: number;
     brightness: number;
     transientDensity: number;
+    agitation: number;
+    agitationSources: MixAgitationSources;
   };
   eventCount: number;
   recentEvents: MusicalEvent[];
@@ -70,6 +91,7 @@ export interface ListeningFramePlayerSource {
   id: string;
   role: PlayerRole;
   state: PlayerRuntimeState;
+  disposition: PlayerDisposition;
   tags: string[];
 }
 
@@ -113,6 +135,9 @@ export class MusicalEventLedger {
     const noteEvents = recentEvents.filter((event) => event.kind === "note");
     const densityBeats = Math.max(1, toBeat - fromBeat);
     const energy = summarizeEnergy(noteEvents);
+    const silenceRatio = calculateSilenceRatio(noteEvents, fromBeat, toBeat);
+    const transientDensity = noteEvents.length / densityBeats;
+    const agitation = summarizeAgitation(noteEvents, transientDensity, silenceRatio);
 
     return {
       id: `frame-${recentEvents.length}-${toBeat.toFixed(2)}`,
@@ -123,12 +148,14 @@ export class MusicalEventLedger {
       tonalContext: options.tonalContext,
       mix: {
         loudness: calculateLoudness(noteEvents),
-        silenceRatio: calculateSilenceRatio(noteEvents, fromBeat, toBeat),
+        silenceRatio,
         lowEnergy: energy.low,
         midEnergy: energy.mid,
         highEnergy: energy.high,
         brightness: energy.brightness,
-        transientDensity: noteEvents.length / densityBeats,
+        transientDensity,
+        agitation: agitation.level,
+        agitationSources: agitation.sources,
       },
       eventCount: recentEvents.length,
       recentEvents,
@@ -142,11 +169,141 @@ export class MusicalEventLedger {
           recentEvents: playerEvents,
           density: playerNoteEvents.length / densityBeats,
           register: inferRegister(player.tags),
+          contagion: calculatePlayerContagion(
+            player.disposition,
+            playerNoteEvents.length / densityBeats,
+            agitation.level,
+          ),
           tags: player.tags,
         };
       }),
     };
   }
+}
+
+function summarizeAgitation(
+  events: readonly MusicalEvent[],
+  transientDensity: number,
+  silenceRatio: number,
+): { level: number; sources: MixAgitationSources } {
+  if (events.length === 0) {
+    return {
+      level: 0,
+      sources: {
+        timingVariance: 0,
+        velocitySpike: 0,
+        densityPressure: 0,
+        pushDragPressure: 0,
+      },
+    };
+  }
+
+  const normalizedOffsets = events.map(normalizePerformedOffset);
+  const timingVariance = standardDeviation(normalizedOffsets);
+  const averageOffset = average(normalizedOffsets.map(Math.abs));
+  const directionalSpread = normalizedOffsets.length <= 1
+    ? averageOffset
+    : (Math.max(...normalizedOffsets) - Math.min(...normalizedOffsets)) / 2;
+  const pushDragPressure = clamp(averageOffset * 0.58 + directionalSpread * 0.42, 0, 1);
+  const velocitySpike = calculateVelocitySpike(events);
+  const densityPressure = clamp((transientDensity / 3) * (1 - silenceRatio * 0.45), 0, 1);
+  const level = clamp(
+    timingVariance * 0.3
+      + velocitySpike * 0.24
+      + densityPressure * 0.3
+      + pushDragPressure * 0.16,
+    0,
+    1,
+  );
+
+  return {
+    level: roundUnit(level),
+    sources: {
+      timingVariance: roundUnit(timingVariance),
+      velocitySpike: roundUnit(velocitySpike),
+      densityPressure: roundUnit(densityPressure),
+      pushDragPressure: roundUnit(pushDragPressure),
+    },
+  };
+}
+
+function calculatePlayerContagion(
+  disposition: PlayerDisposition,
+  playerDensity: number,
+  mixAgitation: number,
+): PlayerContagion {
+  if (mixAgitation === 0) {
+    return {
+      level: 0,
+      summary: "quiet",
+      components: {
+        catchPressure: 0,
+        damping: roundUnit(disposition.caution * 0.34 + disposition.steadiness * 0.28),
+        amplification: 0,
+        activity: 0,
+      },
+    };
+  }
+
+  const activity = clamp(playerDensity, 0, 1);
+  const catchPressure = clamp(
+    disposition.responsiveness * 0.48
+      + disposition.novelty * 0.14
+      + disposition.disruption * 0.22
+      + activity * 0.16,
+    0,
+    1,
+  );
+  const damping = clamp(disposition.caution * 0.34 + disposition.steadiness * 0.28, 0, 1);
+  const amplification = clamp(
+    disposition.disruption * 0.35
+      + (1 - disposition.steadiness) * 0.22
+      + disposition.density * 0.18,
+    0,
+    1,
+  );
+  const level = clamp(
+    mixAgitation * (0.45 + catchPressure * 0.55 + amplification * 0.3 - damping * 0.35)
+      + mixAgitation * activity * 0.12,
+    0,
+    1,
+  );
+
+  return {
+    level: roundUnit(level),
+    summary: summarizeContagion(catchPressure, damping, amplification),
+    components: {
+      catchPressure: roundUnit(catchPressure),
+      damping: roundUnit(damping),
+      amplification: roundUnit(amplification),
+      activity: roundUnit(activity),
+    },
+  };
+}
+
+function normalizePerformedOffset(event: MusicalEvent): number {
+  const maximumOffset = Math.max(0.0001, event.performedTiming?.maximumOffsetBeats ?? 0.035);
+  return clamp(event.performedOffsetBeats / maximumOffset, -1, 1);
+}
+
+function calculateVelocitySpike(events: readonly MusicalEvent[]): number {
+  const velocities = events.map((event) => event.velocity);
+  const meanVelocity = average(velocities);
+  const maximumVelocity = Math.max(...velocities);
+  const velocityVariance = standardDeviation(velocities);
+
+  return clamp((maximumVelocity - meanVelocity) * 1.35 + velocityVariance * 0.9, 0, 1);
+}
+
+function summarizeContagion(
+  catchPressure: number,
+  damping: number,
+  amplification: number,
+): string {
+  if (damping > catchPressure + amplification * 0.35) return "damping heat";
+  if (amplification > 0.42) return "amplifying heat";
+  if (catchPressure > 0.58) return "catching heat";
+  return "holding heat";
 }
 
 function inferRegister(tags: readonly string[]): "low" | "mid" | "high" {
@@ -240,4 +397,24 @@ function measureIntervalUnion(intervals: readonly { start: number; end: number }
   }
 
   return activeBeats + currentEnd - currentStart;
+}
+
+function average(values: readonly number[]): number {
+  if (values.length === 0) return 0;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function standardDeviation(values: readonly number[]): number {
+  if (values.length === 0) return 0;
+  const mean = average(values);
+  const variance = average(values.map((value) => (value - mean) ** 2));
+  return Math.sqrt(variance);
+}
+
+function roundUnit(value: number): number {
+  return Math.round(clamp(value, 0, 1) * 1_000) / 1_000;
+}
+
+function clamp(value: number, minimum: number, maximum: number): number {
+  return Math.max(minimum, Math.min(maximum, value));
 }

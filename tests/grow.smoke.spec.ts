@@ -72,7 +72,18 @@ type TransportState = {
 type ListeningFrame = {
   eventCount: number;
   tonalContext: { tonic: string; mode: string; scale: readonly string[] };
-  mix: { silenceRatio: number; brightness: number; transientDensity: number };
+  mix: {
+    silenceRatio: number;
+    brightness: number;
+    transientDensity: number;
+    agitation: number;
+    agitationSources: {
+      timingVariance: number;
+      velocitySpike: number;
+      densityPressure: number;
+      pushDragPressure: number;
+    };
+  };
   recentEvents: Array<{
     playerId: string;
     kind: string;
@@ -98,7 +109,21 @@ type ListeningFrame = {
     };
     tags: string[];
   }>;
-  players: Array<{ id: string; state: string; recentEvents: unknown[] }>;
+  players: Array<{
+    id: string;
+    state: string;
+    recentEvents: unknown[];
+    contagion: {
+      level: number;
+      summary: string;
+      components: {
+        catchPressure: number;
+        damping: number;
+        amplification: number;
+        activity: number;
+      };
+    };
+  }>;
 };
 
 type TasteEvaluation = {
@@ -566,7 +591,7 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   const canvasFrame = page.getByTestId("terrarium-container");
   const canvas = page.getByTestId("terrarium-canvas");
 
-  await expect(page.locator(".brand__subtitle")).toHaveText("Byte 10d: audible performed offsets");
+  await expect(page.locator(".brand__subtitle")).toHaveText("Byte 10e: agitation and contagion");
   await expect(button).toHaveText("Start");
   await expect(status).toContainText(
     "mode rehearsal | stopped | 90 BPM | bar 1 | beat 0.0 | lookahead stopped 0.0/8 | pending slots 0",
@@ -618,6 +643,7 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   await expect(page.getByTestId("player-pulse-taste-summary")).toContainText("Listening");
   await expect(page.getByTestId("player-pulse-expression")).toHaveText("waiting");
   await expect(page.getByTestId("player-pulse-offset")).toHaveText("waiting");
+  await expect(page.getByTestId("player-pulse-contagion")).toHaveText("0.00 (quiet)");
   await expect(page.getByTestId("player-bass-name")).toHaveText("bass");
   await expect(page.getByTestId("player-bass-role")).toHaveText("bass");
   await expect(page.getByTestId("player-bass-sound")).toHaveText("modal bass");
@@ -676,6 +702,7 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   })).toBe(true);
   await expect(page.getByTestId("listening-tonal-context")).toHaveText("C mixolydian");
   await expect(page.getByTestId("listening-event-count")).toHaveText("0");
+  await expect(page.getByTestId("listening-agitation")).toHaveText("0.00 (density)");
   await expect(page.getByTestId("lookahead-health")).toHaveText("stopped");
   await expect(page.getByTestId("lookahead-lead")).toHaveText("0.0 / 8 beats");
   await expect(page.getByTestId("lookahead-through")).toHaveText("beat 0.0");
@@ -720,8 +747,13 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   await expect
     .poll(async () => (await getTransportState(page)).performedTiming.latest.length)
     .toBe(3);
+  await expect
+    .poll(async () => (await getListeningFrame(page)).mix.agitation)
+    .toBeGreaterThan(0);
   await expect(page.getByTestId("player-pulse-expression")).toContainText("x");
   await expect(page.getByTestId("player-pulse-offset")).toContainText("beats");
+  await expect(page.getByTestId("player-melody-contagion")).toContainText("heat");
+  await expect(page.getByTestId("listening-agitation")).toContainText("(");
 
   const frame = await getListeningFrame(page);
   const expressionState = await getTransportState(page);
@@ -757,7 +789,17 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   expect(frame.mix.brightness).toBeGreaterThanOrEqual(0);
   expect(frame.mix.brightness).toBeLessThanOrEqual(1);
   expect(frame.mix.transientDensity).toBeGreaterThan(0);
+  expect(frame.mix.agitation).toBeGreaterThan(0);
+  expect(frame.mix.agitation).toBeLessThanOrEqual(1);
+  expect(Object.values(frame.mix.agitationSources).every((value) => value >= 0 && value <= 1)).toBe(true);
   expect(frame.players.map((player) => player.id).sort()).toEqual(["bass", "melody", "pulse"]);
+  expect(frame.players.every((player) => (
+    player.contagion.level >= 0
+    && player.contagion.level <= 1
+    && player.contagion.summary.length > 0
+    && Object.values(player.contagion.components).every((value) => value >= 0 && value <= 1)
+  ))).toBe(true);
+  expect(frame.players.some((player) => player.contagion.level > 0)).toBe(true);
   expect(frame.players.find((player) => player.id === "pulse")?.recentEvents.length).toBeGreaterThan(0);
   expect(frame.players.find((player) => player.id === "bass")?.recentEvents.length).toBeGreaterThan(0);
   expect(frame.players.find((player) => player.id === "melody")?.recentEvents.length).toBeGreaterThan(0);

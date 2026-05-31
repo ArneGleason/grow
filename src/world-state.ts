@@ -101,6 +101,7 @@ export class GrowWorldState {
       state: options.transportStatus && options.currentBeat !== undefined
         ? this.derivePlayerState(player.id, options.transportStatus, options.currentBeat)
         : state,
+      disposition: player.thinking.disposition,
       tags: player.tags,
     }));
 

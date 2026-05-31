@@ -1,6 +1,6 @@
 import "./style.css";
 import { formatExpressionSnapshot, type PlayerExpressionSnapshot } from "./expression";
-import type { ListeningFrame, MusicalEvent } from "./listening";
+import type { ListeningFrame, ListeningFramePlayer, MusicalEvent } from "./listening";
 import {
   checkOllamaHealth,
   createDefaultOllamaConfig,
@@ -85,7 +85,7 @@ const HELP_TOPICS = {
   },
   players: {
     title: "Players",
-    body: "Players are the current musical presences. State is recent posture, Taste is the current rule decision, Dynamics heard is the last audible velocity expression, and Offset queued is the committed performed-time offset.",
+    body: "Players are the current musical presences. State is recent posture, Taste is the current rule decision, Dynamics heard is the last audible velocity expression, Offset queued is the committed performed-time offset, and Heat caught is how much shared agitation the player's disposition absorbs.",
   },
   thoughts: {
     title: "Thoughts",
@@ -93,7 +93,7 @@ const HELP_TOPICS = {
   },
   listening: {
     title: "Listening",
-    body: "Listening summarizes the recent musical event ledger. Players hear this structured frame first; raw audio analysis can come later once the symbolic layer is useful.",
+    body: "Listening summarizes the recent musical event ledger. Agitation is a bounded shared heat signal from density, velocity spikes, microtiming variance, and push/drag pressure.",
   },
   lookahead: {
     title: "Lookahead",
@@ -130,11 +130,11 @@ function isHelpTopicId(value: string): value is HelpTopicId {
 }
 
 app.innerHTML = `
-  <section class="app-shell" aria-label="Grow Byte 10d">
+  <section class="app-shell" aria-label="Grow Byte 10e">
     <header class="topbar">
       <div class="brand">
         <h1 class="brand__title">Grow</h1>
-        <p class="brand__subtitle">Byte 10d: audible performed offsets</p>
+        <p class="brand__subtitle">Byte 10e: agitation and contagion</p>
       </div>
       <div class="transport-controls">
         <fieldset class="mode-control">
@@ -293,6 +293,8 @@ ${renderHelpButton("listening", "listening frame")}
             <dd data-testid="listening-window">beats 0-0</dd>
             <dt>Latest</dt>
             <dd data-testid="listening-latest-event">none</dd>
+            <dt>Agitation</dt>
+            <dd data-testid="listening-agitation">0.00</dd>
           </dl>
         </section>
 
@@ -347,6 +349,7 @@ const ollamaRawResponse = requireElement<HTMLElement>("[data-testid='ollama-raw-
 const listeningEventCount = requireElement<HTMLElement>("[data-testid='listening-event-count']");
 const listeningWindow = requireElement<HTMLElement>("[data-testid='listening-window']");
 const listeningLatestEvent = requireElement<HTMLElement>("[data-testid='listening-latest-event']");
+const listeningAgitation = requireElement<HTMLElement>("[data-testid='listening-agitation']");
 const listeningTonalContext = requireElement<HTMLElement>("[data-testid='listening-tonal-context']");
 const lookaheadHealth = requireElement<HTMLElement>("[data-testid='lookahead-health']");
 const lookaheadLead = requireElement<HTMLElement>("[data-testid='lookahead-lead']");
@@ -364,6 +367,7 @@ const playerTasteActionNodes = new Map<string, HTMLElement>();
 const playerTasteSummaryNodes = new Map<string, HTMLElement>();
 const playerExpressionNodes = new Map<string, HTMLElement>();
 const playerTimingNodes = new Map<string, HTMLElement>();
+const playerContagionNodes = new Map<string, HTMLElement>();
 const thoughtSeedFocusNodes = new Map<string, HTMLElement>();
 const thoughtSeedMotifNodes = new Map<string, HTMLElement>();
 const thoughtSeedFragmentsNodes = new Map<string, HTMLElement>();
@@ -458,6 +462,7 @@ function renderPlayerInspector(
   evaluations: readonly PlayerTasteEvaluation[],
   expressions: readonly PlayerExpressionSnapshot[],
   performedTimings: readonly PlayerPerformedTimingSnapshot[],
+  framePlayers: readonly ListeningFramePlayer[],
 ): void {
   const nextPlayerIds = players.map(({ player }) => player.id).join("|");
   const evaluationsByPlayer = new Map(evaluations.map((evaluation) => [
@@ -472,6 +477,10 @@ function renderPlayerInspector(
     timing.playerId,
     timing,
   ]));
+  const framePlayersByPlayer = new Map(framePlayers.map((framePlayer) => [
+    framePlayer.id,
+    framePlayer,
+  ]));
 
   if (renderedPlayerIds !== nextPlayerIds) {
     playerStateNodes.clear();
@@ -479,10 +488,12 @@ function renderPlayerInspector(
     playerTasteSummaryNodes.clear();
     playerExpressionNodes.clear();
     playerTimingNodes.clear();
+    playerContagionNodes.clear();
     const cards = players.map(({ player, state }) => {
       const evaluation = evaluationsByPlayer.get(player.id);
       const expression = expressionsByPlayer.get(player.id);
       const timing = timingsByPlayer.get(player.id);
+      const framePlayer = framePlayersByPlayer.get(player.id);
       const card = document.createElement("article");
       card.className = "player-inspector";
       card.dataset.testid = `player-card-${player.id}`;
@@ -503,6 +514,11 @@ function renderPlayerInspector(
           "Offset queued",
           formatPerformedTimingSnapshot(timing),
           `player-${player.id}-offset`,
+        ),
+        ...createDefinition(
+          "Heat caught",
+          formatPlayerContagion(framePlayer),
+          `player-${player.id}-contagion`,
         ),
         ...createDefinition(
           "Why",
@@ -540,6 +556,12 @@ function renderPlayerInspector(
       if (timingNode) {
         playerTimingNodes.set(player.id, timingNode);
       }
+      const contagionNode = dl.querySelector<HTMLElement>(
+        `[data-testid='player-${player.id}-contagion']`,
+      );
+      if (contagionNode) {
+        playerContagionNodes.set(player.id, contagionNode);
+      }
       return card;
     });
 
@@ -568,6 +590,10 @@ function renderPlayerInspector(
     const timingNode = playerTimingNodes.get(player.id);
     if (timingNode) {
       timingNode.textContent = formatPerformedTimingSnapshot(timingsByPlayer.get(player.id));
+    }
+    const contagionNode = playerContagionNodes.get(player.id);
+    if (contagionNode) {
+      contagionNode.textContent = formatPlayerContagion(framePlayersByPlayer.get(player.id));
     }
   }
 }
@@ -683,6 +709,11 @@ function formatThoughtFragments(seed: PlayerThoughtSeed): string {
   return seed.selectedFragments.map((fragment) => fragment.text).join(" | ");
 }
 
+function formatPlayerContagion(framePlayer: ListeningFramePlayer | undefined): string {
+  if (!framePlayer) return "0.00 (quiet)";
+  return `${framePlayer.contagion.level.toFixed(2)} (${framePlayer.contagion.summary})`;
+}
+
 function renderListening(frame: ListeningFrame): void {
   const latestEvent = frame.recentEvents.at(-1);
   listeningTonalContext.textContent = `${frame.tonalContext.tonic} ${frame.tonalContext.mode}`;
@@ -691,6 +722,19 @@ function renderListening(frame: ListeningFrame): void {
   listeningLatestEvent.textContent = latestEvent
     ? `${latestEvent.playerId} ${latestEvent.kind} ${latestEvent.pitch ?? ""} @ ${latestEvent.transportPosition}`
     : "none";
+  listeningAgitation.textContent = formatAgitation(frame);
+}
+
+function formatAgitation(frame: ListeningFrame): string {
+  const sources = frame.mix.agitationSources;
+  const sourceEntries = [
+    ["density", sources.densityPressure],
+    ["velocity", sources.velocitySpike],
+    ["timing", sources.timingVariance],
+    ["push/drag", sources.pushDragPressure],
+  ] as const;
+  const [dominantSource] = [...sourceEntries].sort((left, right) => right[1] - left[1])[0];
+  return `${frame.mix.agitation.toFixed(2)} (${dominantSource})`;
 }
 
 function renderLookahead(lookahead: GrowLookaheadState): void {
@@ -886,7 +930,13 @@ function renderWorld(state: GrowTransportState = getState()): void {
   const evaluations = world.getTasteEvaluations();
   const thoughtRequests = world.getThoughtRequests(frame);
   const thoughtIntents = world.getMockThoughtIntents(frame, thoughtRequests);
-  renderPlayerInspector(players, evaluations, state.expression.latest, state.performedTiming.latest);
+  renderPlayerInspector(
+    players,
+    evaluations,
+    state.expression.latest,
+    state.performedTiming.latest,
+    frame.players,
+  );
   renderThoughts(thoughtRequests, thoughtIntents);
   renderListening(frame);
   renderOllama();

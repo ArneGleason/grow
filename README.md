@@ -30,11 +30,12 @@ Grow currently runs as a browser app with:
 - Session modes: break, solo practice, rehearsal, and performance.
 - Player taste rules that can repeat, support, simplify, vary, contrast, or rest.
 - Deterministic "reproducible aliveness": velocity movement and slight performed-time offsets.
+- A bounded agitation/contagion signal so the ensemble can expose shared heat before it changes behavior.
 - A strict thought protocol for future Ollama-authored musical ideas.
 - A manual local Ollama probe with validation and mock fallback.
 - Context help in the inspector so the app can explain its growing set of controls.
 
-The current milestone is around Byte 10d: the band is still rule-based, but its timing and expression have started to breathe.
+The current milestone is around Byte 10e: the band is still rule-based, but its timing, expression, and shared heat have started to breathe.
 
 ## What Is Not Here Yet
 
@@ -131,7 +132,7 @@ They are intentionally boring and inspectable. The system should be weird becaus
 - `src/players.ts`: durable player definitions.
 - `src/world-state.ts`: in-memory world state and musical event ledger.
 - `src/transport.ts`: Tone.js lifecycle and lookahead scheduling.
-- `src/listening.ts`: listening-frame summaries.
+- `src/listening.ts`: listening-frame summaries, mix agitation, and per-player contagion.
 - `src/taste.ts`: rule-based subjective choices.
 - `src/expression.ts`: deterministic velocity expression.
 - `src/performed-time.ts`: deterministic performed-time offsets.

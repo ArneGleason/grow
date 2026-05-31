@@ -58,7 +58,7 @@ These are not bugs if they are intentional, bounded, deterministic, and visible 
 
 ## Agitation And Contagion
 
-The listening frame can eventually carry an `agitation` or similar metric.
+The listening frame carries an `agitation` metric as a bounded shared heat signal.
 
 It might come from:
 
@@ -75,7 +75,7 @@ Player disposition can turn that shared heat into behavior:
 - `disruption`: amplifies it,
 - `steadiness`: anchors the group.
 
-This gives player profiles musical force rather than making them prompt flavor only.
+This gives player profiles musical force rather than making them prompt flavor only. The first version is inspectable only: it surfaces shared agitation and per-player contagion without changing scheduled musical decisions yet.
 
 ## Review Lens
 

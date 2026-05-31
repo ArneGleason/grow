@@ -747,7 +747,7 @@ Implementation notes:
 
 ### Byte 10e: Agitation And Contagion
 
-Status: planned.
+Status: implemented.
 
 Let one player's heat become something the ensemble hears.
 
@@ -764,6 +764,13 @@ Review focus:
 - whether agitation builds and releases musically,
 - whether contagion is bounded and cannot run away into noise or silence,
 - whether player dispositions become load-bearing rather than decorative.
+
+Implementation notes:
+
+- `ListeningFrame.mix.agitation` is now a bounded shared heat metric derived from timing variance, velocity spikes, density pressure, and push/drag pressure.
+- Each `ListeningFramePlayer` includes a bounded `contagion` summary shaped by disposition: responsiveness catches, caution and steadiness damp, disruption amplifies, and recent activity makes heat more available.
+- The inspector shows `Agitation` in the Listening section and `Heat caught` per player.
+- Byte 10e deliberately does not feed agitation into taste, transport, or scheduling decisions yet.
 
 ### Byte 10f: Ollama Backend Proxy And Prompt Protocol Registry
 
