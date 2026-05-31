@@ -744,6 +744,29 @@ Implementation notes:
 - `src/performed-time.ts` now folds pitch leap, role-relative register, local density, and disposition into the bounded offset model.
 - Smoke coverage now includes a restart replay assertion that compares performed offsets by `playerId:eventIndex`.
 - Claude's Byte 10d review approved the audible microtiming layer. Forward notes: choose deliberately whether difficult material should baseline push/rush or drag/slow, record `latestCommittedPitchByPlayer` in future seek-and-continue checkpoint state, consolidate duplicated pitch parsing helpers, and label just-heard dynamics versus next-committed timing debug surfaces.
+- Listening note from Arne after live preview: the current timing variation can read as perpetual stumble rather than tempo/groove. Hypothesis: Byte 10d collapsed several timing-feel layers into one per-note offset. A future timing byte should add a hierarchy of ensemble tempo drift, shared groove, per-player pocket, material pressure, and rare stumble/recovery events, so most offsets belong to a coherent pocket and only occasional notes sound like slips.
+
+### Future Timing Feel Retune: Groove Before Stumble
+
+Status: planned.
+
+Retune the performed-time model so it sounds like a band with a pocket, not constant individual timing errors.
+
+Scope:
+
+- Add an explicit shared groove surface: a deterministic bar/phrase-position offset curve that repeats or evolves slowly.
+- Add a slow ensemble tempo-drift surface separate from the ledger's grid truth.
+- Add per-player groove placement relative to the shared pocket, such as pulse anchoring, bass slightly behind/ahead, melody with looser phrase-edge placement.
+- Keep material difficulty as a secondary pressure, not the default source of every offset.
+- Make stumble/recovery rare and inspectable, with rate limits or cooldowns.
+- Keep all timing outputs deterministic, bounded, and replayable.
+
+Review focus:
+
+- whether most notes sound intentionally pocketed rather than individually wrong,
+- whether tests still prove determinism without requiring exaggerated timing magnitude,
+- whether `absoluteBeat` remains the analysis/replay truth while performed timing carries the audible feel,
+- whether the timing surfaces are understandable enough for players and future Ollama thoughts to reference.
 
 ### Byte 10e: Agitation And Contagion
 

@@ -56,6 +56,22 @@ Examples:
 
 These are not bugs if they are intentional, bounded, deterministic, and visible in the inspection trail.
 
+## Timing Feel Hierarchy
+
+Timing expression should not read as perpetual stumbling.
+
+The current performed-offset layer proves that notes can move deterministically off the grid, but note-by-note offsets are only the smallest layer of feel. A more musical timing model should separate:
+
+- ensemble tempo drift: slow, shared movement of the whole session's pulse,
+- shared groove: a repeating pocket for bar or phrase positions,
+- player groove: role-specific placement relative to the shared pocket,
+- material pressure: deterministic push or drag from density, leaps, register, or phrase endings,
+- occasional stumble: rare, bounded, explainable mistakes or recovery gestures.
+
+When these layers are collapsed into one per-note offset, the ear can hear constant correction instead of a band agreeing on a pocket. Verification can still assert deterministic offsets, but the musical target should be that most notes belong to a coherent groove and only a few notes sound like slips.
+
+Future timing work should make the default offset mostly groove-shaped and persistent across several bars, then add small player-specific deviations and very occasional stumbles. Tempo and groove should be stateful musical surfaces that players can notice, negotiate, and eventually ask the slow-thinking model to revise.
+
 ## Agitation And Contagion
 
 The listening frame carries an `agitation` metric as a bounded shared heat signal.
