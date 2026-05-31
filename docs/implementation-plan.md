@@ -920,7 +920,7 @@ Implementation notes:
 Review result:
 
 - Claude approved Byte 10f-b2 with no required fixes. The review verified model-authored `pitch` cannot be emitted through the schema, pitch derivation stays guarded, proxy abort propagation cleans up listeners and returns a distinct abort path, and real qwen3 returned 6/6 valid manual thought tests.
-- Follow-up before Byte 11: add a malformed/invalid-200 smoke fixture where Ollama returns HTTP 200 with validator-failing JSON, expecting `invalid`, provider `ollama`, and deterministic mock fallback valid.
+- Follow-up before Byte 11 is implemented: the malformed/invalid-200 smoke fixture returns parse `ok`, validation `invalid`, provider `ollama`, deterministic mock fallback valid, and stopped transport.
 - Model picker can wait; the current env var, inspector input, and `window.ollama.setConfig()` are enough until tag typing becomes annoying.
 
 ### Byte 10f: Ollama Backend Proxy And Prompt Protocol Registry

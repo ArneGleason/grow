@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Implement Byte 10f-b2 model-safe Ollama thought schema",
-  "status": "byte10f-b2-merged",
-  "updatedAt": "2026-05-31T20:56:34Z",
+  "lastTask": "Add pre-Byte-11 invalid Ollama response smoke fixture",
+  "status": "pre-byte11-fixture-ready",
+  "updatedAt": "2026-05-31T21:00:31Z",
   "lastHandoff": "",
-  "branch": "main",
-  "commit": "b266a58",
+  "branch": "codex/byte-11",
+  "commit": "branch HEAD",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 10f-b2 is approved by Claude, merged to main, and pushed. The projected JSON model-facing response schema no longer includes pitch; the prompt/primer tell models to emit scaleDegree plus octave, and `src/ollama.ts` derives canonical pitch before validation without masking out-of-range degrees. The Vite Ollama proxy propagates browser aborts to upstream fetches. Build was green and smoke was 12/12 before review, with derived-pitch and proxy-failure mock-fallback coverage. No model output is scheduled into music. Next follow-up before Byte 11: add a malformed/invalid-200 smoke fixture, then start the one-player slow-thinking loop."
+    "summary": "Byte 10f-b2 is approved by Claude, merged to main, and pushed. On the fresh `codex/byte-11` branch, the requested pre-Byte-11 malformed/invalid-200 smoke fixture is implemented: mocked Ollama HTTP 200 with parseable validator-failing JSON yields parse ok, validation invalid, provider ollama, valid deterministic mock fallback, and stopped transport. Build is green and smoke is 13/13. No model output is scheduled into music yet; the next implementation step is the one-player slow-thinking loop."
   }
 }

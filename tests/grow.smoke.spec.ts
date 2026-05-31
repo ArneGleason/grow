@@ -755,6 +755,70 @@ test("manual Ollama thought probe keeps mock fallback when proxy chat fails", as
   expect((await getTransportState(page)).status).toBe("stopped");
 });
 
+test("manual Ollama thought probe keeps mock fallback for invalid model JSON", async ({ page }) => {
+  await page.route("**/api/ollama/chat**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      headers: {
+        "content-type": "application/json",
+        "x-grow-ollama-proxy": "smoke",
+      },
+      body: JSON.stringify({
+        model: "qwen3:4b-instruct-2507-q4_K_M",
+        message: {
+          role: "assistant",
+          content: JSON.stringify({
+            id: "invalid-scale-degree-intent",
+            responseLevel: "variation_intent",
+            action: "vary_motif",
+            confidence: 0.78,
+            target: { startAfterBeats: 1, durationBeats: 1 },
+            musicalIdea: {
+              label: "bad degree but parseable",
+              origin: "imagined",
+              durationBeats: 1,
+              steps: [{
+                kind: "note",
+                positionBeats: 0,
+                durationBeats: 0.5,
+                scaleDegree: 99,
+                octave: 4,
+                velocity: 0.55,
+                tags: ["ollama", "invalid"],
+              }],
+              tags: ["ollama-intent"],
+            },
+            rationale: "This intentionally exceeds the tonal scale.",
+          }),
+        },
+        done: true,
+      }),
+    });
+  });
+
+  await page.goto("/");
+  await page.getByTestId("ollama-send-thought").click();
+  await expect(page.getByTestId("ollama-parse-result")).toHaveText("ok");
+  await expect(page.getByTestId("ollama-validation-result")).toHaveText("invalid (1)");
+  await expect(page.getByTestId("ollama-fallback-status")).toContainText("mock fallback valid");
+  await expect(page.getByTestId("ollama-errors")).toContainText("scaleDegree must be within tonal scale");
+
+  const probe = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      ollama?: { getLastThoughtTest(): OllamaThoughtProbe };
+    };
+    return appWindow.ollama?.getLastThoughtTest();
+  });
+
+  expect(probe?.status).toBe("invalid");
+  expect(probe?.provider).toBe("ollama");
+  expect(probe?.parse.status).toBe("ok");
+  expect(probe?.validation.valid).toBe(false);
+  expect(probe?.fallbackValidation?.valid).toBe(true);
+  expect(probe?.intent?.musicalIdea.steps[0]?.pitch).toBeUndefined();
+  expect((await getTransportState(page)).status).toBe("stopped");
+});
+
 test("local Ollama proxy rejects non-local targets", async ({ request }) => {
   const response = await request.get("/api/ollama/tags?baseUrl=http://example.com:11434");
 
