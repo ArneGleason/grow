@@ -29,7 +29,12 @@ import {
   type SessionMode,
   type SessionModeOption,
 } from "./session-mode";
-import { createTerrariumView, type TerrariumView } from "./terrarium";
+import {
+  createTerrariumView,
+  type TerrariumHeatState,
+  type TerrariumView,
+  type TerrariumVisualState,
+} from "./terrarium";
 import type { PlayerTasteEvaluation } from "./taste";
 import type {
   PlayerThoughtIntent,
@@ -130,11 +135,11 @@ function isHelpTopicId(value: string): value is HelpTopicId {
 }
 
 app.innerHTML = `
-  <section class="app-shell" aria-label="Grow Byte 10e">
+  <section class="app-shell" aria-label="Grow Byte 10e-v">
     <header class="topbar">
       <div class="brand">
         <h1 class="brand__title">Grow</h1>
-        <p class="brand__subtitle">Byte 10e: agitation and contagion</p>
+        <p class="brand__subtitle">Byte 10e-v: visual heat</p>
       </div>
       <div class="transport-controls">
         <fieldset class="mode-control">
@@ -714,6 +719,16 @@ function formatPlayerContagion(framePlayer: ListeningFramePlayer | undefined): s
   return `${framePlayer.contagion.level.toFixed(2)} (${framePlayer.contagion.summary})`;
 }
 
+function createTerrariumHeatState(frame: ListeningFrame): TerrariumHeatState {
+  return {
+    agitation: frame.mix.agitation,
+    players: frame.players.map((player) => ({
+      playerId: player.id,
+      contagionLevel: player.contagion.level,
+    })),
+  };
+}
+
 function renderListening(frame: ListeningFrame): void {
   const latestEvent = frame.recentEvents.at(-1);
   listeningTonalContext.textContent = `${frame.tonalContext.tonic} ${frame.tonalContext.mode}`;
@@ -940,6 +955,7 @@ function renderWorld(state: GrowTransportState = getState()): void {
   renderThoughts(thoughtRequests, thoughtIntents);
   renderListening(frame);
   renderOllama();
+  terrarium?.setHeat(createTerrariumHeatState(frame));
   for (const { player, state: playerState } of players) {
     terrarium?.setPlayerState(player.id, playerState);
   }
@@ -1138,6 +1154,9 @@ declare global {
       getInfluenceProbePrompt(playerId?: string): string;
       parseThoughtResponse(rawResponse: string, playerId?: string): OllamaThoughtParseResult;
     };
+    terrarium?: {
+      getVisualState(): TerrariumVisualState | undefined;
+    };
   }
 }
 
@@ -1217,6 +1236,10 @@ window.ollama = {
   parseThoughtResponse: (rawResponse, playerId) => parseManualOllamaThoughtResponse(rawResponse, playerId),
 };
 
+window.terrarium = {
+  getVisualState: () => terrarium?.getVisualState(),
+};
+
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
     if (renderFrameId !== null) {
@@ -1229,6 +1252,7 @@ if (import.meta.hot) {
     window.thinking = undefined;
     window.session = undefined;
     window.ollama = undefined;
+    window.terrarium = undefined;
     window.removeEventListener("resize", handleWindowResize);
   });
 }

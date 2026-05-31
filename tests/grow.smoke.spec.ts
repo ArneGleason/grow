@@ -126,6 +126,17 @@ type ListeningFrame = {
   }>;
 };
 
+type TerrariumVisualState = {
+  agitation: number;
+  roomWarmthAlpha: number;
+  players: Array<{
+    playerId: string;
+    contagionLevel: number;
+    haloAlpha: number;
+    haloScale: number;
+  }>;
+};
+
 type TasteEvaluation = {
   playerId: string;
   action: string;
@@ -181,6 +192,21 @@ async function getListeningFrame(page: Page): Promise<ListeningFrame> {
   }
 
   return frame;
+}
+
+async function getTerrariumVisualState(page: Page): Promise<TerrariumVisualState> {
+  const state = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      terrarium?: { getVisualState(): TerrariumVisualState | undefined };
+    };
+    return appWindow.terrarium?.getVisualState();
+  });
+
+  if (!state) {
+    throw new Error("window.terrarium.getVisualState() was not available");
+  }
+
+  return state;
 }
 
 async function getTasteEvaluations(page: Page): Promise<readonly TasteEvaluation[]> {
@@ -591,7 +617,7 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   const canvasFrame = page.getByTestId("terrarium-container");
   const canvas = page.getByTestId("terrarium-canvas");
 
-  await expect(page.locator(".brand__subtitle")).toHaveText("Byte 10e: agitation and contagion");
+  await expect(page.locator(".brand__subtitle")).toHaveText("Byte 10e-v: visual heat");
   await expect(button).toHaveText("Start");
   await expect(status).toContainText(
     "mode rehearsal | stopped | 90 BPM | bar 1 | beat 0.0 | lookahead stopped 0.0/8 | pending slots 0",
@@ -714,6 +740,17 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   expect(box?.height).toBeGreaterThan(340);
   expect(Math.abs((box?.width ?? 0) - (frameBox?.width ?? 0))).toBeLessThan(2);
   expect(Math.abs((box?.height ?? 0) - (frameBox?.height ?? 0))).toBeLessThan(2);
+  const initialVisualState = await getTerrariumVisualState(page);
+  expect(initialVisualState.agitation).toBe(0);
+  expect(initialVisualState.roomWarmthAlpha).toBe(0);
+  expect(initialVisualState.players.map((player) => player.playerId).sort()).toEqual(["bass", "melody", "pulse"]);
+  expect(initialVisualState.players.every((player) => (
+    player.contagionLevel === 0
+    && player.haloAlpha >= 0.64
+    && player.haloAlpha <= 1
+    && player.haloScale >= 1
+    && player.haloScale <= 1.6
+  ))).toBe(true);
 
   await button.click();
   await expect(button).toHaveText("Stop");
@@ -750,12 +787,31 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   await expect
     .poll(async () => (await getListeningFrame(page)).mix.agitation)
     .toBeGreaterThan(0);
+  await expect
+    .poll(async () => (await getTerrariumVisualState(page)).agitation)
+    .toBeGreaterThan(0);
   await expect(page.getByTestId("player-pulse-expression")).toContainText("x");
   await expect(page.getByTestId("player-pulse-offset")).toContainText("beats");
   await expect(page.getByTestId("player-melody-contagion")).toContainText("heat");
   await expect(page.getByTestId("listening-agitation")).toContainText("(");
 
   const frame = await getListeningFrame(page);
+  const visualState = await getTerrariumVisualState(page);
+  expect(visualState.agitation).toBeGreaterThan(0);
+  expect(visualState.agitation).toBeLessThanOrEqual(1);
+  expect(visualState.roomWarmthAlpha).toBeGreaterThan(0);
+  expect(visualState.roomWarmthAlpha).toBeLessThanOrEqual(0.16);
+  expect(visualState.players.map((player) => player.playerId).sort()).toEqual(["bass", "melody", "pulse"]);
+  expect(visualState.players.every((player) => (
+    player.contagionLevel >= 0
+    && player.contagionLevel <= 1
+    && player.haloAlpha >= 0.64
+    && player.haloAlpha <= 1
+    && player.haloScale >= 1
+    && player.haloScale <= 1.6
+  ))).toBe(true);
+  expect(visualState.players.some((player) => player.contagionLevel > 0)).toBe(true);
+  expect(visualState.players.some((player) => player.haloScale > 1)).toBe(true);
   const expressionState = await getTransportState(page);
   expect(expressionState.expression.latest.map((expression) => expression.playerId).sort()).toEqual([
     "bass",
@@ -1044,6 +1100,7 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   await expect.poll(async () => (await getTransportState(page)).lookahead.health).toBe("stopped");
   await expect(page.getByTestId("lookahead-pending-slots")).toHaveText("0");
   await expect.poll(async () => (await getListeningFrame(page)).eventCount).toBe(0);
+  await expect.poll(async () => (await getTerrariumVisualState(page)).agitation).toBe(0);
 
   for (let index = 0; index < 10; index += 1) {
     await button.click();

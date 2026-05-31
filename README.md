@@ -31,11 +31,12 @@ Grow currently runs as a browser app with:
 - Player taste rules that can repeat, support, simplify, vary, contrast, or rest.
 - Deterministic "reproducible aliveness": velocity movement and slight performed-time offsets.
 - A bounded agitation/contagion signal so the ensemble can expose shared heat before it changes behavior.
+- Terrarium visual heat: the room warms with mix agitation and player halos respond to caught heat.
 - A strict thought protocol for future Ollama-authored musical ideas.
 - A manual local Ollama probe with validation and mock fallback.
 - Context help in the inspector so the app can explain its growing set of controls.
 
-The current milestone is around Byte 10e: the band is still rule-based, but its timing, expression, and shared heat have started to breathe.
+The current milestone is around Byte 10e-v: the band is still rule-based, but its timing, expression, shared heat, and terrarium visuals have started to breathe.
 
 ## What Is Not Here Yet
 
@@ -111,6 +112,7 @@ When the app is running, these globals are useful for inspection:
 - `window.thinking.getRequests()`
 - `window.thinking.getMockIntents()`
 - `window.ollama.checkHealth()`
+- `window.terrarium.getVisualState()`
 
 They are intentionally boring and inspectable. The system should be weird because the musical behavior gets interesting, not because the state is hidden.
 

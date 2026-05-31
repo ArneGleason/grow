@@ -757,7 +757,7 @@ Scope:
 - Derive it from bounded signals like timing variance, velocity spikes, density pressure, and recent push/drag.
 - Let disposition govern contagion: responsiveness catches, caution damps, disruption amplifies, steadiness anchors.
 - Surface agitation in inspector/dev hooks.
-- Optionally let visuals respond subtly to agitation.
+- Keep visual response out of this byte unless it stays inspectable and behavior-neutral.
 
 Review focus:
 
@@ -772,6 +772,32 @@ Implementation notes:
 - The inspector shows `Agitation` in the Listening section and `Heat caught` per player.
 - Byte 10e deliberately does not feed agitation into taste, transport, or scheduling decisions yet.
 - Claude's Byte 10e review approved the read-only agitation layer. Forward notes: when contagion later feeds behavior, use a ceiling plus slow decay governor rather than a hard per-frame clamp; current agitation is density/velocity-led because the audible microtiming offsets are subtle; agitation and per-player contagion are good candidates for terrarium visual intensity before they become audible behavior drivers.
+
+### Byte 10e-v: Visual Heat
+
+Status: implemented.
+
+Make shared heat visible before it becomes a behavior driver.
+
+Scope:
+
+- Use `ListeningFrame.mix.agitation` to warm the terrarium room.
+- Use each player's `contagion.level` to increase halo intensity and scale.
+- Expose a read-only terrarium visual snapshot for smoke tests and browser inspection.
+- Keep the heat visual-only: no taste, transport, scheduling, Ollama, or audio decisions should read it.
+
+Review focus:
+
+- whether heat is noticeable but not noisy,
+- whether visual values are bounded and reset on stop,
+- whether the visual hook stays derived from listening-frame state rather than becoming another state source.
+
+Implementation notes:
+
+- `src/terrarium.ts` now accepts a `TerrariumHeatState`, paints a warm room overlay from agitation, and raises each player halo from contagion while preserving note-on flash.
+- `window.terrarium.getVisualState()` exposes agitation, room warmth alpha, and bounded per-player halo values for smoke tests.
+- Smoke coverage asserts initial quiet visuals, active visual heat while playing, bounded halo values, and reset after stop.
+- Byte 10e-v deliberately does not change the musical event ledger, taste rules, lookahead scheduling, or audio output.
 
 ### Byte 10f: Ollama Backend Proxy And Prompt Protocol Registry
 

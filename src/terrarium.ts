@@ -13,6 +13,9 @@ const TERRARIUM_HEIGHT = 560;
 const AUTO_FOCUS_MARGIN = 180;
 const MAX_AUTO_FOCUS_SCALE = 1.55;
 const HALO_RESTING_ALPHA = 0.64;
+const ROOM_HEAT_ALPHA = 0.16;
+const PLAYER_HEAT_ALPHA_BUMP = 0.28;
+const PLAYER_HEAT_SCALE_BUMP = 0.18;
 const FLASH_DURATION_MS = 180;
 const FLASH_SCALE_BUMP = 0.34;
 
@@ -24,13 +27,37 @@ interface RenderedPlayer {
   radius: number;
   speed: number;
   flashUntilMs: number;
+  contagionLevel: number;
 }
 
 export interface TerrariumView {
   app: Application;
+  setHeat(heat: TerrariumHeatState): void;
+  getVisualState(): TerrariumVisualState;
   setPlayerState(playerId: string, state: PlayerRuntimeState): void;
   flashPlayer(playerId: string): void;
   destroy(): void;
+}
+
+export interface TerrariumHeatState {
+  agitation: number;
+  players: readonly TerrariumHeatPlayer[];
+}
+
+export interface TerrariumHeatPlayer {
+  playerId: string;
+  contagionLevel: number;
+}
+
+export interface TerrariumVisualState {
+  agitation: number;
+  roomWarmthAlpha: number;
+  players: Array<{
+    playerId: string;
+    contagionLevel: number;
+    haloAlpha: number;
+    haloScale: number;
+  }>;
 }
 
 export async function createTerrariumView(
@@ -55,7 +82,9 @@ export async function createTerrariumView(
   app.stage.addChild(world);
 
   const background = drawBackground();
-  world.addChild(background);
+  const heatWash = drawHeatWash();
+  world.addChild(background, heatWash);
+  let agitation = 0;
 
   const renderedPlayers = new Map<string, RenderedPlayer>();
   players.forEach(({ player, state }, index) => {
@@ -71,6 +100,7 @@ export async function createTerrariumView(
       radius: 5 + index * 2,
       speed: 0.24 + index * 0.05,
       flashUntilMs: 0,
+      contagionLevel: 0,
     });
     world.addChild(renderedPlayer.container);
   });
@@ -85,9 +115,7 @@ export async function createTerrariumView(
       renderedPlayer.container.y =
         renderedPlayer.anchor.y +
         Math.sin(now * renderedPlayer.speed * 0.8 + renderedPlayer.phase) * renderedPlayer.radius;
-      const flashProgress = Math.max(0, (renderedPlayer.flashUntilMs - nowMs) / FLASH_DURATION_MS);
-      renderedPlayer.halo.alpha = HALO_RESTING_ALPHA + flashProgress * (1 - HALO_RESTING_ALPHA);
-      renderedPlayer.halo.scale.set(1 + flashProgress * FLASH_SCALE_BUMP);
+      applyHaloHeat(renderedPlayer, nowMs);
     }
   });
 
@@ -115,6 +143,30 @@ export async function createTerrariumView(
 
   return {
     app,
+    setHeat(heat: TerrariumHeatState): void {
+      agitation = clampUnit(heat.agitation);
+      heatWash.alpha = agitation * ROOM_HEAT_ALPHA;
+      const heatByPlayer = new Map(
+        heat.players.map((player) => [player.playerId, clampUnit(player.contagionLevel)]),
+      );
+      const nowMs = performance.now();
+      for (const [playerId, renderedPlayer] of renderedPlayers) {
+        renderedPlayer.contagionLevel = heatByPlayer.get(playerId) ?? 0;
+        applyHaloHeat(renderedPlayer, nowMs);
+      }
+    },
+    getVisualState(): TerrariumVisualState {
+      return {
+        agitation,
+        roomWarmthAlpha: heatWash.alpha,
+        players: [...renderedPlayers.entries()].map(([playerId, renderedPlayer]) => ({
+          playerId,
+          contagionLevel: renderedPlayer.contagionLevel,
+          haloAlpha: renderedPlayer.halo.alpha,
+          haloScale: renderedPlayer.halo.scale.x,
+        })),
+      };
+    },
     setPlayerState(playerId: string, state: PlayerRuntimeState): void {
       const renderedPlayer = renderedPlayers.get(playerId);
       if (!renderedPlayer) return;
@@ -182,6 +234,11 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
+function clampUnit(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return clamp(value, 0, 1);
+}
+
 function visualForState(state: PlayerRuntimeState): { alpha: number; scale: number } {
   switch (state) {
     case "performing":
@@ -221,6 +278,14 @@ function drawBackground(): Container {
   return layer;
 }
 
+function drawHeatWash(): Graphics {
+  const heatWash = new Graphics()
+    .roundRect(0, 0, TERRARIUM_WIDTH, TERRARIUM_HEIGHT, 18)
+    .fill({ color: 0xffb35d });
+  heatWash.alpha = 0;
+  return heatWash;
+}
+
 function drawPlayer(playerData: Player): { container: Container; halo: Graphics } {
   const player = new Container();
 
@@ -249,4 +314,20 @@ function drawPlayer(playerData: Player): { container: Container; halo: Graphics 
 
   player.addChild(halo, body, label);
   return { container: player, halo };
+}
+
+function applyHaloHeat(renderedPlayer: RenderedPlayer, nowMs: number): void {
+  const flashProgress = clampUnit((renderedPlayer.flashUntilMs - nowMs) / FLASH_DURATION_MS);
+  const heatBaseAlpha = clamp(
+    HALO_RESTING_ALPHA + renderedPlayer.contagionLevel * PLAYER_HEAT_ALPHA_BUMP,
+    HALO_RESTING_ALPHA,
+    0.96,
+  );
+  const haloAlpha = heatBaseAlpha + flashProgress * (1 - heatBaseAlpha);
+  const haloScale = 1
+    + renderedPlayer.contagionLevel * PLAYER_HEAT_SCALE_BUMP
+    + flashProgress * FLASH_SCALE_BUMP;
+
+  renderedPlayer.halo.alpha = clamp(haloAlpha, 0, 1);
+  renderedPlayer.halo.scale.set(haloScale);
 }
