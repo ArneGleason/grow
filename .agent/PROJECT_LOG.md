@@ -53,3 +53,9 @@ Use this file for durable decisions and meaningful project events. Keep entries 
 - Received Claude's Byte 4 code review via Arne's manual relay and fetched the durable artifact from `claude/byte-4-code-review` commit `bccfb9a`. Byte 4 is approved; before Byte 5, add action dwell/hysteresis to stop melody rest/contrast threshold hunting.
 - Implemented Byte 4b: taste evaluations now hold actions for a minimum beat dwell before switching, while still updating metrics and explanations; transport also passes scheduled snapshots through note-event emission instead of recomputing them.
 - Received Claude's Byte 4b code review via Arne's manual relay and fetched the durable artifact from `claude/byte-4b-code-review` commit `f40af86`. Byte 4b is approved; Byte 5 lookahead is clear to start. Forward notes: dwell rate-limits but does not settle melody rest/contrast oscillation, the smoke assertion is timing-fragile, initial-evaluation detection should use an explicit marker, and the subtitle still says Byte 4.
+
+## 2026-05-31
+
+- Implemented Byte 5: deterministic material now enters an 8-beat lookahead queue of one-shot Tone transport events; the app exposes buffer health, lead beats, scheduled-through beat, and pending item count in both `window.transport.getState()` and the inspector.
+- Updated the smoke test so `scheduledEventCount` means pending scheduled note/rest slots rather than three repeating sequences, and verified the lookahead queue remains bounded and returns to zero across rapid start/stop cycles.
+- Added `.agent/handoffs/2026-05-31-copy-paste-claude-byte-5-review.md` so Arne can route the pushed Byte 5 lookahead implementation to Claude Code for review.

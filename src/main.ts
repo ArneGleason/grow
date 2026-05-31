@@ -8,6 +8,7 @@ import {
   initTransport,
   startTransport,
   stopTransport,
+  type GrowLookaheadState,
   type GrowTransportState,
 } from "./transport";
 import { GrowWorldState, type RuntimePlayer } from "./world-state";
@@ -24,11 +25,11 @@ const app = requireElement<HTMLDivElement>("#app");
 const world = new GrowWorldState(PLAYER_REGISTRY);
 
 app.innerHTML = `
-  <section class="app-shell" aria-label="Grow Byte 4">
+  <section class="app-shell" aria-label="Grow Byte 5">
     <header class="topbar">
       <div class="brand">
         <h1 class="brand__title">Grow</h1>
-        <p class="brand__subtitle">Byte 4: rule-based player taste</p>
+        <p class="brand__subtitle">Byte 5: lookahead buffer</p>
       </div>
       <div class="transport-controls">
         <button
@@ -77,6 +78,20 @@ app.innerHTML = `
             <dd data-testid="listening-latest-event">none</dd>
           </dl>
         </section>
+
+        <section class="inspector-section" aria-label="Lookahead buffer">
+          <h2>Lookahead</h2>
+          <dl>
+            <dt>Health</dt>
+            <dd data-testid="lookahead-health">stopped</dd>
+            <dt>Lead</dt>
+            <dd data-testid="lookahead-lead">0.0 / 8 beats</dd>
+            <dt>Through</dt>
+            <dd data-testid="lookahead-through">beat 0.0</dd>
+            <dt>Items</dt>
+            <dd data-testid="lookahead-items">0</dd>
+          </dl>
+        </section>
       </aside>
     </section>
   </section>
@@ -90,6 +105,10 @@ const listeningEventCount = requireElement<HTMLElement>("[data-testid='listening
 const listeningWindow = requireElement<HTMLElement>("[data-testid='listening-window']");
 const listeningLatestEvent = requireElement<HTMLElement>("[data-testid='listening-latest-event']");
 const listeningTonalContext = requireElement<HTMLElement>("[data-testid='listening-tonal-context']");
+const lookaheadHealth = requireElement<HTMLElement>("[data-testid='lookahead-health']");
+const lookaheadLead = requireElement<HTMLElement>("[data-testid='lookahead-lead']");
+const lookaheadThrough = requireElement<HTMLElement>("[data-testid='lookahead-through']");
+const lookaheadItems = requireElement<HTMLElement>("[data-testid='lookahead-items']");
 
 let terrarium: TerrariumView | null = null;
 let previousTransportStatus = getState().status;
@@ -202,14 +221,22 @@ function renderListening(frame: ListeningFrame): void {
     : "none";
 }
 
+function renderLookahead(lookahead: GrowLookaheadState): void {
+  lookaheadHealth.textContent = lookahead.health;
+  lookaheadLead.textContent = `${lookahead.leadBeats.toFixed(1)} / ${lookahead.targetBeats.toFixed(0)} beats`;
+  lookaheadThrough.textContent = `beat ${lookahead.scheduledThroughBeat.toFixed(1)}`;
+  lookaheadItems.textContent = String(lookahead.scheduledItemCount);
+}
+
 function renderStatus(state: GrowTransportState): void {
   button.textContent = state.status === "playing" ? "Stop" : "Start";
-  status.value = `${state.status} | ${state.bpm} BPM | bar ${state.bar} | beat ${state.currentBeat.toFixed(1)} | scheduled ${state.scheduledEventCount}`;
+  status.value = `${state.status} | ${state.bpm} BPM | bar ${state.bar} | beat ${state.currentBeat.toFixed(1)} | buffer ${state.lookahead.health} ${state.lookahead.leadBeats.toFixed(1)}/${state.lookahead.targetBeats.toFixed(0)} | scheduled ${state.scheduledEventCount}`;
 }
 
 function renderWorld(state: GrowTransportState = getState()): void {
   syncWorldFromTransport(state);
   renderStatus(state);
+  renderLookahead(state.lookahead);
   const players = world.getPlayers();
   const frame = world.getListeningFrame({
     tempo: state.bpm,

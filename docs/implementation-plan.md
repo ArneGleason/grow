@@ -342,7 +342,7 @@ Implementation notes:
 
 ### Byte 5: Lookahead Scheduling
 
-Status: ready to implement.
+Status: implemented.
 
 Add a tiny lookahead buffer even before Ollama.
 
@@ -357,6 +357,15 @@ Review focus:
 
 - whether the delayed-now model is represented correctly,
 - whether scheduling is debuggable.
+
+Implementation notes:
+
+- `src/transport.ts` now schedules deterministic note slots into a bounded 8-beat lookahead queue using one-shot Tone transport events instead of long-lived repeating sequences.
+- `window.transport.getState()` exposes `lookahead.targetBeats`, `minimumBeats`, `scheduledThroughBeat`, `leadBeats`, `scheduledItemCount`, and `health`.
+- `scheduledEventCount` now counts pending scheduled note/rest slots rather than pattern sequencers, so it can detect event accumulation more directly.
+- The inspector and status line show lookahead health, lead beats, scheduled-through beat, and pending item count.
+- Stop/restart clears the timer and scheduled transport events; the smoke test checks the queue returns to zero across rapid cycles.
+- The buffer is still deterministic and rule-based. Ollama thinking, buffer underrun behavior, fallback pauses, and session modes remain future bytes.
 
 ### Byte 6: Simple Session Modes
 

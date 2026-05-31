@@ -36,4 +36,4 @@ Use this file for known risks, open questions, and review focus. Keep entries sh
 - Scope guidance from Arne: keep Grow solo for now, but leave a future hook for multiple terrariums/bands that can observe, inspire, or react to each other.
 - Claude reviewed `docs/implementation-plan.md`; current Byte 1 guidance is stationary pulse player + percussive beat + explicit Tone.js lifecycle cleanup before adding movement or more players.
 - First implementation review should pay special attention to repeated start/stop cycles and whether scheduled Tone.js objects are disposed rather than stacked.
-- Byte 4b is approved. Current Codex next bite: Byte 5 lookahead scheduling should add a small scheduled-ahead buffer with visible buffer health while preserving deterministic fallback patterns, taste/rest semantics, and stop/restart cleanup.
+- Byte 5 is implemented and ready for Claude review. Current review focus: confirm one-shot lookahead scheduling represents the delayed-now model, pending event counts stay bounded, stop/restart clears the timer and transport events, and taste/rest semantics remain unchanged.

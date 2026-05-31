@@ -18,13 +18,14 @@ The repo is initialized with the Studio Pattern so future work has a clear place
 - Byte 3c tonal/visual prep added: note hits use a visible Pixi-safe halo pulse, posture/listening share the same 8-beat window, and transport patterns materialize notes from tonal scale degrees.
 - Byte 4 rule-based taste added: players now have inspectable taste evaluations that can repeat, support, simplify, vary, contrast, or rest based on the listening frame.
 - Byte 4b taste stabilization added: taste actions now hold for a minimum beat span so threshold decisions read as phrasing rather than flicker.
+- Byte 5 lookahead buffer added: deterministic player material is committed into an 8-beat scheduled-ahead queue with visible buffer health and bounded cleanup.
 
 ## First Work
 
 1. Install dependencies with `npm install`.
 2. Run the first byte with `npm run dev`.
 3. Verify repeated start/stop does not duplicate the beat or event subscription.
-4. Review Byte 4b before adding lookahead scheduling, producer commands, Ollama, or persistence.
+4. Review Byte 5 before adding session modes, producer commands, Ollama, or persistence.
 5. Wire any future GitHub app/API access using the least-privileged credential model for the job.
 
 ## Run
@@ -68,6 +69,7 @@ npm run smoke
 - `src/world-state.ts`: in-memory runtime state owner for players and the musical event ledger.
 - `src/listening.ts`: musical event and listening-frame types plus the recent-event summarizer.
 - `src/taste.ts`: deterministic player taste evaluation and note-decision logic.
+- `src/transport.ts`: Tone.js playback lifecycle, deterministic pattern materialization, and lookahead scheduling.
 - `src/music-time.ts`: shared musical timing constants used by posture and listening windows.
 - `src/tonal-context.ts`: default tonal context and scale-degree note materialization.
 - `.env.example`: non-secret environment variable template.
