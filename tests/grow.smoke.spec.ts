@@ -476,6 +476,28 @@ test("manual Ollama thought probe is inspectable with a mocked local endpoint", 
   expect((await getTransportState(page)).status).toBe("stopped");
 });
 
+test("inspector help icons explain current controls", async ({ page }) => {
+  await page.goto("/");
+
+  await expect(page.getByTestId("inspector-help-panel")).toBeHidden();
+
+  await page.getByTestId("help-ollama").click();
+  await expect(page.getByTestId("inspector-help-panel")).toBeVisible();
+  await expect(page.getByTestId("inspector-help-title")).toHaveText("Ollama");
+  await expect(page.getByTestId("inspector-help-body")).toContainText("local model boundary");
+  await expect(page.getByTestId("help-ollama")).toHaveAttribute("aria-expanded", "true");
+
+  await page.getByTestId("help-lookahead").click();
+  await expect(page.getByTestId("inspector-help-title")).toHaveText("Lookahead");
+  await expect(page.getByTestId("inspector-help-body")).toContainText("delayed-now buffer");
+  await expect(page.getByTestId("help-ollama")).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByTestId("help-lookahead")).toHaveAttribute("aria-expanded", "true");
+
+  await page.getByTestId("inspector-help-close").click();
+  await expect(page.getByTestId("inspector-help-panel")).toBeHidden();
+  await expect(page.getByTestId("help-lookahead")).toHaveAttribute("aria-expanded", "false");
+});
+
 test("Grow exposes session modes, starts three players, hears events, and cleans up the transport", async ({ page }) => {
   test.setTimeout(60_000);
   const consoleErrors: string[] = [];

@@ -229,9 +229,95 @@ button {
   padding-top: 16px;
 }
 
+.section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
 .inspector h2 {
-  margin: 0 0 12px;
+  margin: 0;
   font-size: 1rem;
+}
+
+.info-button {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  inline-size: 22px;
+  block-size: 22px;
+  border: 1px solid rgba(174, 183, 165, 0.34);
+  border-radius: 50%;
+  background: rgba(217, 247, 167, 0.08);
+  color: #d7dfcf;
+  cursor: pointer;
+  font-size: 0.76rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.info-button:hover,
+.info-button[aria-expanded="true"] {
+  border-color: #f6cc6b;
+  background: rgba(246, 204, 107, 0.18);
+  color: #fff2c7;
+}
+
+.info-button:focus-visible,
+.help-panel-close:focus-visible {
+  outline: 3px solid #f6cc6b;
+  outline-offset: 2px;
+}
+
+.inspector-help-panel {
+  border-left: 3px solid #f6cc6b;
+  margin-bottom: 16px;
+  padding: 10px 0 10px 12px;
+  background: rgba(246, 204, 107, 0.08);
+}
+
+.inspector-help-panel[hidden] {
+  display: none;
+}
+
+.inspector-help-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.inspector-help-panel__header strong {
+  font-size: 0.88rem;
+}
+
+.inspector-help-panel p {
+  margin: 0;
+  color: #d7dfcf;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.help-panel-close {
+  display: inline-grid;
+  place-items: center;
+  inline-size: 24px;
+  block-size: 24px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #d7dfcf;
+  cursor: pointer;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.help-panel-close:hover {
+  background: rgba(246, 204, 107, 0.14);
+  color: #fff2c7;
 }
 
 .player-inspector + .player-inspector {

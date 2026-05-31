@@ -783,6 +783,7 @@ Scope:
 - Add mocked invalid-response and unavailable-Ollama smoke cases.
 - Surface `availableModels` in the UI, preferably as a picker.
 - Surface the selected prompt protocol in the UI or debug inspector.
+- Add contextual info/help icons for model, protocol, and calibration controls so the purpose and safe use of each tool remains visible in the app.
 - Consider separating health latency and thought latency in the inspector.
 - Keep deterministic mock fallback.
 - Still do not schedule model output into music in this byte.
@@ -792,6 +793,7 @@ Review focus:
 - whether the backend/proxy removes browser CORS/environment uncertainty,
 - whether prompt protocols remain thin adapters rather than alternate musical contracts,
 - whether model/protocol calibration is useful without adding runtime complexity,
+- whether the context help explains advanced controls without becoming a second manual,
 - whether real local models return parseable bounded JSON more often,
 - whether failure remains harmless and visible.
 

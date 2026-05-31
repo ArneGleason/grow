@@ -74,9 +74,58 @@ const sessionModeControls = SESSION_MODE_OPTIONS.map((mode) => `
             <span>${mode.label}</span>
           </label>
 `).join("");
+const HELP_TOPICS = {
+  session: {
+    title: "Session",
+    body: "Session mode controls the players' working posture. Right now break drains the committed lookahead queue while rehearsal, solo practice, and performance keep refilling future material.",
+  },
+  ollama: {
+    title: "Ollama",
+    body: "Ollama is the local model boundary for slow player thoughts. Check verifies the local server and model, while Send thought runs one validated manual request without scheduling model output into the music.",
+  },
+  players: {
+    title: "Players",
+    body: "Players are the current musical presences. State is recent posture, Taste is the current rule decision, Dynamics heard is the last audible velocity expression, and Offset queued is the committed performed-time offset.",
+  },
+  thoughts: {
+    title: "Thoughts",
+    body: "Thoughts show the compact request ingredients each player would send to the slow creative planner: focus, motif, request level, mock intent, and selected memory fragments.",
+  },
+  listening: {
+    title: "Listening",
+    body: "Listening summarizes the recent musical event ledger. Players hear this structured frame first; raw audio analysis can come later once the symbolic layer is useful.",
+  },
+  lookahead: {
+    title: "Lookahead",
+    body: "Lookahead is the delayed-now buffer. Grow commits future note and rest slots ahead of playback so slow thinking can arrive late without blocking the transport.",
+  },
+} as const;
+
+type HelpTopicId = keyof typeof HELP_TOPICS;
+
+function renderHelpButton(topic: HelpTopicId, label: string): string {
+  return `
+            <button
+              class="info-button"
+              data-help-topic="${topic}"
+              data-testid="help-${topic}"
+              type="button"
+              aria-label="About ${label}"
+              aria-controls="inspector-help-panel"
+              aria-expanded="false"
+              title="About ${label}"
+            >
+              <span aria-hidden="true">i</span>
+            </button>
+  `;
+}
+
+function isHelpTopicId(value: string): value is HelpTopicId {
+  return value in HELP_TOPICS;
+}
 
 app.innerHTML = `
-  <section class="app-shell" aria-label="Grow Byte 10c">
+  <section class="app-shell" aria-label="Grow Byte 10d">
     <header class="topbar">
       <div class="brand">
         <h1 class="brand__title">Grow</h1>
@@ -117,8 +166,30 @@ ${sessionModeControls}
       </div>
 
       <aside class="inspector" aria-label="Player inspector">
+        <section
+          class="inspector-help-panel"
+          id="inspector-help-panel"
+          data-testid="inspector-help-panel"
+          aria-live="polite"
+          hidden
+        >
+          <div class="inspector-help-panel__header">
+            <strong data-testid="inspector-help-title">Help</strong>
+            <button
+              class="help-panel-close"
+              data-testid="inspector-help-close"
+              type="button"
+              aria-label="Hide help"
+            >x</button>
+          </div>
+          <p data-testid="inspector-help-body"></p>
+        </section>
+
         <section class="inspector-section" aria-label="Session">
-          <h2>Session</h2>
+          <div class="section-heading">
+            <h2>Session</h2>
+${renderHelpButton("session", "session mode")}
+          </div>
           <dl>
             <dt>Mode</dt>
             <dd data-testid="session-mode-current">${defaultSessionModeLabel}</dd>
@@ -126,7 +197,10 @@ ${sessionModeControls}
         </section>
 
         <section class="inspector-section" aria-label="Ollama thought probe">
-          <h2>Ollama</h2>
+          <div class="section-heading">
+            <h2>Ollama</h2>
+${renderHelpButton("ollama", "Ollama thought probe")}
+          </div>
           <div class="ollama-controls">
             <label class="ollama-field">
               <span>Base</span>
@@ -164,17 +238,26 @@ ${sessionModeControls}
         </section>
 
         <section class="inspector-section" aria-label="Players">
-          <h2>Players</h2>
+          <div class="section-heading">
+            <h2>Players</h2>
+${renderHelpButton("players", "players")}
+          </div>
           <div id="player-list" data-testid="player-list"></div>
         </section>
 
         <section class="inspector-section" aria-label="Thought seeds">
-          <h2>Thoughts</h2>
+          <div class="section-heading">
+            <h2>Thoughts</h2>
+${renderHelpButton("thoughts", "thoughts")}
+          </div>
           <div id="thought-seed-list" data-testid="thought-seed-list"></div>
         </section>
 
         <section class="inspector-section" aria-label="Listening frame">
-          <h2>Listening</h2>
+          <div class="section-heading">
+            <h2>Listening</h2>
+${renderHelpButton("listening", "listening frame")}
+          </div>
           <dl>
             <dt>Tonal</dt>
             <dd data-testid="listening-tonal-context">C mixolydian</dd>
@@ -188,7 +271,10 @@ ${sessionModeControls}
         </section>
 
         <section class="inspector-section" aria-label="Lookahead buffer">
-          <h2>Lookahead</h2>
+          <div class="section-heading">
+            <h2>Lookahead</h2>
+${renderHelpButton("lookahead", "lookahead buffer")}
+          </div>
           <dl>
             <dt>Health</dt>
             <dd data-testid="lookahead-health">stopped</dd>
@@ -208,6 +294,11 @@ ${sessionModeControls}
 const container = requireElement<HTMLDivElement>("#terrarium-container");
 const button = requireElement<HTMLButtonElement>("#transport-toggle");
 const status = requireElement<HTMLOutputElement>("#transport-status");
+const helpPanel = requireElement<HTMLElement>("[data-testid='inspector-help-panel']");
+const helpTitle = requireElement<HTMLElement>("[data-testid='inspector-help-title']");
+const helpBody = requireElement<HTMLElement>("[data-testid='inspector-help-body']");
+const helpCloseButton = requireElement<HTMLButtonElement>("[data-testid='inspector-help-close']");
+const helpButtons = Array.from(document.querySelectorAll<HTMLButtonElement>("[data-help-topic]"));
 const sessionModeControl = requireElement<HTMLDivElement>("[data-testid='session-mode-control']");
 const sessionModeCurrent = requireElement<HTMLElement>("[data-testid='session-mode-current']");
 const playerList = requireElement<HTMLDivElement>("#player-list");
@@ -268,6 +359,23 @@ function createDefinition(
   dd.append(valueNode);
 
   return [dt, dd];
+}
+
+function showHelpTopic(topicId: HelpTopicId): void {
+  const topic = HELP_TOPICS[topicId];
+  helpPanel.hidden = false;
+  helpTitle.textContent = topic.title;
+  helpBody.textContent = topic.body;
+  for (const button of helpButtons) {
+    button.setAttribute("aria-expanded", String(button.dataset.helpTopic === topicId));
+  }
+}
+
+function hideHelpTopic(): void {
+  helpPanel.hidden = true;
+  for (const button of helpButtons) {
+    button.setAttribute("aria-expanded", "false");
+  }
 }
 
 function renderPlayerInspector(
@@ -810,6 +918,18 @@ ollamaHealthButton.addEventListener("click", () => {
 
 ollamaSendThoughtButton.addEventListener("click", () => {
   void runManualOllamaThoughtTest();
+});
+
+for (const button of helpButtons) {
+  button.addEventListener("click", () => {
+    const topic = button.dataset.helpTopic;
+    if (!topic || !isHelpTopicId(topic)) return;
+    showHelpTopic(topic);
+  });
+}
+
+helpCloseButton.addEventListener("click", () => {
+  hideHelpTopic();
 });
 
 terrarium = await createTerrariumView(container, world.getPlayers());
