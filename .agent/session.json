@@ -23,13 +23,13 @@
     }
   },
   "lastTask": "Implement Byte 10f-b2 model-safe Ollama thought schema",
-  "status": "byte10f-b2-implemented",
-  "updatedAt": "2026-05-31T20:26:29Z",
+  "status": "byte10f-b2-merged",
+  "updatedAt": "2026-05-31T20:56:34Z",
   "lastHandoff": "",
-  "branch": "codex/byte-10f-b2",
-  "commit": "branch HEAD",
+  "branch": "main",
+  "commit": "b266a58",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 10f-b2 is implemented locally on a fresh branch from main. The projected JSON model-facing response schema no longer includes pitch; the prompt/primer tell models to emit scaleDegree plus octave, and `src/ollama.ts` derives canonical pitch before validation without masking out-of-range degrees. The Vite Ollama proxy now propagates browser aborts to upstream fetches. Build is green and smoke is 12/12, including derived-pitch and proxy-failure mock-fallback coverage. No model output is scheduled into music."
+    "summary": "Byte 10f-b2 is approved by Claude, merged to main, and pushed. The projected JSON model-facing response schema no longer includes pitch; the prompt/primer tell models to emit scaleDegree plus octave, and `src/ollama.ts` derives canonical pitch before validation without masking out-of-range degrees. The Vite Ollama proxy propagates browser aborts to upstream fetches. Build was green and smoke was 12/12 before review, with derived-pitch and proxy-failure mock-fallback coverage. No model output is scheduled into music. Next follow-up before Byte 11: add a malformed/invalid-200 smoke fixture, then start the one-player slow-thinking loop."
   }
 }
