@@ -25,6 +25,8 @@ import type { PlayerThoughtSeed } from "../src/thought-seeds";
 type TransportState = {
   status: "stopped" | "playing";
   sessionMode: SessionMode;
+  songId: "lantern" | "switchback" | "glass";
+  timingFeelMode: "grid" | "feel" | "wide";
   bpm: number;
   bar: number;
   currentBeat: number;
@@ -71,6 +73,14 @@ type TransportState = {
       };
     }>;
   };
+};
+
+type AudioFireTimingDiagnostic = {
+  timingFeelMode: "grid" | "feel" | "wide";
+  scheduledSeconds: number;
+  immediateSeconds: number;
+  audioTimeSeconds: number;
+  clampDelaySeconds: number;
 };
 
 type ListeningFrame = {
@@ -184,6 +194,17 @@ async function getTransportState(page: Page): Promise<TransportState> {
   }
 
   return state;
+}
+
+async function getTimingDiagnostics(page: Page): Promise<readonly AudioFireTimingDiagnostic[]> {
+  return page.evaluate(() => {
+    const appWindow = window as unknown as {
+      transport?: {
+        getTimingDiagnostics(): readonly AudioFireTimingDiagnostic[];
+      };
+    };
+    return appWindow.transport?.getTimingDiagnostics() ?? [];
+  });
 }
 
 async function getListeningFrame(page: Page): Promise<ListeningFrame> {
@@ -402,6 +423,10 @@ test("performed timing snapshots are deterministic bounded data", () => {
     ...input,
     eventIndex: input.eventIndex + 1,
   });
+  const nextPocket = calculatePerformedTiming({
+    ...input,
+    absoluteBeat: input.absoluteBeat + 0.5,
+  });
 
   expect(first).toEqual(second);
   expect(Math.abs(first.performedOffsetBeats)).toBeLessThanOrEqual(first.maximumOffsetBeats);
@@ -409,7 +434,8 @@ test("performed timing snapshots are deterministic bounded data", () => {
   expect(first.components.leapPressure).toBeGreaterThan(0);
   expect(first.components.densityPressure).toBe(0.7);
   expect(first.summary.length).toBeGreaterThan(0);
-  expect(nextStep.performedOffsetBeats).not.toBe(first.performedOffsetBeats);
+  expect(nextStep.performedOffsetBeats).toBe(first.performedOffsetBeats);
+  expect(nextPocket.performedOffsetBeats).not.toBe(first.performedOffsetBeats);
 });
 
 test("session mode refill policy is explicit", () => {
@@ -452,6 +478,116 @@ test("performed offsets replay across transport restarts", async ({ page }) => {
   expect(Object.fromEntries(replayedKeys.map((key) => [key, secondRun[key]]))).toEqual(
     Object.fromEntries(replayedKeys.map((key) => [key, firstRun[key]])),
   );
+});
+
+test("timing feel control can square playback to the grid", async ({ page }) => {
+  test.setTimeout(30_000);
+  await page.goto("/");
+
+  await expect(page.getByTestId("timing-feel-current")).toHaveText("Feel");
+  await expect(page.getByTestId("timing-feel-feel")).toBeChecked();
+  expect((await getTransportState(page)).timingFeelMode).toBe("feel");
+
+  await page.getByTestId("timing-feel-grid-option").click();
+  await expect(page.getByTestId("timing-feel-current")).toHaveText("Grid");
+  await expect(page.getByTestId("timing-feel-grid")).toBeChecked();
+  expect((await getTransportState(page)).timingFeelMode).toBe("grid");
+  expect(await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      timing?: { getMode(): "grid" | "feel" | "wide" };
+    };
+    return appWindow.timing?.getMode();
+  })).toBe("grid");
+
+  const button = page.getByTestId("transport-toggle");
+  await button.click();
+  await expect(button).toHaveText("Stop");
+  await expect.poll(async () => (await getListeningFrame(page)).eventCount).toBeGreaterThanOrEqual(6);
+
+  const gridFrame = await getListeningFrame(page);
+  expect(gridFrame.recentEvents.length).toBeGreaterThan(0);
+  expect(gridFrame.recentEvents.every((event) => (
+    event.tags.includes("timing:grid") &&
+    event.performedOffsetBeats === 0 &&
+    event.performedOffsetSeconds === 0 &&
+    event.performedTiming?.performedOffsetBeats === 0 &&
+    event.performedTiming?.summary === "square grid"
+  ))).toBe(true);
+
+  const gridTimingDiagnostics = await getTimingDiagnostics(page);
+  const futureGridDiagnostics = gridTimingDiagnostics.filter((entry) => (
+    entry.timingFeelMode === "grid" &&
+    entry.scheduledSeconds - entry.immediateSeconds > 0.01
+  ));
+  expect(futureGridDiagnostics.length).toBeGreaterThan(0);
+  expect(futureGridDiagnostics.every((entry) => (
+    Math.abs(entry.clampDelaySeconds) < 0.0005 &&
+    entry.audioTimeSeconds === entry.scheduledSeconds
+  ))).toBe(true);
+
+  await page.getByTestId("timing-feel-feel-option").click();
+  await expect(page.getByTestId("timing-feel-current")).toHaveText("Feel");
+  await expect(page.getByTestId("timing-feel-feel")).toBeChecked();
+  expect((await getTransportState(page)).timingFeelMode).toBe("feel");
+  await expect.poll(async () => {
+    const frame = await getListeningFrame(page);
+    return frame.recentEvents.some((event) => (
+      event.tags.includes("timing:audible-offset") &&
+      Math.abs(event.performedOffsetBeats) > 0
+    ));
+  }).toBe(true);
+
+  await page.getByTestId("timing-feel-wide-option").click();
+  await expect(page.getByTestId("timing-feel-current")).toHaveText("Wide");
+  await expect(page.getByTestId("timing-feel-wide")).toBeChecked();
+  expect((await getTransportState(page)).timingFeelMode).toBe("wide");
+  await expect.poll(async () => {
+    const frame = await getListeningFrame(page);
+    return frame.recentEvents.some((event) => (
+      event.tags.includes("timing:wide-audition") &&
+      event.tags.includes("timing:audible-offset") &&
+      Math.abs(event.performedOffsetBeats) >= 0.01 &&
+      event.performedTiming?.maximumOffsetBeats === 0.06
+    ));
+  }).toBe(true);
+
+  await button.click();
+  await expect(button).toHaveText("Start");
+});
+
+test("song material control switches deterministic loops", async ({ page }) => {
+  test.setTimeout(30_000);
+  await page.goto("/");
+
+  await expect(page.getByTestId("song-current")).toHaveText("Lantern");
+  await expect(page.getByTestId("song-lantern")).toBeChecked();
+  expect((await getTransportState(page)).songId).toBe("lantern");
+
+  await page.getByTestId("song-switchback-option").click();
+  await expect(page.getByTestId("song-current")).toHaveText("Switchback");
+  await expect(page.getByTestId("song-switchback")).toBeChecked();
+  expect((await getTransportState(page)).songId).toBe("switchback");
+
+  const button = page.getByTestId("transport-toggle");
+  await button.click();
+  await expect(button).toHaveText("Stop");
+  await expect.poll(async () => {
+    const frame = await getListeningFrame(page);
+    return frame.recentEvents.some((event) => event.tags.includes("song:switchback"));
+  }).toBe(true);
+
+  await page.getByTestId("song-glass-option").click();
+  await expect(page.getByTestId("song-current")).toHaveText("Glass");
+  await expect(page.getByTestId("song-glass")).toBeChecked();
+  expect((await getTransportState(page)).songId).toBe("glass");
+  await expect.poll(async () => {
+    const frame = await getListeningFrame(page);
+    return frame.recentEvents.length > 0 &&
+      frame.recentEvents.every((event) => event.tags.includes("song:glass"));
+  }).toBe(true);
+
+  await button.click();
+  await expect(button).toHaveText("Start");
 });
 
 test("manual Ollama thought probe is inspectable with a mocked local endpoint", async ({ page }) => {
@@ -675,15 +811,21 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   const canvasFrame = page.getByTestId("terrarium-container");
   const canvas = page.getByTestId("terrarium-canvas");
 
-  await expect(page.locator(".brand__subtitle")).toHaveText("Byte 10f-b1: local Ollama proxy");
+  await expect(page.locator(".brand__subtitle")).toHaveText("Timing feel experiment: grid, feel, wide");
   await expect(button).toHaveText("Start");
   await expect(status).toContainText(
-    "mode rehearsal | stopped | 90 BPM | bar 1 | beat 0.0 | lookahead stopped 0.0/8 | pending slots 0",
+    "mode rehearsal | song Lantern | stopped | 90 BPM | bar 1 | beat 0.0 | lookahead stopped 0.0/8 | pending slots 0",
   );
   await expect(page.getByTestId("session-mode-current")).toHaveText("Rehearsal");
   await expect(page.getByTestId("session-mode-rehearsal")).toBeChecked();
+  await expect(page.getByTestId("song-current")).toHaveText("Lantern");
+  await expect(page.getByTestId("song-lantern")).toBeChecked();
+  await expect(page.getByTestId("timing-feel-current")).toHaveText("Feel");
+  await expect(page.getByTestId("timing-feel-feel")).toBeChecked();
   expect(await getSessionMode(page)).toBe("rehearsal");
   expect((await getTransportState(page)).sessionMode).toBe("rehearsal");
+  expect((await getTransportState(page)).songId).toBe("lantern");
+  expect((await getTransportState(page)).timingFeelMode).toBe("feel");
   expect(await page.evaluate(() => {
     const appWindow = window as unknown as {
       session?: { getModes(): Array<{ id: string }> };
@@ -693,13 +835,13 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   await page.getByTestId("session-mode-break-option").click();
   await expect(page.getByTestId("session-mode-current")).toHaveText("Break");
   await expect(page.getByTestId("session-mode-break")).toBeChecked();
-  await expect(status).toContainText("mode break | stopped");
+  await expect(status).toContainText("mode break | song Lantern | stopped");
   expect(await getSessionMode(page)).toBe("break");
   expect((await getTransportState(page)).sessionMode).toBe("break");
   await expect.poll(async () => (await getTransportState(page)).lookahead.pendingSlotCount).toBe(0);
   await page.getByTestId("session-mode-performance-option").click();
   await expect(page.getByTestId("session-mode-current")).toHaveText("Performance");
-  await expect(status).toContainText("mode performance | stopped");
+  await expect(status).toContainText("mode performance | song Lantern | stopped");
   expect(await getSessionMode(page)).toBe("performance");
   expect(await page.evaluate(() => {
     const appWindow = window as unknown as {
@@ -1122,7 +1264,7 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   await setSessionMode(page, "break");
   await expect(page.getByTestId("session-mode-current")).toHaveText("Break");
   await expect(page.getByTestId("session-mode-break")).toBeChecked();
-  await expect(status).toContainText("mode break | playing");
+  await expect(status).toContainText("mode break | song Lantern | playing");
   const breakStartCount = await getRecordedEventCount(page);
   expect(breakStartCount).toBeGreaterThan(0);
   const breakStartBeat = await getLatestRecordedBeat(page);
@@ -1140,7 +1282,7 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
 
   await setSessionMode(page, "rehearsal");
   await expect(page.getByTestId("session-mode-current")).toHaveText("Rehearsal");
-  await expect(status).toContainText("mode rehearsal | playing");
+  await expect(status).toContainText("mode rehearsal | song Lantern | playing");
   await expect
     .poll(async () => (await getTransportState(page)).lookahead.pendingSlotCount)
     .toBeGreaterThan(0);
@@ -1150,12 +1292,12 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
     .toBeGreaterThan(drainedBeat);
 
   await setSessionMode(page, "performance");
-  await expect(status).toContainText("mode performance | playing");
+  await expect(status).toContainText("mode performance | song Lantern | playing");
   await expect
     .poll(async () => (await getTransportState(page)).lookahead.pendingSlotCount)
     .toBeGreaterThan(0);
   await setSessionMode(page, "solo-practice");
-  await expect(status).toContainText("mode solo practice | playing");
+  await expect(status).toContainText("mode solo practice | song Lantern | playing");
   await expect.poll(async () => (await getTransportState(page)).lookahead.health).toBe("healthy");
   await setSessionMode(page, "rehearsal");
 
@@ -1198,7 +1340,7 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   }
 
   await expect(status).toContainText(
-    "mode rehearsal | stopped | 90 BPM | bar 1 | beat 0.0 | lookahead stopped 0.0/8 | pending slots 0",
+    "mode rehearsal | song Lantern | stopped | 90 BPM | bar 1 | beat 0.0 | lookahead stopped 0.0/8 | pending slots 0",
   );
   await expect.poll(async () => (await getTransportState(page)).status).toBe("stopped");
   expect(consoleErrors).toEqual([]);

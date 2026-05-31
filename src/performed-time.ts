@@ -22,6 +22,10 @@ export interface PlayerPerformedTimingSnapshot {
     mediumCycle: number;
     eventStep: number;
     dispositionPressure: number;
+    sharedGroove: number;
+    playerPocket: number;
+    materialPressure: number;
+    stumble: number;
     leapPressure: number;
     registerPressure: number;
     densityPressure: number;
@@ -31,40 +35,76 @@ export interface PlayerPerformedTimingSnapshot {
 
 interface RoleTimingProfile {
   maximumOffsetBeats: number;
-  longPeriodBeats: number;
-  mediumPeriodBeats: number;
+  driftPeriodBeats: number;
+  phrasePeriodBeats: number;
+  rolePocketBeats: number;
+  phrasePocketDepthBeats: number;
+  materialDepthBeats: number;
+  eventVariationDepthBeats: number;
+  stumbleDepthBeats: number;
+  stumbleChance: number;
   eventSteps: readonly number[];
 }
 
 const ROLE_TIMING_PROFILES: Record<PlayerRole, RoleTimingProfile> = {
   pulse: {
     maximumOffsetBeats: 0.008,
-    longPeriodBeats: 40,
-    mediumPeriodBeats: 13,
-    eventSteps: [0.08, -0.04, 0, 0.03, -0.06],
+    driftPeriodBeats: 96,
+    phrasePeriodBeats: 32,
+    rolePocketBeats: 0,
+    phrasePocketDepthBeats: 0,
+    materialDepthBeats: 0,
+    eventVariationDepthBeats: 0,
+    stumbleDepthBeats: 0,
+    stumbleChance: 0,
+    eventSteps: [0],
   },
   bass: {
     maximumOffsetBeats: 0.018,
-    longPeriodBeats: 34,
-    mediumPeriodBeats: 11,
-    eventSteps: [-0.16, 0.08, 0, 0.13, -0.09, 0.04],
+    driftPeriodBeats: 88,
+    phrasePeriodBeats: 24,
+    rolePocketBeats: 0.0035,
+    phrasePocketDepthBeats: 0,
+    materialDepthBeats: 0,
+    eventVariationDepthBeats: 0,
+    stumbleDepthBeats: 0,
+    stumbleChance: 0,
+    eventSteps: [0],
   },
   melody: {
-    maximumOffsetBeats: 0.03,
-    longPeriodBeats: 29,
-    mediumPeriodBeats: 7,
-    eventSteps: [0.18, -0.22, 0.08, -0.04, 0.16, -0.1, 0.02],
+    maximumOffsetBeats: 0.018,
+    driftPeriodBeats: 72,
+    phrasePeriodBeats: 16,
+    rolePocketBeats: -0.0015,
+    phrasePocketDepthBeats: 0.0008,
+    materialDepthBeats: 0,
+    eventVariationDepthBeats: 0,
+    stumbleDepthBeats: 0,
+    stumbleChance: 0,
+    eventSteps: [0],
   },
   texture: {
     maximumOffsetBeats: 0.026,
-    longPeriodBeats: 45,
-    mediumPeriodBeats: 17,
+    driftPeriodBeats: 104,
+    phrasePeriodBeats: 32,
+    rolePocketBeats: 0.002,
+    phrasePocketDepthBeats: 0.003,
+    materialDepthBeats: 0.004,
+    eventVariationDepthBeats: 0.002,
+    stumbleDepthBeats: 0.008,
+    stumbleChance: 0.03,
     eventSteps: [0.12, -0.1, 0, 0.06, -0.04],
   },
   effects: {
     maximumOffsetBeats: 0.035,
-    longPeriodBeats: 48,
-    mediumPeriodBeats: 19,
+    driftPeriodBeats: 120,
+    phrasePeriodBeats: 40,
+    rolePocketBeats: 0.003,
+    phrasePocketDepthBeats: 0.005,
+    materialDepthBeats: 0.006,
+    eventVariationDepthBeats: 0.003,
+    stumbleDepthBeats: 0.012,
+    stumbleChance: 0.05,
     eventSteps: [-0.2, 0.14, 0, -0.08, 0.2, 0.04],
   },
 };
@@ -73,8 +113,8 @@ export function calculatePerformedTiming(
   input: PlayerPerformedTimingInput,
 ): PlayerPerformedTimingSnapshot {
   const profile = ROLE_TIMING_PROFILES[input.player.role];
-  const longCycle = cycleValue(input.player.id, "offset-long", input.absoluteBeat, profile.longPeriodBeats);
-  const mediumCycle = cycleValue(input.player.id, "offset-medium", input.absoluteBeat, profile.mediumPeriodBeats);
+  const longCycle = cycleValue("ensemble", "tempo-drift", input.absoluteBeat, profile.driftPeriodBeats);
+  const mediumCycle = cycleValue(input.player.id, "phrase-pocket", input.absoluteBeat, profile.phrasePeriodBeats);
   const eventStep = profile.eventSteps[input.eventIndex % profile.eventSteps.length];
   const disposition = input.player.thinking.disposition;
   const dispositionPressure = clamp(
@@ -95,20 +135,29 @@ export function calculatePerformedTiming(
     0,
     1,
   );
-  const difficultyDrag = difficultyPressure * (0.1 + disposition.caution * 0.12);
-  const difficultyPush = leapPressure * disposition.disruption * 0.08;
-  const rawOffset = (
-    longCycle * 0.38
-    + mediumCycle * 0.26
-    + eventStep
-    + durationPressure
-    + velocityPressure
-    + difficultyDrag
-    - difficultyPush
-  ) * dispositionPressure;
+  const tempoDrift = longCycle * 0.0035;
+  const sharedGroove = calculateSharedGroove(input.absoluteBeat);
+  const playerPocket = calculatePlayerPocket(input.player.role, input.absoluteBeat, profile, mediumCycle);
+  const materialPressure = calculateMaterialPressure(
+    difficultyPressure,
+    leapPressure,
+    durationPressure,
+    velocityPressure,
+    disposition.caution,
+    disposition.disruption,
+    profile.materialDepthBeats,
+  );
+  const eventVariation = eventStep * profile.eventVariationDepthBeats * dispositionPressure;
+  const stumble = calculateStumble(input.player.id, input.eventIndex, profile);
+  const rawOffset = tempoDrift
+    + sharedGroove
+    + playerPocket
+    + materialPressure
+    + eventVariation
+    + stumble;
   const maximumOffsetBeats = profile.maximumOffsetBeats;
   const performedOffsetBeats = roundOffset(clamp(
-    rawOffset * maximumOffsetBeats,
+    rawOffset,
     -Math.min(maximumOffsetBeats, input.absoluteBeat),
     maximumOffsetBeats,
   ));
@@ -124,11 +173,15 @@ export function calculatePerformedTiming(
       mediumCycle,
       eventStep,
       dispositionPressure,
+      sharedGroove,
+      playerPocket,
+      materialPressure,
+      stumble,
       leapPressure,
       registerPressure,
       densityPressure,
     },
-    summary: summarizeTiming(performedOffsetBeats, difficultyPressure),
+    summary: summarizeTiming(performedOffsetBeats, sharedGroove + playerPocket, materialPressure, stumble),
   };
 }
 
@@ -142,11 +195,84 @@ export function formatPerformedTimingSnapshot(
   return `${signedOffset} beats (${snapshot.summary})`;
 }
 
-function summarizeTiming(performedOffsetBeats: number, difficultyPressure: number): string {
-  const cause = difficultyPressure >= 0.45 ? " from difficulty" : "";
-  if (performedOffsetBeats <= -0.004) return `push data${cause}`;
-  if (performedOffsetBeats >= 0.004) return `drag data${cause}`;
-  return "near-grid data";
+function summarizeTiming(
+  performedOffsetBeats: number,
+  groovePocket: number,
+  materialPressure: number,
+  stumble: number,
+): string {
+  if (Math.abs(stumble) >= 0.004) {
+    return stumble < 0 ? "rare stumble push" : "rare stumble drag";
+  }
+  if (Math.abs(materialPressure) >= 0.0035) {
+    return materialPressure < 0 ? "groove with pressure push" : "groove with pressure drag";
+  }
+  if (Math.abs(groovePocket) >= 0.004) {
+    return groovePocket < 0 ? "ahead in pocket" : "behind in pocket";
+  }
+  if (performedOffsetBeats <= -0.004) return "gentle push";
+  if (performedOffsetBeats >= 0.004) return "gentle drag";
+  return "near-grid pocket";
+}
+
+function calculateSharedGroove(absoluteBeat: number): number {
+  const halfBeatIndex = Math.round(mod(absoluteBeat, 4) * 2) % 8;
+  const barPocketByHalfBeat = [
+    0,
+    0.006,
+    -0.001,
+    0.004,
+    0.001,
+    0.006,
+    -0.001,
+    0.004,
+  ];
+  return barPocketByHalfBeat[halfBeatIndex] ?? 0;
+}
+
+function calculatePlayerPocket(
+  role: PlayerRole,
+  absoluteBeat: number,
+  profile: RoleTimingProfile,
+  phraseCycle: number,
+): number {
+  const phrasePosition = mod(absoluteBeat, 8) / 8;
+  const phraseEdge = phrasePosition <= 0.125
+    ? -0.6
+    : phrasePosition >= 0.875
+      ? 0.55
+      : 0;
+  const rolePhraseShape = role === "melody"
+    ? phraseEdge
+    : role === "bass"
+      ? Math.max(0, phraseEdge)
+      : phraseEdge * 0.25;
+  return profile.rolePocketBeats
+    + phraseCycle * profile.phrasePocketDepthBeats
+    + rolePhraseShape * profile.phrasePocketDepthBeats;
+}
+
+function calculateMaterialPressure(
+  difficultyPressure: number,
+  leapPressure: number,
+  durationPressure: number,
+  velocityPressure: number,
+  caution: number,
+  disruption: number,
+  materialDepthBeats: number,
+): number {
+  const difficultyDrag = difficultyPressure * (0.45 + caution * 0.35);
+  const difficultyPush = leapPressure * disruption * 0.5;
+  const phrasePush = (durationPressure + Math.max(0, velocityPressure)) * 0.25;
+  return (difficultyDrag - difficultyPush - phrasePush) * materialDepthBeats;
+}
+
+function calculateStumble(playerId: string, eventIndex: number, profile: RoleTimingProfile): number {
+  const gate = seededPhase(`${playerId}:stumble-gate:${eventIndex}`);
+  if (gate > profile.stumbleChance) return 0;
+  const direction = seededPhase(`${playerId}:stumble-direction:${eventIndex}`) >= 0.5 ? 1 : -1;
+  const depth = 0.55 + seededPhase(`${playerId}:stumble-depth:${eventIndex}`) * 0.45;
+  return direction * depth * profile.stumbleDepthBeats;
 }
 
 function calculateLeapPressure(previousPitch: string | undefined, pitch: string): number {
@@ -220,6 +346,10 @@ function seededPhase(seed: string): number {
 
 function roundOffset(value: number): number {
   return Math.round(value * 10_000) / 10_000;
+}
+
+function mod(value: number, divisor: number): number {
+  return ((value % divisor) + divisor) % divisor;
 }
 
 function clamp(value: number, minimum: number, maximum: number): number {

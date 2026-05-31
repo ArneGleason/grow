@@ -30,6 +30,14 @@ import {
   type SessionModeOption,
 } from "./session-mode";
 import {
+  DEFAULT_SONG_ID,
+  getSongMaterial,
+  isSongId,
+  SONG_MATERIALS,
+  type SongId,
+  type SongMaterial,
+} from "./song-material";
+import {
   createTerrariumView,
   type TerrariumHeatState,
   type TerrariumView,
@@ -46,10 +54,12 @@ import { getThoughtPromptProtocol, isThoughtPromptProtocolId } from "./thought-p
 import {
   getState,
   initTransport,
+  refreshLookaheadSchedule,
   startTransport,
   stopTransport,
   type GrowLookaheadState,
   type GrowTransportState,
+  type TimingFeelMode,
 } from "./transport";
 import { GrowWorldState, type RuntimePlayer } from "./world-state";
 
@@ -67,6 +77,13 @@ let ollamaConfig = createDefaultOllamaConfig();
 let ollamaHealth = createInitialOllamaHealth(ollamaConfig);
 let ollamaThoughtTest = createInitialOllamaThoughtTest(ollamaConfig);
 let ollamaRequestInFlight = false;
+let songId: SongId = DEFAULT_SONG_ID;
+let timingFeelMode: TimingFeelMode = "feel";
+const TIMING_FEEL_OPTIONS: Array<{ id: TimingFeelMode; label: string }> = [
+  { id: "grid", label: "Grid" },
+  { id: "feel", label: "Feel" },
+  { id: "wide", label: "Wide" },
+];
 const defaultSessionModeLabel = getSessionModeLabel(DEFAULT_SESSION_MODE);
 const sessionModeControls = SESSION_MODE_OPTIONS.map((mode) => `
           <label class="mode-option" data-testid="session-mode-${mode.id}-option">
@@ -80,10 +97,38 @@ const sessionModeControls = SESSION_MODE_OPTIONS.map((mode) => `
             <span>${mode.label}</span>
           </label>
 `).join("");
+const songControls = SONG_MATERIALS.map((song) => `
+          <label class="mode-option" data-testid="song-${song.id}-option">
+            <input
+              data-testid="song-${song.id}"
+              name="song"
+              type="radio"
+              value="${song.id}"
+              ${song.id === songId ? "checked" : ""}
+            />
+            <span>${song.label}</span>
+          </label>
+`).join("");
+const timingFeelControls = TIMING_FEEL_OPTIONS.map((mode) => `
+          <label class="mode-option" data-testid="timing-feel-${mode.id}-option">
+            <input
+              data-testid="timing-feel-${mode.id}"
+              name="timing-feel"
+              type="radio"
+              value="${mode.id}"
+              ${mode.id === timingFeelMode ? "checked" : ""}
+            />
+            <span>${mode.label}</span>
+          </label>
+`).join("");
 const HELP_TOPICS = {
   session: {
     title: "Session",
-    body: "Session mode controls the players' working posture. Right now break drains the committed lookahead queue while rehearsal, solo practice, and performance keep refilling future material.",
+    body: "Session mode controls the players' working posture. Song switches the deterministic material loop so your ear can reset while comparing timing feels. Right now break drains the committed lookahead queue while rehearsal, solo practice, and performance keep refilling future material.",
+  },
+  timing: {
+    title: "Timing",
+    body: "Timing feel switches the audition between square grid playback, normal deterministic pocket, and a deliberately exaggerated Wide pocket. Use Grid as a palate cleanser, then switch to Wide when you need proof that the timing layer is audible.",
   },
   ollama: {
     title: "Ollama",
@@ -135,12 +180,24 @@ function isHelpTopicId(value: string): value is HelpTopicId {
   return value in HELP_TOPICS;
 }
 
+function isTimingFeelMode(value: string): value is TimingFeelMode {
+  return TIMING_FEEL_OPTIONS.some((mode) => mode.id === value);
+}
+
+function getTimingFeelModeLabel(mode: TimingFeelMode): string {
+  return TIMING_FEEL_OPTIONS.find((option) => option.id === mode)?.label ?? mode;
+}
+
+function getSongLabel(nextSongId: SongId): string {
+  return getSongMaterial(nextSongId).label;
+}
+
 app.innerHTML = `
   <section class="app-shell" aria-label="Grow Byte 10f-b1">
     <header class="topbar">
       <div class="brand">
         <h1 class="brand__title">Grow</h1>
-        <p class="brand__subtitle">Byte 10f-b1: local Ollama proxy</p>
+        <p class="brand__subtitle">Timing feel experiment: grid, feel, wide</p>
       </div>
       <div class="transport-controls">
         <fieldset class="mode-control">
@@ -148,6 +205,20 @@ app.innerHTML = `
           <span class="mode-label" aria-hidden="true">Mode</span>
           <div class="mode-segments" data-testid="session-mode-control">
 ${sessionModeControls}
+          </div>
+        </fieldset>
+        <fieldset class="mode-control song-control">
+          <legend class="visually-hidden">Song material</legend>
+          <span class="mode-label" aria-hidden="true">Song</span>
+          <div class="mode-segments" data-testid="song-control">
+${songControls}
+          </div>
+        </fieldset>
+        <fieldset class="mode-control timing-control">
+          <legend class="visually-hidden">Timing feel</legend>
+          <span class="mode-label" aria-hidden="true">Timing</span>
+          <div class="mode-segments" data-testid="timing-feel-control">
+${timingFeelControls}
           </div>
         </fieldset>
         <button
@@ -225,6 +296,10 @@ ${renderHelpButton("session", "session mode")}
           <dl>
             <dt>Mode</dt>
             <dd data-testid="session-mode-current">${defaultSessionModeLabel}</dd>
+            <dt>Song</dt>
+            <dd data-testid="song-current">${getSongLabel(songId)}</dd>
+            <dt>Timing</dt>
+            <dd data-testid="timing-feel-current">Feel</dd>
           </dl>
         </section>
 
@@ -340,6 +415,10 @@ const helpCloseButton = requireElement<HTMLButtonElement>("[data-testid='inspect
 const helpButtons = Array.from(document.querySelectorAll<HTMLButtonElement>("[data-help-topic]"));
 const sessionModeControl = requireElement<HTMLDivElement>("[data-testid='session-mode-control']");
 const sessionModeCurrent = requireElement<HTMLElement>("[data-testid='session-mode-current']");
+const songControl = requireElement<HTMLDivElement>("[data-testid='song-control']");
+const songCurrent = requireElement<HTMLElement>("[data-testid='song-current']");
+const timingFeelControl = requireElement<HTMLDivElement>("[data-testid='timing-feel-control']");
+const timingFeelCurrent = requireElement<HTMLElement>("[data-testid='timing-feel-current']");
 const playerList = requireElement<HTMLDivElement>("#player-list");
 const thoughtSeedList = requireElement<HTMLDivElement>("#thought-seed-list");
 const ollamaBaseUrlInput = requireElement<HTMLInputElement>("[data-testid='ollama-base-url-input']");
@@ -783,11 +862,19 @@ function renderSessionMode(): void {
   for (const input of sessionModeControl.querySelectorAll<HTMLInputElement>("input[name='session-mode']")) {
     input.checked = input.value === mode;
   }
+  songCurrent.textContent = getSongLabel(songId);
+  for (const input of songControl.querySelectorAll<HTMLInputElement>("input[name='song']")) {
+    input.checked = input.value === songId;
+  }
+  timingFeelCurrent.textContent = getTimingFeelModeLabel(timingFeelMode);
+  for (const input of timingFeelControl.querySelectorAll<HTMLInputElement>("input[name='timing-feel']")) {
+    input.checked = input.value === timingFeelMode;
+  }
 }
 
 function renderStatus(state: GrowTransportState): void {
   button.textContent = state.status === "playing" ? "Stop" : "Start";
-  status.value = `mode ${getSessionModeLabel(state.sessionMode).toLowerCase()} | ${state.status} | ${state.bpm} BPM | bar ${state.bar} | beat ${state.currentBeat.toFixed(1)} | lookahead ${state.lookahead.health} ${state.lookahead.leadBeats.toFixed(1)}/${state.lookahead.targetBeats.toFixed(0)} | pending slots ${state.lookahead.pendingSlotCount}`;
+  status.value = `mode ${getSessionModeLabel(state.sessionMode).toLowerCase()} | song ${getSongLabel(state.songId)} | ${state.status} | ${state.bpm} BPM | bar ${state.bar} | beat ${state.currentBeat.toFixed(1)} | lookahead ${state.lookahead.health} ${state.lookahead.leadBeats.toFixed(1)}/${state.lookahead.targetBeats.toFixed(0)} | pending slots ${state.lookahead.pendingSlotCount}`;
 }
 
 function getCurrentListeningFrame(): ListeningFrame {
@@ -1017,12 +1104,30 @@ function applySessionMode(mode: SessionMode): SessionMode {
   return world.getSessionMode();
 }
 
+function applySongId(nextSongId: SongId): SongId {
+  songId = nextSongId;
+  world.clearMusicalEvents();
+  world.resetTasteEvaluations();
+  refreshLookaheadSchedule();
+  renderWorld();
+  return songId;
+}
+
+function applyTimingFeelMode(mode: TimingFeelMode): TimingFeelMode {
+  timingFeelMode = mode;
+  refreshLookaheadSchedule();
+  renderWorld();
+  return timingFeelMode;
+}
+
 initTransport({
   tick: handleTransportState,
   musicalEvent: handleMusicalEvent,
   noteDecision: (input) => world.getTasteNoteDecision(input),
   sessionMode: () => world.getSessionMode(),
   shouldRefillLookahead: () => shouldSessionModeRefillLookahead(world.getSessionMode()),
+  songId: () => songId,
+  timingFeelMode: () => timingFeelMode,
 }, {
   tonalContext: world.getTonalContext(),
 });
@@ -1052,6 +1157,22 @@ sessionModeControl.addEventListener("change", (event) => {
   if (!isSessionMode(input.value)) return;
 
   applySessionMode(input.value);
+});
+
+songControl.addEventListener("change", (event) => {
+  const input = event.target;
+  if (!(input instanceof HTMLInputElement) || input.name !== "song") return;
+  if (!isSongId(input.value)) return;
+
+  applySongId(input.value);
+});
+
+timingFeelControl.addEventListener("change", (event) => {
+  const input = event.target;
+  if (!(input instanceof HTMLInputElement) || input.name !== "timing-feel") return;
+  if (!isTimingFeelMode(input.value)) return;
+
+  applyTimingFeelMode(input.value);
 });
 
 ollamaBaseUrlInput.addEventListener("change", () => {
@@ -1152,6 +1273,15 @@ declare global {
       getModes(): readonly SessionModeOption[];
       setMode(mode: string): SessionMode;
     };
+    song?: {
+      getId(): SongId;
+      getSongs(): readonly SongMaterial[];
+      setId(nextSongId: string): SongId;
+    };
+    timing?: {
+      getMode(): TimingFeelMode;
+      setMode(mode: string): TimingFeelMode;
+    };
     ollama?: {
       getConfig(): OllamaConfig;
       setConfig(config: Partial<OllamaConfig>): OllamaConfig;
@@ -1230,6 +1360,27 @@ window.session = {
   },
 };
 
+window.song = {
+  getId: () => songId,
+  getSongs: () => SONG_MATERIALS,
+  setId: (nextSongId) => {
+    if (isSongId(nextSongId)) {
+      return applySongId(nextSongId);
+    }
+    return songId;
+  },
+};
+
+window.timing = {
+  getMode: () => timingFeelMode,
+  setMode: (mode) => {
+    if (isTimingFeelMode(mode)) {
+      return applyTimingFeelMode(mode);
+    }
+    return timingFeelMode;
+  },
+};
+
 window.ollama = {
   getConfig: () => ({ ...ollamaConfig }),
   setConfig: (config) => setOllamaConfig(config),
@@ -1260,6 +1411,7 @@ if (import.meta.hot) {
     window.taste = undefined;
     window.thinking = undefined;
     window.session = undefined;
+    window.timing = undefined;
     window.ollama = undefined;
     window.terrarium = undefined;
     window.removeEventListener("resize", handleWindowResize);

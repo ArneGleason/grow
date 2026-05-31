@@ -10,11 +10,18 @@ import {
 } from "./performed-time";
 import { getPlayerById } from "./players";
 import { DEFAULT_SESSION_MODE, type SessionMode } from "./session-mode";
+import {
+  DEFAULT_SONG_ID,
+  getSongMaterial,
+  type PatternNoteSource,
+  type SongId,
+} from "./song-material";
 import type { TasteNoteDecision, TasteNoteDecisionInput } from "./taste";
 import { DEFAULT_TONAL_CONTEXT, noteFromScaleDegree } from "./tonal-context";
 
 export type TransportStatus = "stopped" | "playing";
 export type LookaheadHealth = "stopped" | "empty" | "thin" | "healthy";
+export type TimingFeelMode = "grid" | "feel" | "wide";
 
 export interface GrowLookaheadState {
   targetBeats: number;
@@ -28,6 +35,8 @@ export interface GrowLookaheadState {
 export interface GrowTransportState {
   status: TransportStatus;
   sessionMode: SessionMode;
+  songId: SongId;
+  timingFeelMode: TimingFeelMode;
   bpm: number;
   bar: number;
   currentBeat: number;
@@ -40,12 +49,27 @@ export interface GrowTransportState {
   };
 }
 
+export interface AudioFireTimingDiagnostic {
+  playerId: string;
+  absoluteBeat: number;
+  eventIndex: number;
+  timingFeelMode: TimingFeelMode;
+  scheduledSeconds: number;
+  immediateSeconds: number;
+  lookaheadNowSeconds: number;
+  audioTimeSeconds: number;
+  clampDelaySeconds: number;
+  createdAtMs: number;
+}
+
 export interface TransportHandlers {
   tick?: (state: GrowTransportState) => void;
   musicalEvent?: (event: MusicalEvent) => void;
   noteDecision?: (input: TasteNoteDecisionInput) => TasteNoteDecision | undefined;
   sessionMode?: () => SessionMode;
   shouldRefillLookahead?: () => boolean;
+  songId?: () => SongId;
+  timingFeelMode?: () => TimingFeelMode;
 }
 
 export interface TransportOptions {
@@ -61,7 +85,10 @@ const LOOKAHEAD_MINIMUM_BEATS = 4;
 const LOOKAHEAD_SCHEDULER_INTERVAL_MS = 250;
 const AUDIO_START_TIMEOUT_MS = 3_000;
 const AUDIO_FIRE_EPSILON_SECONDS = 0.003;
-const MAX_PERFORMED_OFFSET_BEATS = 0.035;
+const MAX_PERFORMED_OFFSET_BEATS = 0.06;
+const WIDE_TIMING_SCALE = 4;
+const WIDE_TIMING_MAXIMUM_OFFSET_BEATS = MAX_PERFORMED_OFFSET_BEATS;
+const DEFAULT_TIMING_FEEL_MODE: TimingFeelMode = "feel";
 const DEFAULT_NOTE_DECISION: TasteNoteDecision = {
   action: "repeat",
   shouldPlay: true,
@@ -69,27 +96,13 @@ const DEFAULT_NOTE_DECISION: TasteNoteDecision = {
   reason: "No taste decision supplied.",
 };
 
-interface PatternNote {
-  playerId: string;
-  scaleDegree: number;
-  octave: number;
-  duration: ToneNS.Unit.Time;
-  durationBeats: number;
-  velocity: number;
-}
-
-interface ScheduledNote extends Omit<PatternNote, "scaleDegree" | "octave"> {
+interface ScheduledNote extends Omit<PatternNoteSource, "scaleDegree" | "octave"> {
   pitch: string;
 }
 
 interface PlayerPattern {
   subdivisionBeats: number;
   events: Array<ScheduledNote | null>;
-}
-
-interface PlayerPatternSource {
-  subdivisionBeats: number;
-  events: Array<PatternNote | null>;
 }
 
 interface ScheduledSnapshot {
@@ -104,6 +117,8 @@ interface CommittedScheduledNote {
   snapshot: ScheduledSnapshot;
   eventIndex: number;
   performedTiming: PlayerPerformedTimingSnapshot;
+  songId: SongId;
+  timingFeelMode: TimingFeelMode;
 }
 
 let Tone: typeof ToneNS | null = null;
@@ -123,156 +138,16 @@ const committedEventIndexes = new Map<string, number>();
 const latestCommittedPitchByPlayer = new Map<string, string>();
 const latestExpressionByPlayer = new Map<string, PlayerExpressionSnapshot>();
 const latestPerformedTimingByPlayer = new Map<string, PlayerPerformedTimingSnapshot>();
+const latestAudioFireTiming: AudioFireTimingDiagnostic[] = [];
 
-const PLAYER_PATTERN_SOURCES: readonly PlayerPatternSource[] = [
-  {
-    subdivisionBeats: 1,
-    events: [
-      {
-        playerId: "pulse",
-        scaleDegree: 0,
-        octave: 2,
-        duration: "8n",
-        durationBeats: 0.5,
-        velocity: 0.74,
-      },
-    ],
-  },
-  {
-    subdivisionBeats: 0.5,
-    events: [
-      {
-        playerId: "bass",
-        scaleDegree: 0,
-        octave: 2,
-        duration: "8n",
-        durationBeats: 0.5,
-        velocity: 0.54,
-      },
-      null,
-      null,
-      {
-        playerId: "bass",
-        scaleDegree: 4,
-        octave: 1,
-        duration: "8n",
-        durationBeats: 0.5,
-        velocity: 0.44,
-      },
-      {
-        playerId: "bass",
-        scaleDegree: 6,
-        octave: 1,
-        duration: "8n",
-        durationBeats: 0.5,
-        velocity: 0.48,
-      },
-      null,
-      {
-        playerId: "bass",
-        scaleDegree: 4,
-        octave: 1,
-        duration: "8n",
-        durationBeats: 0.5,
-        velocity: 0.42,
-      },
-      null,
-    ],
-  },
-  {
-    subdivisionBeats: 0.5,
-    events: [
-      null,
-      {
-        playerId: "melody",
-        scaleDegree: 2,
-        octave: 4,
-        duration: "8n",
-        durationBeats: 0.5,
-        velocity: 0.28,
-      },
-      {
-        playerId: "melody",
-        scaleDegree: 4,
-        octave: 4,
-        duration: "8n",
-        durationBeats: 0.5,
-        velocity: 0.32,
-      },
-      null,
-      {
-        playerId: "melody",
-        scaleDegree: 5,
-        octave: 4,
-        duration: "8n",
-        durationBeats: 0.5,
-        velocity: 0.28,
-      },
-      {
-        playerId: "melody",
-        scaleDegree: 4,
-        octave: 4,
-        duration: "8n",
-        durationBeats: 0.5,
-        velocity: 0.24,
-      },
-      null,
-      {
-        playerId: "melody",
-        scaleDegree: 1,
-        octave: 4,
-        duration: "8n",
-        durationBeats: 0.5,
-        velocity: 0.3,
-      },
-      null,
-      {
-        playerId: "melody",
-        scaleDegree: 0,
-        octave: 4,
-        duration: "8n",
-        durationBeats: 0.5,
-        velocity: 0.26,
-      },
-      null,
-      {
-        playerId: "melody",
-        scaleDegree: 2,
-        octave: 4,
-        duration: "8n",
-        durationBeats: 0.5,
-        velocity: 0.28,
-      },
-      {
-        playerId: "melody",
-        scaleDegree: 4,
-        octave: 4,
-        duration: "8n",
-        durationBeats: 0.5,
-        velocity: 0.3,
-      },
-      null,
-      {
-        playerId: "melody",
-        scaleDegree: 6,
-        octave: 4,
-        duration: "8n",
-        durationBeats: 0.5,
-        velocity: 0.24,
-      },
-      null,
-    ],
-  },
-];
-
-function buildPlayerPatterns(tonalContext: TonalContext): readonly PlayerPattern[] {
-  return PLAYER_PATTERN_SOURCES.map((pattern) => ({
+function buildPlayerPatterns(tonalContext: TonalContext, songId: SongId): readonly PlayerPattern[] {
+  return getSongMaterial(songId).patterns.map((pattern) => ({
     subdivisionBeats: pattern.subdivisionBeats,
     events: pattern.events.map((note) => note ? materializeNote(tonalContext, note) : null),
   }));
 }
 
-function materializeNote(tonalContext: TonalContext, note: PatternNote): ScheduledNote {
+function materializeNote(tonalContext: TonalContext, note: PatternNoteSource): ScheduledNote {
   return {
     playerId: note.playerId,
     pitch: noteFromScaleDegree(tonalContext, note.scaleDegree, note.octave),
@@ -298,6 +173,14 @@ function getActiveSessionMode(): SessionMode {
 
 function shouldRefillLookahead(): boolean {
   return handlers.shouldRefillLookahead?.() ?? true;
+}
+
+function getActiveSongId(): SongId {
+  return handlers.songId?.() ?? DEFAULT_SONG_ID;
+}
+
+function getTimingFeelMode(): TimingFeelMode {
+  return handlers.timingFeelMode?.() ?? DEFAULT_TIMING_FEEL_MODE;
 }
 
 function getScheduledSnapshot(absoluteBeat: number): ScheduledSnapshot {
@@ -346,9 +229,11 @@ function emitNoteEvent(
     tags: [
       ...player.tags,
       `taste:${decision.action}`,
+      `song:${committed.songId}`,
       "expression:velocity",
       "timing:offset-data",
-      "timing:audible-offset",
+      committed.timingFeelMode === "grid" ? "timing:grid" : "timing:audible-offset",
+      ...(committed.timingFeelMode === "wide" ? ["timing:wide-audition"] : []),
     ],
     createdAtMs: performance.now(),
   };
@@ -498,9 +383,34 @@ function triggerScheduledNote(
 
 function clampAudioFireTime(tone: typeof ToneNS, performedTime: ToneNS.Unit.Time): number {
   const scheduledSeconds = Number(performedTime);
-  const fallbackSeconds = tone.now() + AUDIO_FIRE_EPSILON_SECONDS;
+  const fallbackSeconds = tone.immediate() + AUDIO_FIRE_EPSILON_SECONDS;
   if (!Number.isFinite(scheduledSeconds)) return fallbackSeconds;
   return Math.max(scheduledSeconds, fallbackSeconds);
+}
+
+function recordAudioFireTiming(
+  tone: typeof ToneNS,
+  committed: CommittedScheduledNote,
+  scheduledSeconds: number,
+  audioTimeSeconds: number,
+): void {
+  latestAudioFireTiming.push({
+    playerId: committed.note.playerId,
+    absoluteBeat: committed.snapshot.absoluteBeat,
+    eventIndex: committed.eventIndex,
+    timingFeelMode: committed.timingFeelMode,
+    scheduledSeconds,
+    immediateSeconds: tone.immediate(),
+    lookaheadNowSeconds: tone.now(),
+    audioTimeSeconds,
+    clampDelaySeconds: Number.isFinite(scheduledSeconds)
+      ? audioTimeSeconds - scheduledSeconds
+      : 0,
+    createdAtMs: performance.now(),
+  });
+  if (latestAudioFireTiming.length > 96) {
+    latestAudioFireTiming.splice(0, latestAudioFireTiming.length - 96);
+  }
 }
 
 function getFirstFutureGridBeat(currentBeat: number): number {
@@ -557,7 +467,9 @@ function commitScheduledNote(note: ScheduledNote, snapshot: ScheduledSnapshot): 
 
   const eventIndex = getNextCommittedEventIndex(note.playerId);
   const previousPitch = latestCommittedPitchByPlayer.get(note.playerId);
-  const performedTiming = calculatePerformedTiming({
+  const songId = getActiveSongId();
+  const timingFeelMode = getTimingFeelMode();
+  const calculatedTiming = calculatePerformedTiming({
     player,
     absoluteBeat: snapshot.absoluteBeat,
     eventIndex,
@@ -567,6 +479,7 @@ function commitScheduledNote(note: ScheduledNote, snapshot: ScheduledSnapshot): 
     baseVelocity: note.velocity,
     localDensity: calculateLocalDensity(snapshot.absoluteBeat),
   });
+  const performedTiming = applyTimingFeelMode(calculatedTiming, timingFeelMode);
   latestCommittedPitchByPlayer.set(note.playerId, note.pitch);
   latestPerformedTimingByPlayer.set(note.playerId, performedTiming);
 
@@ -575,7 +488,59 @@ function commitScheduledNote(note: ScheduledNote, snapshot: ScheduledSnapshot): 
     snapshot,
     eventIndex,
     performedTiming,
+    songId,
+    timingFeelMode,
   };
+}
+
+function applyTimingFeelMode(
+  timing: PlayerPerformedTimingSnapshot,
+  timingFeelMode: TimingFeelMode,
+): PlayerPerformedTimingSnapshot {
+  if (timingFeelMode === "feel") return timing;
+  if (timingFeelMode === "wide") return widenTimingFeel(timing);
+  return {
+    ...timing,
+    performedOffsetBeats: 0,
+    components: {
+      ...timing.components,
+      sharedGroove: 0,
+      playerPocket: 0,
+      materialPressure: 0,
+      stumble: 0,
+    },
+    summary: "square grid",
+  };
+}
+
+function widenTimingFeel(timing: PlayerPerformedTimingSnapshot): PlayerPerformedTimingSnapshot {
+  const performedOffsetBeats = roundBeatOffset(clampBeatOffset(
+    timing.performedOffsetBeats * WIDE_TIMING_SCALE,
+    -Math.min(WIDE_TIMING_MAXIMUM_OFFSET_BEATS, timing.absoluteBeat),
+    WIDE_TIMING_MAXIMUM_OFFSET_BEATS,
+  ));
+
+  return {
+    ...timing,
+    performedOffsetBeats,
+    maximumOffsetBeats: WIDE_TIMING_MAXIMUM_OFFSET_BEATS,
+    components: {
+      ...timing.components,
+      sharedGroove: roundBeatOffset(timing.components.sharedGroove * WIDE_TIMING_SCALE),
+      playerPocket: roundBeatOffset(timing.components.playerPocket * WIDE_TIMING_SCALE),
+      materialPressure: roundBeatOffset(timing.components.materialPressure * WIDE_TIMING_SCALE),
+      stumble: roundBeatOffset(timing.components.stumble * WIDE_TIMING_SCALE),
+    },
+    summary: `wide audition: ${timing.summary}`,
+  };
+}
+
+function roundBeatOffset(value: number): number {
+  return Math.round(value * 10_000) / 10_000;
+}
+
+function clampBeatOffset(value: number, minimum: number, maximum: number): number {
+  return Math.max(minimum, Math.min(maximum, value));
 }
 
 function getPerformedTransportPosition(tone: typeof ToneNS, committed: CommittedScheduledNote): string {
@@ -602,6 +567,7 @@ function schedulePatternNote(
     scheduledEventIds.delete(eventId);
     if (status !== "playing") return;
     const audioTime = clampAudioFireTime(tone, time);
+    recordAudioFireTiming(tone, committed, Number(time), audioTime);
     triggerScheduledNote(tone, audioTime, committed);
     draw.schedule(() => emitTick(), audioTime);
   }, getPerformedTransportPosition(tone, committed));
@@ -662,6 +628,7 @@ function disposeLookaheadSchedule(tone: typeof ToneNS | null = Tone): void {
   latestCommittedPitchByPlayer.clear();
   latestExpressionByPlayer.clear();
   latestPerformedTimingByPlayer.clear();
+  latestAudioFireTiming.length = 0;
 }
 
 export function initTransport(
@@ -698,9 +665,10 @@ export async function startTransport(): Promise<GrowTransportState> {
   latestCommittedPitchByPlayer.clear();
   latestExpressionByPlayer.clear();
   latestPerformedTimingByPlayer.clear();
+  latestAudioFireTiming.length = 0;
   nextScheduleBeat = 0;
   scheduledThroughBeat = 0;
-  activePatterns = buildPlayerPatterns(activeTonalContext);
+  activePatterns = buildPlayerPatterns(activeTonalContext, getActiveSongId());
   startLookaheadScheduler(tone);
 
   transport.start("+0.05");
@@ -719,6 +687,31 @@ export function stopTransport(): GrowTransportState {
     transport.position = "0:0:0";
   }
   log("stopped");
+  emitTick();
+  return getState();
+}
+
+export function refreshLookaheadSchedule(): GrowTransportState {
+  if (!Tone || status !== "playing") {
+    emitTick();
+    return getState();
+  }
+
+  const transport = Tone.getTransport();
+  for (const eventId of scheduledEventIds) {
+    transport.clear(eventId);
+  }
+  scheduledEventIds.clear();
+  activePatterns = buildPlayerPatterns(activeTonalContext, getActiveSongId());
+  const currentBeat = getCurrentBeat();
+  nextScheduleBeat = getFirstFutureGridBeat(currentBeat);
+  scheduledThroughBeat = currentBeat;
+  committedEventIndexes.clear();
+  latestCommittedPitchByPlayer.clear();
+  latestExpressionByPlayer.clear();
+  latestPerformedTimingByPlayer.clear();
+  latestAudioFireTiming.length = 0;
+  scheduleLookahead(Tone);
   emitTick();
   return getState();
 }
@@ -746,6 +739,8 @@ export function getState(): GrowTransportState {
   return {
     status,
     sessionMode: getActiveSessionMode(),
+    songId: getActiveSongId(),
+    timingFeelMode: getTimingFeelMode(),
     bpm: BPM,
     bar: Math.floor(currentBeat / BEATS_PER_BAR) + 1,
     currentBeat,
@@ -757,6 +752,10 @@ export function getState(): GrowTransportState {
       latest: [...latestPerformedTimingByPlayer.values()],
     },
   };
+}
+
+export function getTimingDiagnostics(): readonly AudioFireTimingDiagnostic[] {
+  return latestAudioFireTiming;
 }
 
 function getLookaheadState(currentBeat: number): GrowLookaheadState {
@@ -793,7 +792,9 @@ declare global {
       start: typeof startTransport;
       stop: typeof stopTransport;
       dispose: typeof disposeTransport;
+      refreshLookahead: typeof refreshLookaheadSchedule;
       getState: typeof getState;
+      getTimingDiagnostics: typeof getTimingDiagnostics;
     };
   }
 }
@@ -803,7 +804,9 @@ window.transport = {
   start: startTransport,
   stop: stopTransport,
   dispose: disposeTransport,
+  refreshLookahead: refreshLookaheadSchedule,
   getState,
+  getTimingDiagnostics,
 };
 
 if (import.meta.hot) {

@@ -72,6 +72,29 @@ When these layers are collapsed into one per-note offset, the ear can hear const
 
 Future timing work should make the default offset mostly groove-shaped and persistent across several bars, then add small player-specific deviations and very occasional stumbles. Tempo and groove should be stateful musical surfaces that players can notice, negotiate, and eventually ask the slow-thinking model to revise.
 
+## Groove Maps
+
+Arne's Bitwig tempo-mapping heuristic is a useful design model for Grow timing.
+
+When matching a human performance, a single tempo per bar was not enough. The working method was:
+
+- pin the bar downbeats first,
+- divide each bar into eighth-note control points,
+- adjust the local tempo between neighboring points so important attacks line up,
+- keep the next downbeat pinned so corrections cannot wobble out of control,
+- look for repeated or slowly morphing control-point shapes across later bars.
+
+That suggests a better Grow model than independent per-note offsets. A future groove map should describe the shared performed grid as a small set of anchored control points, probably eight per 4/4 bar to start. Notes then schedule against this interpolated performed grid. Player-specific pocket can sit relative to the map, and rare stumbles can sit on top of that, but most timing should feel like a coherent tempo surface rather than many unrelated note delays.
+
+This also gives the players something musical to perceive and discuss:
+
+- "the middle of the bar leans forward,"
+- "the last eighth relaxes into the downbeat,"
+- "bass is behind the groove map while melody sits ahead,"
+- "the map tightens during performance and loosens during rehearsal."
+
+Groove maps should be replayable, inspectable, and eventually storable as part of song or session state.
+
 ## Agitation And Contagion
 
 The listening frame carries an `agitation` metric as a bounded shared heat signal.

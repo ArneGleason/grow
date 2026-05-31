@@ -745,6 +745,7 @@ Implementation notes:
 - Smoke coverage now includes a restart replay assertion that compares performed offsets by `playerId:eventIndex`.
 - Claude's Byte 10d review approved the audible microtiming layer. Forward notes: choose deliberately whether difficult material should baseline push/rush or drag/slow, record `latestCommittedPitchByPlayer` in future seek-and-continue checkpoint state, consolidate duplicated pitch parsing helpers, and label just-heard dynamics versus next-committed timing debug surfaces.
 - Listening note from Arne after live preview: the current timing variation can read as perpetual stumble rather than tempo/groove. Hypothesis: Byte 10d collapsed several timing-feel layers into one per-note offset. A future timing byte should add a hierarchy of ensemble tempo drift, shared groove, per-player pocket, material pressure, and rare stumble/recovery events, so most offsets belong to a coherent pocket and only occasional notes sound like slips.
+- Follow-up listening note from Arne's DAW/Bitwig workflow: useful human timing often behaves like a tempo map, not a list of independent offsets. Pin downbeats, add eighth-note control points across the bar, interpolate tempo between points, and let that control-point shape repeat or morph over bars. This should inform the future shared groove surface.
 
 ### Future Timing Feel Retune: Groove Before Stumble
 
@@ -754,12 +755,14 @@ Retune the performed-time model so it sounds like a band with a pocket, not cons
 
 Scope:
 
+- Add a first-class groove-map representation: anchored bar downbeats plus eighth-note control points for 4/4, with smooth interpolation between neighboring control points.
 - Add an explicit shared groove surface: a deterministic bar/phrase-position offset curve that repeats or evolves slowly.
 - Add a slow ensemble tempo-drift surface separate from the ledger's grid truth.
 - Add per-player groove placement relative to the shared pocket, such as pulse anchoring, bass slightly behind/ahead, melody with looser phrase-edge placement.
 - Keep material difficulty as a secondary pressure, not the default source of every offset.
 - Make stumble/recovery rare and inspectable, with rate limits or cooldowns.
 - Keep all timing outputs deterministic, bounded, and replayable.
+- Eventually store groove maps as song/session state so players can practice, tighten, loosen, and discuss a shared feel instead of merely nudging their own notes.
 
 Review focus:
 
@@ -880,6 +883,11 @@ Implementation notes:
 - `src/ollama.ts` wraps the existing Ollama chat body in `{ baseUrl, request }` and posts to `/api/ollama/chat`; health checks go through `/api/ollama/tags`.
 - Smoke coverage intercepts `/api/ollama/*`, asserts the browser sends the projected qwen request to the proxy, and installs a guard that fails if the browser directly requests `127.0.0.1:11434`.
 
+Review result:
+
+- Claude approved Byte 10f-b1 with no required fixes. The review verified the proxy is transport-only, the browser uses same-origin `/api/ollama/*`, the localhost target guard rejects non-local targets, and a real qwen3 invalid response is safely rejected by the existing validator.
+- Forward notes before automatic slow thinking: drop model-authored `pitch` from the model-facing step schema and derive pitch from `scaleDegree` plus `octave` in system code, add upstream abort propagation, and re-host the Vite dev middleware as a standalone local server when persistence/backend work arrives.
+
 ### Byte 10f: Ollama Backend Proxy And Prompt Protocol Registry
 
 Status: planned.
@@ -895,6 +903,8 @@ Scope:
 - Start the registry with `projected-json`, `music-card`, `split-cards`, and a debug/reference `full-json`.
 - Default production use to `projected-json` with `qwen3:4b-instruct-2507-q4_K_M` until a calibrated pairing proves better.
 - Use Ollama `format` as a JSON schema for the intended intent shape rather than the bare `"json"` string.
+- For model-facing step schemas, prefer `scaleDegree` plus `octave` and omit `pitch`; system code should derive pitch before canonical validation/scheduling so models cannot disagree with music-theory arithmetic.
+- Add upstream abort propagation for proxied Ollama calls before any automatic slow-thinking loop can queue or cancel requests.
 - Add a small calibration/bakeoff harness that runs fixed thought fixtures against available models and protocol adapters, then scores parse success, validation success, required-field preservation, latency, and compactness.
 - Cache or record the selected model/protocol pairing for later use; do not run calibration inside the musical performance loop.
 - Add mocked invalid-response and unavailable-Ollama smoke cases.
@@ -930,6 +940,7 @@ Let one player occasionally ask Ollama for a future musical intent.
 Scope:
 
 - Start with one player, probably `melody`, and one mode, probably `rehearsal`.
+- Start only after the model-facing schema derives pitch system-side and proxied requests can be aborted upstream.
 - Trigger a thought request at a slow interval or at a session boundary, not every bar.
 - Show the player as `thinking` or equivalent while the request is pending.
 - Validate the returned intent.
