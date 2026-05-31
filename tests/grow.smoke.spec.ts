@@ -102,6 +102,19 @@ type SlowThinkingLoopState = {
   message: string;
 };
 
+type SlowThoughtPlayback = {
+  id: string;
+  requestId: string;
+  playerId: string;
+  action: string;
+  mode: "rest" | "thin";
+  startBeat: number;
+  endBeat: number;
+  acceptedAtBeat: number;
+  retargeted: boolean;
+  summary: string;
+};
+
 type ListeningFrame = {
   eventCount: number;
   tonalContext: { tonic: string; mode: string; scale: readonly string[] };
@@ -329,6 +342,15 @@ async function getSlowThinkingLoop(page: Page): Promise<SlowThinkingLoopState> {
   }
 
   return state;
+}
+
+async function getSlowThinkingPlayback(page: Page): Promise<SlowThoughtPlayback | undefined> {
+  return page.evaluate(() => {
+    const appWindow = window as unknown as {
+      thinking?: { getSlowPlayback(): SlowThoughtPlayback | undefined };
+    };
+    return appWindow.thinking?.getSlowPlayback();
+  });
 }
 
 async function getSessionMode(page: Page): Promise<SessionMode> {
@@ -853,7 +875,7 @@ test("manual Ollama thought probe keeps mock fallback for invalid model JSON", a
   expect((await getTransportState(page)).status).toBe("stopped");
 });
 
-test("slow thinking loop asks melody once when rehearsal is playing and Ollama is ready", async ({ page }) => {
+test("slow thinking loop asks melody once and compiles a bounded rest", async ({ page }) => {
   let chatRequestCount = 0;
 
   await page.route("**/api/ollama/tags**", async (route) => {
@@ -874,6 +896,10 @@ test("slow thinking loop asks melody once when rehearsal is playing and Ollama i
     };
     const userMessage = payload.request?.messages?.find((message) => message.role === "user")?.content ?? "";
     expect(userMessage).toContain('"player":"melody"');
+    expect(userMessage).toContain('"rest"');
+    expect(userMessage).toContain('"simplify"');
+    expect(userMessage).toContain('"change_density"');
+    expect(userMessage).not.toContain('"vary_motif"');
     await route.fulfill({
       status: 200,
       headers: {
@@ -886,26 +912,23 @@ test("slow thinking loop asks melody once when rehearsal is playing and Ollama i
           role: "assistant",
           content: JSON.stringify({
             id: "slow-loop-melody-intent",
-            responseLevel: "variation_intent",
-            action: "vary_motif",
+            responseLevel: "play_intent",
+            action: "rest",
             confidence: 0.74,
-            target: { startAfterBeats: 2, durationBeats: 1 },
+            target: { startAfterBeats: 2, durationBeats: 2 },
             musicalIdea: {
-              label: "slow loop answer",
+              label: "slow loop rest",
               origin: "imagined",
-              durationBeats: 1,
+              durationBeats: 2,
               steps: [{
-                kind: "note",
+                kind: "rest",
                 positionBeats: 0,
-                durationBeats: 0.5,
-                scaleDegree: 4,
-                octave: 4,
-                velocity: 0.58,
+                durationBeats: 2,
                 tags: ["slow-loop"],
               }],
               tags: ["slow-loop-intent"],
             },
-            rationale: "Answer with a bounded in-scale turn.",
+            rationale: "Take a short breath so the bass can show the floor.",
           }),
         },
         done: true,
@@ -926,11 +949,26 @@ test("slow thinking loop asks melody once when rehearsal is playing and Ollama i
   expect(chatRequestCount).toBe(1);
   expect(slowLoop.playerId).toBe("melody");
   expect(slowLoop.provider).toBe("ollama");
-  expect(slowLoop.action).toBe("vary_motif");
+  expect(slowLoop.action).toBe("rest");
   expect(slowLoop.validation?.valid).toBe(true);
   expect(slowLoop.fallbackValid).toBe(true);
   expect(slowLoop.committedStartBeat).toBeGreaterThan(slowLoop.startedAtBeat ?? 0);
-  await expect(page.getByTestId("thought-slow-melody-status")).toContainText("accepted vary_motif");
+  await expect(page.getByTestId("thought-slow-melody-status")).toContainText("accepted rest");
+  await expect.poll(async () => (await getSlowThinkingPlayback(page))?.mode).toBe("rest");
+  const playback = await getSlowThinkingPlayback(page);
+  expect(playback?.playerId).toBe("melody");
+  expect(playback?.startBeat).toBeGreaterThanOrEqual(slowLoop.committedStartBeat ?? 0);
+  expect(playback?.endBeat).toBeGreaterThan(playback?.startBeat ?? 0);
+  await expect(page.getByTestId("thought-slow-melody-status")).toContainText("rest");
+  await expect.poll(async () => {
+    const frame = await getListeningFrame(page);
+    return frame.recentEvents.some((event) =>
+      event.playerId === "melody" &&
+      event.kind === "rest" &&
+      event.absoluteBeat >= (playback?.startBeat ?? Infinity) &&
+      event.absoluteBeat < (playback?.endBeat ?? -Infinity)
+    );
+  }, { timeout: 10_000 }).toBe(true);
   expect((await getTransportState(page)).status).toBe("playing");
 
   await button.click();
@@ -1028,7 +1066,7 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   const canvasFrame = page.getByTestId("terrarium-container");
   const canvas = page.getByTestId("terrarium-canvas");
 
-  await expect(page.locator(".brand__subtitle")).toHaveText("Slow thinking loop: melody plans ahead");
+  await expect(page.locator(".brand__subtitle")).toHaveText("Slow thinking loop: melody can rest or thin ahead");
   await expect(button).toHaveText("Start");
   await expect(status).toContainText(
     "mode rehearsal | song Lantern | stopped | 90 BPM | bar 1 | beat 0.0 | lookahead stopped 0.0/8 | pending slots 0",

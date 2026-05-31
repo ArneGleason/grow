@@ -972,7 +972,7 @@ Let one player occasionally ask Ollama for a future musical intent.
 
 ### Byte 11a: Automatic Melody Thought, No Audio Scheduling
 
-Status: implemented.
+Status: implemented and approved.
 
 Start the slow-thinking loop without letting model output drive playback yet.
 
@@ -1003,23 +1003,34 @@ Review result:
 - Re-check retargeting at schedule time and add a bar-boundary/no-overwrite thrash guard.
 - If thinking eligibility grows past rehearsal, put it in `SESSION_MODE_POLICIES` behind the existing `satisfies` guard instead of adding another mode literal.
 
+### Byte 11b: Compile A Bounded Melody Rest
+
+Status: implemented.
+
+Let the first accepted slow thought make a very small audible change without opening the full motif-rewrite problem.
+
 Scope:
 
-- Start with one player, probably `melody`, and one mode, probably `rehearsal`.
-- Start only after the model-facing schema derives pitch system-side and proxied requests can be aborted upstream.
-- Trigger a thought request at a slow interval or at a session boundary, not every bar.
-- Show the player as `thinking` or equivalent while the request is pending.
-- Validate the returned intent.
-- Retarget late output to a future bar or discard it.
-- Compile only one or two safe intent types into audible future material, such as a motif variation or a bounded rest/disruption.
-- Keep rule-based fallback active while thinking.
-- Record latency, selected context, validated intent, target beat, and discard reason if any.
+- Extract the slow-thinking loop into `src/slow-thinking.ts` so the controller owns request lifecycle, abort/discard behavior, state reporting, and accepted-intent handoff.
+- Keep automatic thinking limited to `melody` in `rehearsal` with ready Ollama health.
+- Narrow the automatic slow-loop request to compilable actions only: `rest`, `simplify`, and `change_density`.
+- Compile an accepted intent into one future bar-boundary playback window, exposed through `window.thinking.getSlowPlayback()`.
+- Apply only bounded rest or thinning through the existing note-decision path; no pitch, motif, key, chord, or section changes yet.
+- Do not overwrite an already-active slow-thought playback window.
+- Clear pending/active slow-thought behavior on stop, song changes, timing-feel changes, and leaving rehearsal.
+- Keep deterministic mock fallback and canonical validation in front of any compiled output.
 
 Review focus:
 
-- whether model output creates audible creative change without breaking timing,
-- whether the player still feels musical when the model is slow or unavailable,
-- whether the inspectable trail explains what happened.
+- whether the accepted-intent handoff is explicit enough before multiple players or repeated thoughts are added,
+- whether note-decision-time compilation is an acceptable first audible bridge, or whether the next slice should move this closer to lookahead commit data,
+- whether bar-boundary retargeting and no-overwrite are enough to prevent thrashing,
+- whether `rest`/`thin` are musically legible without feeling like a bug.
+
+Implementation notes:
+
+- The smoke test now mocks a valid `rest` intent, verifies the slow-loop prompt only offers rest/thin-style actions, checks `window.thinking.getSlowPlayback()`, and waits for a melody `rest` event inside the compiled window.
+- The visible subtitle now reads `Slow thinking loop: melody can rest or thin ahead`.
 
 ### Coordination Principle: Personal Intents Versus Band Proposals
 
