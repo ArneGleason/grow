@@ -993,6 +993,16 @@ Review focus:
 - whether the exposed state is enough to explain accepted, invalid, failed, and retargeted outcomes,
 - whether the next slice should compile a bounded rest, density change, or motif variation first.
 
+Review result:
+
+- Claude approved Byte 11a with no required fixes. Live qwen3 review verified no surprise calls before health check, playing+rehearsal+ready gating, one request at a time, pending-to-accepted cycles, thinking posture cleanup, non-blocking transport, and clean discard on gate loss or stop.
+- Byte 11b needs an explicit accepted-intent handoff because the transient loop state will be overwritten by the next cycle.
+- Extract a `slow-thinking.ts` controller before behavior grows.
+- Keep the first compiler narrow: bounded rest or density change before pitch or motif rewriting.
+- Commit through the same canonical lookahead path with validator and fallback in front.
+- Re-check retargeting at schedule time and add a bar-boundary/no-overwrite thrash guard.
+- If thinking eligibility grows past rehearsal, put it in `SESSION_MODE_POLICIES` behind the existing `satisfies` guard instead of adding another mode literal.
+
 Scope:
 
 - Start with one player, probably `melody`, and one mode, probably `rehearsal`.
@@ -1010,6 +1020,14 @@ Review focus:
 - whether model output creates audible creative change without breaking timing,
 - whether the player still feels musical when the model is slow or unavailable,
 - whether the inspectable trail explains what happened.
+
+### Coordination Principle: Personal Intents Versus Band Proposals
+
+Small expressive gestures can be local to one player: rest, simplify, density, register, or a bounded motif variation.
+
+Tonal, harmonic, and structural changes should be coordinated. Key changes, mode changes, chord sequences, section forms, and song-level leadership should not arrive as a private melody intent because the rest of the band would not know how to follow.
+
+Future songwriting work should therefore add a separate band-level proposal object with a proposer, affected players, timing, key/mode/scale, chord or section plan, agreement/resistance state, and per-player assignments.
 
 ### Byte 12: Song Sketch / Piece Construction Stub
 
