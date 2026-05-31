@@ -917,6 +917,12 @@ Implementation notes:
 - `vite.config.js` attaches an abort controller to proxied requests and passes its signal into upstream Ollama fetches.
 - Smoke coverage now checks pitch derivation on a pitchless mocked response and verifies a `503` proxy chat response leaves mock fallback valid.
 
+Review result:
+
+- Claude approved Byte 10f-b2 with no required fixes. The review verified model-authored `pitch` cannot be emitted through the schema, pitch derivation stays guarded, proxy abort propagation cleans up listeners and returns a distinct abort path, and real qwen3 returned 6/6 valid manual thought tests.
+- Follow-up before Byte 11: add a malformed/invalid-200 smoke fixture where Ollama returns HTTP 200 with validator-failing JSON, expecting `invalid`, provider `ollama`, and deterministic mock fallback valid.
+- Model picker can wait; the current env var, inspector input, and `window.ollama.setConfig()` are enough until tag typing becomes annoying.
+
 ### Byte 10f: Ollama Backend Proxy And Prompt Protocol Registry
 
 Status: planned.
@@ -935,7 +941,7 @@ Scope:
 - Add a small calibration/bakeoff harness that runs fixed thought fixtures against available models and protocol adapters, then scores parse success, validation success, required-field preservation, latency, and compactness.
 - Cache or record the selected model/protocol pairing for later use; do not run calibration inside the musical performance loop.
 - Add mocked invalid-response and unavailable-Ollama smoke cases.
-- Surface `availableModels` in the UI, preferably as a picker.
+- Surface `availableModels` in the UI later when typing model tags becomes annoying; it is not a pre-Byte-11 blocker.
 - Surface the selected prompt protocol in the UI or debug inspector.
 - Add contextual info/help icons for model, protocol, and calibration controls so the purpose and safe use of each tool remains visible in the app.
 - Consider separating health latency and thought latency in the inspector.
