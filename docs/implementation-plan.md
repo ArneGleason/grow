@@ -970,6 +970,29 @@ Prompt-shape experiment note:
 
 Let one player occasionally ask Ollama for a future musical intent.
 
+### Byte 11a: Automatic Melody Thought, No Audio Scheduling
+
+Status: implemented.
+
+Start the slow-thinking loop without letting model output drive playback yet.
+
+Scope:
+
+- Gate the loop to one player, `melody`, and one mode, `rehearsal`.
+- Start automatic requests only when the transport is playing and `ollamaHealth.status` is `ready`.
+- Keep one request in flight at a time and rate-limit follow-up thoughts by 8 beats.
+- Pass an abort signal into `runOllamaThoughtTest()` so stale pending thoughts can be cancelled when playback/mode/material changes.
+- Show `thinking` posture while pending and expose loop state in the Thoughts inspector plus `window.thinking.getSlowLoop()`.
+- Validate and store the latest accepted, invalid, failed, or discarded thought; retarget late valid thoughts to the next bar in inspection state.
+- Keep rule-based playback unchanged. Do not schedule or compile model output into audio yet.
+
+Review focus:
+
+- whether the gating is conservative enough to avoid surprise local model calls,
+- whether the loop can run without blocking transport or duplicating requests,
+- whether the exposed state is enough to explain accepted, invalid, failed, and retargeted outcomes,
+- whether the next slice should compile a bounded rest, density change, or motif variation first.
+
 Scope:
 
 - Start with one player, probably `melody`, and one mode, probably `rehearsal`.

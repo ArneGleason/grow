@@ -67,6 +67,10 @@ export interface OllamaThoughtTestResult {
   message: string;
 }
 
+export interface OllamaThoughtRunOptions {
+  signal?: AbortSignal;
+}
+
 interface OllamaTagsResponse {
   models?: Array<{ name?: string; model?: string }>;
 }
@@ -209,6 +213,7 @@ export async function checkOllamaHealth(config: OllamaConfig): Promise<OllamaHea
 export async function runOllamaThoughtTest(
   request: PlayerThoughtRequest,
   config: OllamaConfig,
+  options: OllamaThoughtRunOptions = {},
 ): Promise<OllamaThoughtTestResult> {
   const startedAt = Date.now();
   const fallbackIntent = createMockThoughtIntent(request);
@@ -230,14 +235,19 @@ export async function runOllamaThoughtTest(
   };
 
   try {
-    const response = await fetchWithTimeout(createOllamaProxyUrl("chat", config), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        baseUrl: sanitizeBaseUrl(config.baseUrl),
-        request: ollamaRequest,
-      } satisfies OllamaProxyChatRequest),
-    }, config.timeoutMs);
+    const response = await fetchWithTimeout(
+      createOllamaProxyUrl("chat", config),
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          baseUrl: sanitizeBaseUrl(config.baseUrl),
+          request: ollamaRequest,
+        } satisfies OllamaProxyChatRequest),
+      },
+      config.timeoutMs,
+      options.signal,
+    );
     const latencyMs = Date.now() - startedAt;
     if (!response.ok) {
       return createFailedThoughtTest(
@@ -452,9 +462,16 @@ async function fetchWithTimeout(
   url: string,
   init: RequestInit,
   timeoutMs: number,
+  externalSignal?: AbortSignal,
 ): Promise<Response> {
   const controller = new AbortController();
   const timeoutId = globalThis.setTimeout(() => controller.abort(), timeoutMs);
+  const abort = () => controller.abort();
+  if (externalSignal?.aborted) {
+    controller.abort();
+  } else {
+    externalSignal?.addEventListener("abort", abort, { once: true });
+  }
   try {
     return await fetch(url, {
       ...init,
@@ -462,6 +479,7 @@ async function fetchWithTimeout(
     });
   } finally {
     globalThis.clearTimeout(timeoutId);
+    externalSignal?.removeEventListener("abort", abort);
   }
 }
 

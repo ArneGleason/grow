@@ -57,6 +57,8 @@ Use this file for known risks, open questions, and review focus. Keep entries sh
 - Byte 10f-b1 is approved. Claude verified the Vite proxy is transport-only, localhost-scoped, and that browser code uses same-origin `/api/ollama/*` instead of direct Ollama fetches.
 - Byte 10f-b2 is approved. Claude verified pitch is removed from the model schema, system-side pitch derivation does not mask bad degrees, proxy abort propagation works, and real qwen3 returned 6/6 valid manual thought tests.
 - Pre-Byte-11 invalid-200 smoke fixture is implemented. A mocked HTTP 200 with validator-failing JSON yields `invalid`, provider `ollama`, valid mock fallback, and stopped transport.
+- Byte 11a review should check the slow-thinking loop boundary: it is gated by playing/rehearsal/Ollama-ready, remains one-player/one-request-at-a-time, never blocks transport, and records accepted/invalid/failed thought status without scheduling model output into audio yet.
+- Next Byte 11 slice should decide the first safe compiler from accepted intent to audible future behavior, probably a bounded rest or density change before pitch variation.
 - Model picker is convenience, not a pre-Byte-11 blocker; env/input/`window.ollama.setConfig()` already cover model selection.
 - The current Ollama proxy is a Vite dev middleware. When SQLite/persistence or a durable backend lands, re-host the same proxy protocol in a standalone local server rather than changing the thought contract.
 - Ollama API note: for `gemma4:31b`, include `think: false` in short structured `/api/chat` calls or the response may put reasoning in `message.thinking` and leave `message.content` empty.

@@ -83,6 +83,25 @@ type AudioFireTimingDiagnostic = {
   clampDelaySeconds: number;
 };
 
+type SlowThinkingLoopState = {
+  enabled: boolean;
+  playerId: string;
+  status: "idle" | "pending" | "accepted" | "invalid" | "failed" | "discarded";
+  requestId?: string;
+  startedAtBeat?: number;
+  resolvedAtBeat?: number;
+  intendedStartBeat?: number;
+  committedStartBeat?: number;
+  nextEligibleBeat: number;
+  latencyMs?: number;
+  provider: "none" | "ollama" | "mock-fallback";
+  action?: string;
+  validation?: { valid: boolean; errors: string[] };
+  fallbackValid?: boolean;
+  retargeted?: boolean;
+  message: string;
+};
+
 type ListeningFrame = {
   eventCount: number;
   tonalContext: { tonic: string; mode: string; scale: readonly string[] };
@@ -295,6 +314,21 @@ async function getMockThoughtIntents(page: Page): Promise<readonly PlayerThought
   }
 
   return intents;
+}
+
+async function getSlowThinkingLoop(page: Page): Promise<SlowThinkingLoopState> {
+  const state = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      thinking?: { getSlowLoop(): SlowThinkingLoopState };
+    };
+    return appWindow.thinking?.getSlowLoop();
+  });
+
+  if (!state) {
+    throw new Error("window.thinking.getSlowLoop() was not available");
+  }
+
+  return state;
 }
 
 async function getSessionMode(page: Page): Promise<SessionMode> {
@@ -819,6 +853,90 @@ test("manual Ollama thought probe keeps mock fallback for invalid model JSON", a
   expect((await getTransportState(page)).status).toBe("stopped");
 });
 
+test("slow thinking loop asks melody once when rehearsal is playing and Ollama is ready", async ({ page }) => {
+  let chatRequestCount = 0;
+
+  await page.route("**/api/ollama/tags**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      headers: {
+        "content-type": "application/json",
+        "x-grow-ollama-proxy": "smoke",
+      },
+      body: JSON.stringify({ models: [{ name: "qwen3:4b-instruct-2507-q4_K_M" }] }),
+    });
+  });
+
+  await page.route("**/api/ollama/chat**", async (route) => {
+    chatRequestCount += 1;
+    const payload = JSON.parse(route.request().postData() ?? "{}") as {
+      request?: { messages?: Array<{ role?: string; content?: string }> };
+    };
+    const userMessage = payload.request?.messages?.find((message) => message.role === "user")?.content ?? "";
+    expect(userMessage).toContain('"player":"melody"');
+    await route.fulfill({
+      status: 200,
+      headers: {
+        "content-type": "application/json",
+        "x-grow-ollama-proxy": "smoke",
+      },
+      body: JSON.stringify({
+        model: "qwen3:4b-instruct-2507-q4_K_M",
+        message: {
+          role: "assistant",
+          content: JSON.stringify({
+            id: "slow-loop-melody-intent",
+            responseLevel: "variation_intent",
+            action: "vary_motif",
+            confidence: 0.74,
+            target: { startAfterBeats: 2, durationBeats: 1 },
+            musicalIdea: {
+              label: "slow loop answer",
+              origin: "imagined",
+              durationBeats: 1,
+              steps: [{
+                kind: "note",
+                positionBeats: 0,
+                durationBeats: 0.5,
+                scaleDegree: 4,
+                octave: 4,
+                velocity: 0.58,
+                tags: ["slow-loop"],
+              }],
+              tags: ["slow-loop-intent"],
+            },
+            rationale: "Answer with a bounded in-scale turn.",
+          }),
+        },
+        done: true,
+      }),
+    });
+  });
+
+  await page.goto("/");
+  await page.getByTestId("ollama-health-check").click();
+  await expect(page.getByTestId("ollama-health-status")).toContainText("ready");
+
+  const button = page.getByTestId("transport-toggle");
+  await button.click();
+  await expect(button).toHaveText("Stop");
+
+  await expect.poll(async () => (await getSlowThinkingLoop(page)).status).toBe("accepted");
+  const slowLoop = await getSlowThinkingLoop(page);
+  expect(chatRequestCount).toBe(1);
+  expect(slowLoop.playerId).toBe("melody");
+  expect(slowLoop.provider).toBe("ollama");
+  expect(slowLoop.action).toBe("vary_motif");
+  expect(slowLoop.validation?.valid).toBe(true);
+  expect(slowLoop.fallbackValid).toBe(true);
+  expect(slowLoop.committedStartBeat).toBeGreaterThan(slowLoop.startedAtBeat ?? 0);
+  await expect(page.getByTestId("thought-slow-melody-status")).toContainText("accepted vary_motif");
+  expect((await getTransportState(page)).status).toBe("playing");
+
+  await button.click();
+  await expect(button).toHaveText("Start");
+});
+
 test("local Ollama proxy rejects non-local targets", async ({ request }) => {
   const response = await request.get("/api/ollama/tags?baseUrl=http://example.com:11434");
 
@@ -910,7 +1028,7 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   const canvasFrame = page.getByTestId("terrarium-container");
   const canvas = page.getByTestId("terrarium-canvas");
 
-  await expect(page.locator(".brand__subtitle")).toHaveText("Timing feel experiment: grid, feel, wide");
+  await expect(page.locator(".brand__subtitle")).toHaveText("Slow thinking loop: melody plans ahead");
   await expect(button).toHaveText("Start");
   await expect(status).toContainText(
     "mode rehearsal | song Lantern | stopped | 90 BPM | bar 1 | beat 0.0 | lookahead stopped 0.0/8 | pending slots 0",

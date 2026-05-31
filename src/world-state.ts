@@ -37,6 +37,7 @@ export class GrowWorldState {
   private readonly playerStates = new Map<string, PlayerRuntimeState>();
   private readonly tasteEvaluations = new Map<string, PlayerTasteEvaluation>();
   private readonly eventLedger = new MusicalEventLedger();
+  private readonly thinkingPlayerIds = new Set<string>();
   private sessionMode = DEFAULT_SESSION_MODE;
 
   constructor(
@@ -63,6 +64,19 @@ export class GrowWorldState {
   setPlayerState(playerId: string, state: PlayerRuntimeState): void {
     if (!this.playerStates.has(playerId)) return;
     this.playerStates.set(playerId, state);
+  }
+
+  setPlayerThinking(playerId: string, thinking: boolean): void {
+    if (!this.playerStates.has(playerId)) return;
+    if (thinking) {
+      this.thinkingPlayerIds.add(playerId);
+    } else {
+      this.thinkingPlayerIds.delete(playerId);
+    }
+  }
+
+  clearThinkingPlayers(): void {
+    this.thinkingPlayerIds.clear();
   }
 
   syncPlayerStates(status: TransportStatus, currentBeat: number): void {
@@ -180,6 +194,7 @@ export class GrowWorldState {
     currentBeat: number,
   ): PlayerRuntimeState {
     if (status === "stopped") return "waiting";
+    if (this.thinkingPlayerIds.has(playerId)) return "thinking";
 
     const recentEvent = this.findLatestNoteEventForPlayer(playerId);
     if (!recentEvent) return "resting";
