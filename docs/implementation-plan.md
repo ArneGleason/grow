@@ -656,7 +656,7 @@ Review focus:
 
 ### Byte 10b: Velocity Modulator Bank
 
-Status: implemented.
+Status: implemented and approved.
 
 Add the smallest audible deterministic-aliveness layer.
 
@@ -682,6 +682,7 @@ Implementation notes:
 - `MusicalEvent.expression` records the applied snapshot, and `window.transport.getState().expression.latest` exposes the latest per-player snapshots for inspection.
 - The player inspector shows a `Dynamics` row through `player-*-expression` test IDs.
 - Byte 10b deliberately does not alter timing, pitch material, lookahead refill, session behavior, or Ollama output.
+- Claude's Byte 10b review approved the velocity layer. Forward notes: before audible microtiming, decide a canonical per-player event index at schedule/commit time; consider injecting expression through a handler if transport starts gaining multiple expression call sites; checkpoint per-player expression counters when event-log seek-and-continue lands; and consider nudging melody's short velocity cycle away from a 2:1 lock with its medium cycle.
 
 ### Byte 10c: Performed Offset Data Model
 
@@ -693,7 +694,9 @@ Scope:
 
 - Keep `MusicalEvent.absoluteBeat` as grid/replay/analysis truth.
 - Add a separate performed-offset concept, such as `performedOffsetBeats`.
+- Compute the offset at schedule/commit time, not fire time, because audible timing must be known when the lookahead slot is queued.
 - Keep offset values deterministic, bounded, and derivable from player/material state.
+- Decide one canonical per-player event index at schedule time, then have future velocity and timing expression read that same committed index.
 - Surface offset in debug data before relying on it musically.
 - Do not let performed offsets mutate listening-frame ordering or ledger provenance.
 

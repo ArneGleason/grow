@@ -28,7 +28,7 @@ The repo is initialized with the Studio Pattern so future work has a clear place
 - Byte 9a validation hardening added and approved: thought validators now reject out-of-scale pitches/degrees and over-horizon musical ideas before any Ollama-authored intent can be trusted.
 - Byte 9b Ollama probe added and approved: the app can check local Ollama health, send one manual thought request, display raw/parsed/validated results, and keep mock fallback without scheduling model output into music.
 - Planning update: deterministic reproducible aliveness comes before automatic model-driven music, starting with velocity modulators and then microtiming/agitation work.
-- Byte 10b velocity modulators added: each scheduled player gesture now gets a deterministic, bounded expression snapshot that shapes velocity only and is visible in the player inspector and transport state.
+- Byte 10b velocity modulators added and approved: each scheduled player gesture now gets a deterministic, bounded expression snapshot that shapes velocity only and is visible in the player inspector and transport state.
 
 ## First Work
 

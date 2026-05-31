@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Implement Byte 10b velocity modulator bank",
-  "status": "byte10b-implemented-ready-review",
-  "updatedAt": "2026-05-31T12:10:00Z",
+  "lastTask": "Record Claude Byte 10b review",
+  "status": "byte10b-approved-ready-byte10c",
+  "updatedAt": "2026-05-31T12:23:00Z",
   "lastHandoff": ".agent/handoffs/2026-05-31-copy-paste-claude-byte-10b-review.md",
   "branch": "main",
-  "commit": "byte10b-review-commit-on-main",
+  "commit": "pending-byte10b-review-record-commit",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 10b adds a deterministic per-player velocity expression layer. `src/expression.ts` calculates bounded expression snapshots from player, beat, event index, and taste-scaled velocity; transport applies the factor to final audible velocity, records it on `MusicalEvent.expression`, exposes latest snapshots at `window.transport.getState().expression.latest`, and renders a `Dynamics` row per player. Timing, pitch, lookahead refill, session-mode behavior, and Ollama output remain unchanged."
+    "summary": "Byte 10b is approved and the Claude review artifact is preserved. Claude verified deterministic expression replay across two runs, bounded velocity ranges, audible variation, unchanged grid timing, clean rests, and green validation. Byte 10c should be performed-offset data only: compute offsets at schedule/commit time, preserve `MusicalEvent.absoluteBeat` as grid truth, surface offsets in debug/events, and choose one canonical per-player event index so future velocity and timing expression stay aligned during break drains."
   }
 }
