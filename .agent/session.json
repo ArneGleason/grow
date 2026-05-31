@@ -27,7 +27,7 @@
   "updatedAt": "2026-05-31T14:35:00Z",
   "lastHandoff": ".agent/handoffs/2026-05-31-copy-paste-claude-byte-10d-review.md",
   "branch": "main",
-  "commit": "40a946a",
+  "commit": "ff7a07a",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
     "summary": "Byte 10d is implemented and ready for Claude review. Local Ollama is reachable outside the Codex sandbox at `127.0.0.1:11434`, with `gemma4:31b` installed. Live prompt tests show short structured requests should send `think: false`; projected JSON and music-card prompts parsed, while full JSON and split-cards hit prediction length. Grow's manual Ollama probe now sends `think: false`."
