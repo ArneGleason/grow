@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Record Claude Byte 10e-v review",
-  "status": "byte10e-v-approved-next-byte-ready",
-  "updatedAt": "2026-05-31T16:39:30Z",
+  "lastTask": "Implement Byte 10f-a projected JSON prompts",
+  "status": "byte10f-a-implemented-awaiting-review",
+  "updatedAt": "2026-05-31T16:50:34Z",
   "lastHandoff": ".agent/handoffs/2026-05-31-copy-paste-claude-byte-10e-review.md",
   "branch": "main",
-  "commit": "3cdced5",
+  "commit": "2c8729b",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 10e-v is approved with no required fixes. Claude verified visual heat is clean and read-only, listening-frame-derived, playback-neutral, bounded, and not muddying note-on flash. Forward notes: room warmth is currently subtle and can be raised if at-a-glance legibility matters; the visual layer is a useful tuning instrument for the future contagion build/release governor. The Ollama path still points toward `qwen3:4b-instruct-2507-q4_K_M` plus schema-constrained projected JSON."
+    "summary": "Byte 10f-a is implemented and awaiting review. The manual Ollama thought probe now defaults to `qwen3:4b-instruct-2507-q4_K_M`, sends the `projected-json` prompt adapter instead of full request JSON, uses an Ollama JSON-schema `format`, surfaces the protocol in the inspector, and preserves canonical validation plus deterministic mock fallback without scheduling model output into music. Validation passed: build, smoke 8/8, audit, diff check, and in-app browser UI sanity."
   }
 }
