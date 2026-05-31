@@ -417,7 +417,7 @@ Implementation notes:
 
 ### Byte 6b: First Mode Behavior
 
-Status: implemented.
+Status: implemented and approved.
 
 Make the modes do one small thing each, starting with break and rehearsal.
 
@@ -437,6 +437,28 @@ Implementation notes:
 - `solo-practice` and `performance` intentionally remain rehearsal-equivalent no-ops until later, more specific behavior bytes.
 - The static initial mode UI now derives from `DEFAULT_SESSION_MODE`, and DOM mode changes plus `window.session.setMode()` share one helper path.
 - The smoke test covers break drain, no new events after drain, rehearsal resume, and continued cleanup.
+- Claude's Byte 6b review approved the behavior with no required fixes. Forward note: `sessionMode` on transport state is useful for display, but the scheduling policy should move to a session-layer predicate or explicit mode-policy map before another mode behavior lands.
+- Optional feel note from review: during a sustained break, posture can lag the silence by the 8-beat recent-activity window. This is correct for the current model but may want a `winding down` hint or shorter break posture window later.
+
+### Byte 6c: Session Policy Boundary
+
+Status: next small cleanup candidate.
+
+Keep Byte 6 mode behavior from leaking policy into the transport.
+
+Scope:
+
+- Add an explicit session-mode policy surface in the session/world layer.
+- Prefer a map such as `mode -> { refillsLookahead }`, or a `shouldRefillLookahead()` predicate owned outside transport.
+- Pass the narrow scheduling predicate into transport.
+- Keep `sessionMode` on transport state for display/debugging.
+- Preserve current behavior exactly: only `break` stops lookahead refill, and all other current modes refill.
+
+Review focus:
+
+- whether new modes now fail safe instead of fail open,
+- whether transport stays mechanism-only,
+- whether the policy surface is still small enough for the prototype.
 
 ### Byte 7: Producer Marker, No LLM
 

@@ -20,14 +20,14 @@ The repo is initialized with the Studio Pattern so future work has a clear place
 - Byte 4b taste stabilization added: taste actions now hold for a minimum beat span so threshold decisions read as phrasing rather than flicker.
 - Byte 5 lookahead buffer added: deterministic player material is committed into an 8-beat scheduled-ahead queue with visible buffer health and bounded cleanup.
 - Byte 6a session mode shell added: break, solo practice, rehearsal, and performance are selectable and inspectable without changing musical behavior yet.
-- Byte 6b first mode behavior added: break drains the lookahead without canceling committed material, and rehearsal resumes refill from the current beat.
+- Byte 6b first mode behavior added and approved: break drains the lookahead without canceling committed material, and rehearsal resumes refill from the current beat.
 
 ## First Work
 
 1. Install dependencies with `npm install`.
 2. Run the first byte with `npm run dev`.
 3. Verify repeated start/stop does not duplicate the beat or event subscription.
-4. Review Byte 6b before adding richer solo practice, performance rules, producer commands, Ollama, or persistence.
+4. Do the small Byte 6c session-policy cleanup before adding richer solo practice, performance rules, producer commands, Ollama, or persistence.
 5. Wire any future GitHub app/API access using the least-privileged credential model for the job.
 
 ## Run

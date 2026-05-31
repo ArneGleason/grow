@@ -36,8 +36,9 @@ Use this file for known risks, open questions, and review focus. Keep entries sh
 - Scope guidance from Arne: keep Grow solo for now, but leave a future hook for multiple terrariums/bands that can observe, inspire, or react to each other.
 - Claude reviewed `docs/implementation-plan.md`; current Byte 1 guidance is stationary pulse player + percussive beat + explicit Tone.js lifecycle cleanup before adding movement or more players.
 - First implementation review should pay special attention to repeated start/stop cycles and whether scheduled Tone.js objects are disposed rather than stacked.
-- Byte 6b is ready for Claude review. Review focus: confirm `break` stops only future lookahead refill, not committed slots or the transport; confirm `rehearsal` resumes from the current beat without backfilling stale beats; confirm `solo-practice` and `performance` remain no-ops by design.
-- Byte 6b smoke now waits through an 8-beat drain and is intentionally longer. If it gets flaky, prefer probing latest recorded beat/dwell gaps over shortening the behavioral window.
+- Byte 6b is approved. Current next small cleanup candidate: Byte 6c should move the mode-to-refill scheduling decision out of transport's hardcoded `mode !== "break"` check and into an explicit session-layer predicate or mode-policy map.
+- Byte 6b feel note: posture lags the audible silence by up to the 8-beat recent-activity window during a sustained break. This is correct now; revisit only if the break should read visually faster.
+- Byte 6b smoke waits through an 8-beat drain and is intentionally longer. If it gets flaky, prefer probing latest recorded beat/dwell gaps over shortening the behavioral window.
 - Byte 5 naming cleanup is implemented. Future review should check that `lookahead.pendingSlotCount`, visible `Pending`, and listening `Heard` labels stay distinct as Byte 6 adds more state.
 - Byte 5 forward risk to keep visible: the lookahead refill uses wall-clock `setInterval`, so background tabs may drain the queue safely but drop newly scheduled notes until foregrounded.
 - Byte 5 commitment boundary to keep visible: pitch/timing are committed into the lookahead queue, while rest/velocity taste decisions still happen at fire time.
