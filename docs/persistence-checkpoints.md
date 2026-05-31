@@ -59,7 +59,7 @@ Snapshots describe state at a point:
 
 To rewind, load a snapshot and replay later events. To fork, create a new branch from a snapshot or event sequence and append new events there.
 
-Ledger replay and seek-and-continue are related but not identical. Replaying already-recorded events should use stored event payloads such as `absoluteBeat`, `performedOffsetBeats`, expression snapshots, and performed-timing snapshots rather than recomputing them. Continuing live generation from a checkpoint must also restore the generator state that decides what future material will be committed next.
+Ledger replay and seek-and-continue are related but not identical. Replaying already-recorded events should use stored event payloads such as `absoluteBeat`, `performedOffsetBeats`, `performedOffsetSeconds`, expression snapshots, and performed-timing snapshots rather than recomputing them. Continuing live generation from a checkpoint must also restore the generator state that decides what future material will be committed next.
 
 ## Practical First Schema
 

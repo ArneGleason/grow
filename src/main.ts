@@ -80,7 +80,7 @@ app.innerHTML = `
     <header class="topbar">
       <div class="brand">
         <h1 class="brand__title">Grow</h1>
-        <p class="brand__subtitle">Byte 10c: performed-offset data model</p>
+        <p class="brand__subtitle">Byte 10d: audible performed offsets</p>
       </div>
       <div class="transport-controls">
         <fieldset class="mode-control" aria-label="Session mode">

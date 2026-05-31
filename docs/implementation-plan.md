@@ -717,7 +717,7 @@ Implementation notes:
 
 ### Byte 10d: Audible Microtiming And Physical Difficulty
 
-Status: planned.
+Status: implemented.
 
 Let players push or drag in a deterministic, player-specific way.
 
@@ -735,6 +735,14 @@ Review focus:
 - whether the timing feels human without corrupting the transport,
 - whether hard material reliably produces recognizable player feel,
 - whether the ledger remains a trustworthy replay source.
+
+Implementation notes:
+
+- Transport now schedules committed notes at `absoluteBeat + performedOffsetBeats` using Tone tick positions, so the callback itself lands early or late while `MusicalEvent.absoluteBeat` remains grid truth.
+- Synth fire time is clamped to at least `now + epsilon` if the browser callback arrives late; scheduling also avoids placing a pushed lookahead slot behind the live transport playhead, and the first beat cannot push before transport time zero.
+- `MusicalEvent.performedOffsetSeconds` records the BPM-derived offset, and events retain both `timing:offset-data` and `timing:audible-offset` tags for review.
+- `src/performed-time.ts` now folds pitch leap, role-relative register, local density, and disposition into the bounded offset model.
+- Smoke coverage now includes a restart replay assertion that compares performed offsets by `playerId:eventIndex`.
 
 ### Byte 10e: Agitation And Contagion
 

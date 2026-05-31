@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Record Claude Byte 10c review",
-  "status": "byte10c-approved-ready-byte10d",
-  "updatedAt": "2026-05-31T12:49:00Z",
-  "lastHandoff": ".agent/handoffs/2026-05-31-copy-paste-claude-byte-10c-review.md",
+  "lastTask": "Implement Byte 10d audible microtiming",
+  "status": "byte10d-implemented-ready-review",
+  "updatedAt": "2026-05-31T13:35:00Z",
+  "lastHandoff": ".agent/handoffs/2026-05-31-copy-paste-claude-byte-10d-review.md",
   "branch": "main",
-  "commit": "pending-byte10c-review-record-commit",
+  "commit": "pending-byte10d-implementation-commit",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 10c is approved and the Claude review artifact is preserved. Claude verified schedule-time event indexes are shared by event/expression/performedTiming, offsets are deterministic and bounded, playback remains data-only/grid-scheduled, break drains are safe, and smoke is green. Byte 10d is ready: make offsets audible by converting beats to seconds through BPM, clamp fire time so pushes cannot land in the past or cross neighbors, keep grid truth stable, and add replay assertions. UI labels now distinguish `Dynamics heard` from `Offset queued`; persistence docs note seek-and-continue checkpoints must capture transport generator state."
+    "summary": "Byte 10d is implemented and ready for Claude review. Performed offsets now schedule Tone one-shots at shifted transport ticks while `MusicalEvent.absoluteBeat` remains grid truth. Synth fire times clamp late callbacks to `now + epsilon`; events also carry `performedOffsetSeconds` and `timing:audible-offset`. The performed-time model now includes leap, register, and local-density difficulty weighted by disposition, and smoke adds a restart replay assertion for deterministic offsets."
   }
 }

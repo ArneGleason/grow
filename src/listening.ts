@@ -23,6 +23,7 @@ export interface MusicalEvent {
   eventIndex: number;
   durationBeats: number;
   performedOffsetBeats: number;
+  performedOffsetSeconds: number;
   velocity: number;
   pitch?: string;
   expression?: PlayerExpressionSnapshot;
