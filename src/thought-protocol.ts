@@ -47,6 +47,7 @@ export interface MusicalExcerpt {
     mode: string;
     scale: readonly string[];
   };
+  // Provenance/debug anchor for excerpts; intent.target owns future placement.
   sourceStartBeat: number;
   durationBeats: number;
   steps: MusicalExcerptStep[];
@@ -235,6 +236,9 @@ export function validateMusicalExcerpt(excerpt: MusicalExcerpt): ValidationResul
 
   let previousPosition = -Infinity;
   excerpt.steps.forEach((step, index) => {
+    const scaleDegree = step.pitch === undefined
+      ? undefined
+      : getScaleDegree(step.pitch, excerpt.tonalContext.scale);
     if (!["note", "rest", "accent", "gesture"].includes(step.kind)) {
       errors.push(`step ${index} has an unknown kind`);
     }
@@ -255,6 +259,20 @@ export function validateMusicalExcerpt(excerpt: MusicalExcerpt): ValidationResul
     }
     if (step.scaleDegree !== undefined && (!Number.isInteger(step.scaleDegree) || step.scaleDegree < 0)) {
       errors.push(`step ${index} scaleDegree must be a non-negative integer`);
+    }
+    if (step.scaleDegree !== undefined && step.scaleDegree >= excerpt.tonalContext.scale.length) {
+      errors.push(`step ${index} scaleDegree must be within tonal scale`);
+    }
+    if (step.pitch !== undefined && scaleDegree === undefined) {
+      errors.push(`step ${index} pitch must belong to tonal scale`);
+    }
+    if (
+      step.pitch !== undefined &&
+      step.scaleDegree !== undefined &&
+      scaleDegree !== undefined &&
+      step.scaleDegree !== scaleDegree
+    ) {
+      errors.push(`step ${index} pitch and scaleDegree disagree`);
     }
     if (step.octave !== undefined && !Number.isInteger(step.octave)) {
       errors.push(`step ${index} octave must be an integer`);
@@ -309,9 +327,17 @@ export function validatePlayerThoughtIntent(
   if (!THOUGHT_ACTIONS.includes(intent.action)) errors.push("action is unknown");
   if (!request.allowedActions.includes(intent.action)) errors.push("action is not allowed by request");
   if (intent.confidence < 0 || intent.confidence > 1) errors.push("confidence must be between 0 and 1");
-  if (intent.target.startAfterBeats < 0) errors.push("target startAfterBeats must be non-negative");
+  if (!isFiniteNumber(intent.target.startAfterBeats) || intent.target.startAfterBeats < 0) {
+    errors.push("target startAfterBeats must be non-negative");
+  }
+  if (!isFiniteNumber(intent.target.durationBeats) || intent.target.durationBeats <= 0) {
+    errors.push("target durationBeats must be positive");
+  }
   if (intent.target.durationBeats > request.constraints.maxDurationBeats) {
     errors.push("target duration exceeds request constraint");
+  }
+  if (intent.musicalIdea.durationBeats > request.constraints.maxDurationBeats) {
+    errors.push("musical idea duration exceeds request constraint");
   }
   if (intent.musicalIdea.steps.length > request.constraints.maxResponseSteps) {
     errors.push("musical idea has too many steps");
@@ -502,9 +528,13 @@ function formatMusicalExcerptStep(step: MusicalExcerptStep): string {
 }
 
 function getScaleDegree(pitch: string, scale: readonly string[]): number | undefined {
-  const pitchClass = pitch.replace(/[0-9-]+$/, "");
+  const pitchClass = getPitchClass(pitch);
   const degree = scale.indexOf(pitchClass);
   return degree >= 0 ? degree : undefined;
+}
+
+function getPitchClass(pitch: string): string {
+  return pitch.replace(/[0-9-]+$/, "");
 }
 
 function parsePitch(pitch?: string): { octave: number } | undefined {

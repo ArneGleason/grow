@@ -558,9 +558,32 @@ Implementation notes:
 
 Connect to local Ollama without letting it drive music yet.
 
+### Byte 9a: Validator Hardening Before Ollama
+
+Status: implemented.
+
+Tighten the thought protocol validators before any Ollama-authored intent is accepted.
+
 Scope:
 
-- Tighten the Byte 8 validators before sending or trusting model-authored intents: reject out-of-scale degrees/pitches and over-horizon musical ideas.
+- Reject `scaleDegree` values outside the active tonal scale.
+- Reject pitched steps whose pitch class is outside the active tonal scale.
+- Reject steps where `pitch` and `scaleDegree` disagree.
+- Reject `PlayerThoughtIntent.musicalIdea.durationBeats` when it exceeds the request horizon.
+- Treat `sourceStartBeat` as provenance/debug; `intent.target` owns future placement.
+- Keep behavior inspection-only with no Ollama calls and no audio scheduling changes.
+
+Implementation notes:
+
+- `validateMusicalExcerpt()` now enforces scale-degree and pitch membership against `excerpt.tonalContext.scale`.
+- `validatePlayerThoughtIntent()` now rejects over-horizon musical ideas, not just over-horizon target durations.
+- The smoke test includes intentionally invalid model-like excerpts/intents to prove the new failures are caught.
+- The app subtitle is `Byte 9a: thought validation hardening`; protocol hooks and mock intents remain otherwise unchanged.
+
+### Byte 9b: Ollama Health And Session Primer
+
+Scope:
+
 - Add a local backend or thin service boundary for `localhost:11434`.
 - Add configurable model tag, initially targeting the user's local Gemma 4 31B Ollama model.
 - Add health/status UI and dev hooks.

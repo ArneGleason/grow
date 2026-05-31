@@ -43,6 +43,6 @@ Use this file for known risks, open questions, and review focus. Keep entries sh
 - Byte 5 naming cleanup is implemented. Future review should check that `lookahead.pendingSlotCount`, visible `Pending`, and listening `Heard` labels stay distinct as Byte 6 adds more state.
 - Byte 5 forward risk to keep visible: the lookahead refill uses wall-clock `setInterval`, so background tabs may drain the queue safely but drop newly scheduled notes until foregrounded.
 - Byte 5 commitment boundary to keep visible: pitch/timing are committed into the lookahead queue, while rest/velocity taste decisions still happen at fire time.
-- Byte 8 is approved. Byte 9 first priority is validator hardening before any Ollama-authored intent is trusted: reject `scaleDegree >= scale.length`, out-of-scale pitch classes, and `musicalIdea.durationBeats > maxDurationBeats`.
-- Byte 9 scope guard: add Ollama health/status, session primer, manual test call, raw/parsed/validated display, and error surfacing only. Do not schedule model output into music yet.
-- Byte 9 should keep deterministic mock intents as the offline fallback and treat `sourceStartBeat` as provenance/debug; `intent.target` owns placement.
+- Byte 9a review focus: confirm validator hardening catches model-like bad output: `scaleDegree >= scale.length`, out-of-scale pitch classes, pitch/degree disagreement, and `musicalIdea.durationBeats > maxDurationBeats`.
+- Byte 9a behavior guard: validation changes and subtitle only. No Ollama calls, transport changes, lookahead changes, taste changes, session changes, or audio scheduling should appear.
+- Byte 9b scope guard: add Ollama health/status, session primer, manual test call, raw/parsed/validated display, and error surfacing only. Keep deterministic mock intents as offline fallback and do not schedule model output into music yet.

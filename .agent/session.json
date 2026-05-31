@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Record Claude Byte 8 review",
-  "status": "byte8-approved-ready-byte9",
-  "updatedAt": "2026-05-31T10:41:57Z",
-  "lastHandoff": ".agent/handoffs/2026-05-31-copy-paste-claude-byte-8-review.md",
+  "lastTask": "Implement Byte 9a thought validation hardening",
+  "status": "byte9a-implemented-awaiting-claude-review",
+  "updatedAt": "2026-05-31T10:47:51Z",
+  "lastHandoff": ".agent/handoffs/2026-05-31-copy-paste-claude-byte-9a-review.md",
   "branch": "main",
-  "commit": "pending-byte8-review-record-commit",
+  "commit": "pending-byte9a-implementation-commit",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 8 is approved by Claude with no required fixes, and the durable review artifact has been preserved locally. Claude verified phrase-relative MusicalExcerpt positions, seed/request boundary, deterministic mock intents, and no playback behavior drift. Byte 9 should first tighten validators for scaleDegree < scale.length, pitch-in-scale, and musicalIdea.durationBeats <= maxDurationBeats, then add Ollama health/status, session primer, manual test call, and validation/error display only. Keep deterministic mock intents as offline fallback; no model output should be scheduled into music in Byte 9."
+    "summary": "Byte 9a is implemented and ready for Claude review. The thought protocol validators now reject scaleDegree values outside the active scale, pitches whose pitch class is outside the active scale, pitch/scaleDegree disagreement, and PlayerThoughtIntent musicalIdea.durationBeats values beyond the request maxDurationBeats. sourceStartBeat is documented as provenance/debug while intent.target owns placement. The smoke test includes invalid model-like examples proving these failures. No Ollama, persistence, producer, transport, taste, session, lookahead, or audio scheduling changes were added."
   }
 }

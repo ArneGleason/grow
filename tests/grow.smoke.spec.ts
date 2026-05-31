@@ -9,6 +9,7 @@ import {
   validateMusicalExcerpt,
   validatePlayerThoughtIntent,
   validatePlayerThoughtRequest,
+  type MusicalExcerpt,
   type PlayerThoughtIntent,
   type PlayerThoughtRequest,
 } from "../src/thought-protocol";
@@ -240,7 +241,7 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   const status = page.getByTestId("transport-status");
   const canvas = page.getByTestId("terrarium-canvas");
 
-  await expect(page.locator(".brand__subtitle")).toHaveText("Byte 8: thought protocol mock");
+  await expect(page.locator(".brand__subtitle")).toHaveText("Byte 9a: thought validation hardening");
   await expect(button).toHaveText("Start");
   await expect(status).toContainText(
     "mode rehearsal | stopped | 90 BPM | bar 1 | beat 0.0 | lookahead stopped 0.0/8 | pending slots 0",
@@ -417,6 +418,62 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   expect(melodyRequest && validatePlayerThoughtRequest(melodyRequest).valid).toBe(true);
   expect(melodyRequest && melodyIntent && validatePlayerThoughtIntent(melodyIntent, melodyRequest).valid).toBe(true);
   expect(melodyIntent?.musicalIdea.origin).toBe("imagined");
+  if (!melodyRequest || !melodyIntent) {
+    throw new Error("Expected melody thought protocol objects");
+  }
+  const outOfRangeDegreeExcerpt: MusicalExcerpt = {
+    ...melodyRequest.excerpts[0],
+    durationBeats: 0.5,
+    steps: [{
+      kind: "note",
+      positionBeats: 0,
+      durationBeats: 0.5,
+      scaleDegree: melodyRequest.constraints.tonalContext.scale.length,
+      tags: ["invalid:model-output"],
+    }],
+  };
+  expect(validateMusicalExcerpt(outOfRangeDegreeExcerpt).errors).toContain(
+    "step 0 scaleDegree must be within tonal scale",
+  );
+  const outOfScalePitchExcerpt: MusicalExcerpt = {
+    ...melodyRequest.excerpts[0],
+    durationBeats: 0.5,
+    steps: [{
+      kind: "note",
+      positionBeats: 0,
+      durationBeats: 0.5,
+      pitch: "F#4",
+      tags: ["invalid:model-output"],
+    }],
+  };
+  expect(validateMusicalExcerpt(outOfScalePitchExcerpt).errors).toContain(
+    "step 0 pitch must belong to tonal scale",
+  );
+  const disagreeingPitchAndDegreeExcerpt: MusicalExcerpt = {
+    ...melodyRequest.excerpts[0],
+    durationBeats: 0.5,
+    steps: [{
+      kind: "note",
+      positionBeats: 0,
+      durationBeats: 0.5,
+      pitch: "C4",
+      scaleDegree: 1,
+      tags: ["invalid:model-output"],
+    }],
+  };
+  expect(validateMusicalExcerpt(disagreeingPitchAndDegreeExcerpt).errors).toContain(
+    "step 0 pitch and scaleDegree disagree",
+  );
+  const tooLongIntent: PlayerThoughtIntent = {
+    ...melodyIntent,
+    musicalIdea: {
+      ...melodyIntent.musicalIdea,
+      durationBeats: melodyRequest.constraints.maxDurationBeats + 1,
+    },
+  };
+  expect(validatePlayerThoughtIntent(tooLongIntent, melodyRequest).errors).toContain(
+    "musical idea duration exceeds request constraint",
+  );
   expect(melodyRequest && JSON.stringify(createMockThoughtIntent(melodyRequest))).toBe(
     melodyRequest && JSON.stringify(createMockThoughtIntent(melodyRequest)),
   );
