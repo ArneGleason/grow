@@ -26,13 +26,14 @@ The repo is initialized with the Studio Pattern so future work has a clear place
 - Byte 7 player thought seeds added and approved: each player now has disposition/backstory material, a deterministic compact thought-context selector, a Thoughts inspector section, and `window.thinking.getSeeds()` for review before any Ollama call exists.
 - Byte 8 thought protocol added and approved: `MusicalExcerpt`, `PlayerThoughtRequest`, and `PlayerThoughtIntent` are structured and validated, with deterministic mock intents visible through the inspector and `window.thinking`.
 - Byte 9a validation hardening added and approved: thought validators now reject out-of-scale pitches/degrees and over-horizon musical ideas before any Ollama-authored intent can be trusted.
+- Byte 9b Ollama probe added: the app can check local Ollama health, send one manual thought request, display raw/parsed/validated results, and keep mock fallback without scheduling model output into music.
 
 ## First Work
 
 1. Install dependencies with `npm install`.
 2. Run the first byte with `npm run dev`.
 3. Verify repeated start/stop does not duplicate the beat or event subscription.
-4. Start Byte 9b by adding Ollama health/status, a session primer, and manual validation display without scheduling model output into music yet.
+4. Review Byte 9b before allowing any Ollama output to affect lookahead or audible player behavior.
 5. Wire any future GitHub app/API access using the least-privileged credential model for the job.
 
 ## Run
@@ -77,6 +78,7 @@ npm run smoke
 - `src/listening.ts`: musical event and listening-frame types plus the recent-event summarizer.
 - `src/session-mode.ts`: session mode names, labels, and validation helpers.
 - `src/taste.ts`: deterministic player taste evaluation and note-decision logic.
+- `src/ollama.ts`: local Ollama health, prompt/primer, manual thought test, response parsing, validation, and mock fallback boundary.
 - `src/thought-protocol.ts`: structured thought request/intent protocol, musical excerpt markup, validation, and deterministic mock responder.
 - `src/thought-seeds.ts`: deterministic player thought-context seed selection before Ollama is connected.
 - `src/transport.ts`: Tone.js playback lifecycle, deterministic pattern materialization, and lookahead scheduling.

@@ -63,6 +63,15 @@ type TasteEvaluation = {
   updatedAtBeat: number;
 };
 
+type OllamaThoughtProbe = {
+  status: string;
+  provider: string;
+  rawResponse: string;
+  validation: { valid: boolean; errors: string[] };
+  intent?: PlayerThoughtIntent;
+  fallbackValidation?: { valid: boolean; errors: string[] };
+};
+
 async function getTransportState(page: Page): Promise<TransportState> {
   const state = await page.evaluate(() => {
     const appWindow = window as unknown as {
@@ -221,6 +230,94 @@ test("session mode refill policy is explicit", () => {
   });
 });
 
+test("manual Ollama thought probe is inspectable with a mocked local endpoint", async ({ page }) => {
+  const corsHeaders = {
+    "access-control-allow-origin": "*",
+    "access-control-allow-methods": "GET,POST,OPTIONS",
+    "access-control-allow-headers": "content-type",
+    "content-type": "application/json",
+  };
+
+  await page.route("http://127.0.0.1:11434/api/tags", async (route) => {
+    if (route.request().method() === "OPTIONS") {
+      await route.fulfill({ status: 204, headers: corsHeaders });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      headers: corsHeaders,
+      body: JSON.stringify({ models: [{ name: "gemma4:31b" }] }),
+    });
+  });
+
+  await page.route("http://127.0.0.1:11434/api/chat", async (route) => {
+    if (route.request().method() === "OPTIONS") {
+      await route.fulfill({ status: 204, headers: corsHeaders });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      headers: corsHeaders,
+      body: JSON.stringify({
+        model: "gemma4:31b",
+        message: {
+          role: "assistant",
+          content: JSON.stringify({
+            id: "mocked-local-intent",
+            responseLevel: "variation_intent",
+            action: "vary_motif",
+            confidence: 0.72,
+            target: { startAfterBeats: 1, durationBeats: 1 },
+            musicalIdea: {
+              label: "mocked local turn",
+              origin: "imagined",
+              durationBeats: 1,
+              steps: [{
+                kind: "note",
+                positionBeats: 0,
+                durationBeats: 0.5,
+                scaleDegree: 2,
+                octave: 4,
+                velocity: 0.55,
+                tags: ["ollama"],
+              }],
+              tags: ["ollama-intent"],
+            },
+            rationale: "Use one bright in-scale answer.",
+          }),
+        },
+        done: true,
+      }),
+    });
+  });
+
+  await page.goto("/");
+  await page.getByTestId("ollama-health-check").click();
+  await expect(page.getByTestId("ollama-health-status")).toContainText("ready");
+  await expect(page.getByTestId("ollama-latency")).toContainText("ms");
+
+  await page.getByTestId("ollama-send-thought").click();
+  await expect(page.getByTestId("ollama-parse-result")).toHaveText("ok");
+  await expect(page.getByTestId("ollama-validation-result")).toHaveText("valid");
+  await expect(page.getByTestId("ollama-raw-response")).toContainText("mocked local turn");
+  await expect(page.getByTestId("ollama-fallback-status")).toContainText("mock fallback valid");
+
+  const probe = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      ollama?: { getLastThoughtTest(): OllamaThoughtProbe };
+    };
+    return appWindow.ollama?.getLastThoughtTest();
+  });
+
+  expect(probe?.status).toBe("valid");
+  expect(probe?.provider).toBe("ollama");
+  expect(probe?.validation.valid).toBe(true);
+  expect(probe?.fallbackValidation?.valid).toBe(true);
+  expect(probe?.intent?.musicalIdea.sourceStartBeat).not.toBe(999);
+  expect((await getTransportState(page)).lookahead.pendingSlotCount).toBe(0);
+  expect((await getTransportState(page)).status).toBe("stopped");
+});
+
 test("Grow exposes session modes, starts three players, hears events, and cleans up the transport", async ({ page }) => {
   test.setTimeout(60_000);
   const consoleErrors: string[] = [];
@@ -241,7 +338,7 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   const status = page.getByTestId("transport-status");
   const canvas = page.getByTestId("terrarium-canvas");
 
-  await expect(page.locator(".brand__subtitle")).toHaveText("Byte 9a: thought validation hardening");
+  await expect(page.locator(".brand__subtitle")).toHaveText("Byte 9b: Ollama health and manual thought probe");
   await expect(button).toHaveText("Start");
   await expect(status).toContainText(
     "mode rehearsal | stopped | 90 BPM | bar 1 | beat 0.0 | lookahead stopped 0.0/8 | pending slots 0",
@@ -305,6 +402,27 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   await expect(page.getByTestId("thought-seed-melody-motif")).toContainText("resting");
   await expect(page.getByTestId("thought-request-melody-level")).toContainText("in_song_short");
   await expect(page.getByTestId("thought-intent-melody-action")).not.toHaveText("none");
+  await expect(page.getByTestId("ollama-base-url-input")).toHaveValue("http://127.0.0.1:11434");
+  await expect(page.getByTestId("ollama-model-input")).toHaveValue("gemma4:31b");
+  await expect(page.getByTestId("ollama-health-status")).toContainText("unknown");
+  await expect(page.getByTestId("ollama-validation-result")).toHaveText("idle");
+  await expect(page.getByTestId("ollama-primer-summary")).toContainText("scaleDegree");
+  const primer = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      ollama?: { getSessionPrimer(): string };
+    };
+    return appWindow.ollama?.getSessionPrimer();
+  });
+  expect(primer).toContain("scaleDegree is a pitch-class index");
+  expect(primer).toContain("system owns sourceStartBeat");
+  const influenceProbePrompt = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      ollama?: { getInfluenceProbePrompt(playerId?: string): string };
+    };
+    return appWindow.ollama?.getInfluenceProbePrompt("melody");
+  });
+  expect(influenceProbePrompt).toContain("influence_probe");
+  expect(influenceProbePrompt).toContain("abstract transferable technique");
   const initialThoughtSeeds = await getThoughtSeeds(page);
   expect(initialThoughtSeeds.map((seed) => seed.playerId).sort()).toEqual(["bass", "melody", "pulse"]);
   expect(initialThoughtSeeds.every((seed) => seed.selectedFragments.length === 2)).toBe(true);
@@ -421,6 +539,26 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   if (!melodyRequest || !melodyIntent) {
     throw new Error("Expected melody thought protocol objects");
   }
+  const parsedRawThought = await page.evaluate((rawResponse) => {
+    const appWindow = window as unknown as {
+      ollama?: {
+        parseThoughtResponse(rawResponse: string, playerId?: string): {
+          status: string;
+          intent?: PlayerThoughtIntent;
+        };
+      };
+    };
+    return appWindow.ollama?.parseThoughtResponse(rawResponse, "melody");
+  }, JSON.stringify({
+    ...melodyIntent,
+    musicalIdea: {
+      ...melodyIntent.musicalIdea,
+      sourceStartBeat: 999,
+    },
+  }));
+  expect(parsedRawThought?.status).toBe("ok");
+  expect(parsedRawThought?.intent?.musicalIdea.sourceStartBeat).not.toBe(999);
+  expect(parsedRawThought?.intent?.musicalIdea.sourceStartBeat).toBeGreaterThanOrEqual(0);
   const outOfRangeDegreeExcerpt: MusicalExcerpt = {
     ...melodyRequest.excerpts[0],
     durationBeats: 0.5,
@@ -463,6 +601,22 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   };
   expect(validateMusicalExcerpt(disagreeingPitchAndDegreeExcerpt).errors).toContain(
     "step 0 pitch and scaleDegree disagree",
+  );
+  const disagreeingPitchAndOctaveExcerpt: MusicalExcerpt = {
+    ...melodyRequest.excerpts[0],
+    durationBeats: 0.5,
+    steps: [{
+      kind: "note",
+      positionBeats: 0,
+      durationBeats: 0.5,
+      pitch: "C4",
+      scaleDegree: 0,
+      octave: 5,
+      tags: ["invalid:model-output"],
+    }],
+  };
+  expect(validateMusicalExcerpt(disagreeingPitchAndOctaveExcerpt).errors).toContain(
+    "step 0 pitch and octave disagree",
   );
   const tooLongIntent: PlayerThoughtIntent = {
     ...melodyIntent,

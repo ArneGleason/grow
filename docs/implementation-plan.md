@@ -583,6 +583,8 @@ Implementation notes:
 
 ### Byte 9b: Ollama Health And Session Primer
 
+Status: implemented.
+
 Scope:
 
 - Add a local backend or thin service boundary for `localhost:11434`.
@@ -604,6 +606,17 @@ Review focus:
 - whether failures are visible and harmless,
 - whether the primer creates useful, parseable, bounded responses,
 - whether reference/influence requests come back as musical techniques the app can apply.
+
+Implementation notes:
+
+- `src/ollama.ts` now owns the local Ollama boundary for `GET /api/tags` and `POST /api/chat`, using `stream: false` and JSON-format responses.
+- The app exposes configurable non-secret local settings through `VITE_GROW_OLLAMA_BASE_URL`, `VITE_GROW_OLLAMA_MODEL`, the inspector inputs, and `window.ollama.setConfig()`.
+- The inspector shows health, model, latency, parse result, validation result, fallback status, validator errors, primer summary, and raw response.
+- `window.ollama` exposes `checkHealth()`, `runManualThoughtTest()`, `getSessionPrimer()`, `getInfluenceProbePrompt()`, `parseThoughtResponse()`, and current state/config getters.
+- The session primer explicitly defines phrase-relative `positionBeats`, scale-degree-as-pitch-class-index plus separate `octave`, short JSON-only output, allowed action vocabulary, influence-probe limits, and system-owned `sourceStartBeat`/placement.
+- The manual test sends a current `melody` `in_song_short` request to local Ollama, parses/normalizes the JSON, validates it, and keeps deterministic mock fallback available.
+- Model output is not scheduled into audio or lookahead. Transport, taste, session modes, and playback behavior remain unchanged.
+- Byte 9b also adds the small optional validator check that rejects pitch-embedded octave disagreement with the explicit `octave` field.
 
 ### Byte 10: One Slow-Thinking Player Loop
 

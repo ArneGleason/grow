@@ -19,6 +19,7 @@ import {
 import {
   createMockThoughtIntent,
   createPlayerThoughtRequest,
+  type ThoughtRequestLevel,
   type PlayerThoughtIntent,
   type PlayerThoughtRequest,
 } from "./thought-protocol";
@@ -143,8 +144,14 @@ export class GrowWorldState {
     ));
   }
 
-  getThoughtRequests(frame: ListeningFrame): readonly PlayerThoughtRequest[] {
-    return this.getThoughtSeeds(frame).map((seed) => createPlayerThoughtRequest(seed));
+  getThoughtRequests(
+    frame: ListeningFrame,
+    options: {
+      requestLevel?: ThoughtRequestLevel;
+      horizonBeats?: number;
+    } = {},
+  ): readonly PlayerThoughtRequest[] {
+    return this.getThoughtSeeds(frame).map((seed) => createPlayerThoughtRequest(seed, options));
   }
 
   getMockThoughtIntents(

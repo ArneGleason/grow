@@ -1,5 +1,19 @@
 import "./style.css";
 import type { ListeningFrame, MusicalEvent } from "./listening";
+import {
+  checkOllamaHealth,
+  createDefaultOllamaConfig,
+  createInitialOllamaHealth,
+  createInitialOllamaThoughtTest,
+  createOllamaInfluenceProbePrompt,
+  createOllamaSessionPrimer,
+  parseOllamaThoughtResponse,
+  runOllamaThoughtTest,
+  type OllamaConfig,
+  type OllamaHealthState,
+  type OllamaThoughtParseResult,
+  type OllamaThoughtTestResult,
+} from "./ollama";
 import { PLAYER_REGISTRY } from "./players";
 import {
   DEFAULT_SESSION_MODE,
@@ -12,7 +26,11 @@ import {
 } from "./session-mode";
 import { createTerrariumView, type TerrariumView } from "./terrarium";
 import type { PlayerTasteEvaluation } from "./taste";
-import type { PlayerThoughtIntent, PlayerThoughtRequest } from "./thought-protocol";
+import type {
+  PlayerThoughtIntent,
+  PlayerThoughtRequest,
+  ThoughtRequestLevel,
+} from "./thought-protocol";
 import type { PlayerThoughtSeed } from "./thought-seeds";
 import {
   getState,
@@ -34,6 +52,10 @@ function requireElement<T extends Element>(selector: string): T {
 
 const app = requireElement<HTMLDivElement>("#app");
 const world = new GrowWorldState(PLAYER_REGISTRY);
+let ollamaConfig = createDefaultOllamaConfig();
+let ollamaHealth = createInitialOllamaHealth(ollamaConfig);
+let ollamaThoughtTest = createInitialOllamaThoughtTest(ollamaConfig);
+let ollamaRequestInFlight = false;
 const defaultSessionModeLabel = getSessionModeLabel(DEFAULT_SESSION_MODE);
 const sessionModeControls = SESSION_MODE_OPTIONS.map((mode) => `
           <label class="mode-option" data-testid="session-mode-${mode.id}-option">
@@ -49,11 +71,11 @@ const sessionModeControls = SESSION_MODE_OPTIONS.map((mode) => `
 `).join("");
 
 app.innerHTML = `
-  <section class="app-shell" aria-label="Grow Byte 9a">
+  <section class="app-shell" aria-label="Grow Byte 9b">
     <header class="topbar">
       <div class="brand">
         <h1 class="brand__title">Grow</h1>
-        <p class="brand__subtitle">Byte 9a: thought validation hardening</p>
+        <p class="brand__subtitle">Byte 9b: Ollama health and manual thought probe</p>
       </div>
       <div class="transport-controls">
         <fieldset class="mode-control" aria-label="Session mode">
@@ -95,6 +117,44 @@ ${sessionModeControls}
           <dl>
             <dt>Mode</dt>
             <dd data-testid="session-mode-current">${defaultSessionModeLabel}</dd>
+          </dl>
+        </section>
+
+        <section class="inspector-section" aria-label="Ollama thought probe">
+          <h2>Ollama</h2>
+          <div class="ollama-controls">
+            <label class="ollama-field">
+              <span>Base</span>
+              <input data-testid="ollama-base-url-input" type="text" autocomplete="off" />
+            </label>
+            <label class="ollama-field">
+              <span>Model</span>
+              <input data-testid="ollama-model-input" type="text" autocomplete="off" />
+            </label>
+            <div class="ollama-actions">
+              <button class="mini-button" data-testid="ollama-health-check" type="button">Check</button>
+              <button class="mini-button" data-testid="ollama-send-thought" type="button">Send thought</button>
+            </div>
+          </div>
+          <dl>
+            <dt>Health</dt>
+            <dd data-testid="ollama-health-status">unknown</dd>
+            <dt>Model</dt>
+            <dd data-testid="ollama-model-status">unknown</dd>
+            <dt>Latency</dt>
+            <dd data-testid="ollama-latency">none</dd>
+            <dt>Parse</dt>
+            <dd data-testid="ollama-parse-result">idle</dd>
+            <dt>Valid</dt>
+            <dd data-testid="ollama-validation-result">idle</dd>
+            <dt>Fallback</dt>
+            <dd data-testid="ollama-fallback-status">mock ready</dd>
+            <dt>Errors</dt>
+            <dd data-testid="ollama-errors">none</dd>
+            <dt>Primer</dt>
+            <dd data-testid="ollama-primer-summary">JSON intent; scaleDegree 0..scale-1 plus octave; system owns sourceStartBeat.</dd>
+            <dt>Raw</dt>
+            <dd><pre class="raw-response" data-testid="ollama-raw-response">none</pre></dd>
           </dl>
         </section>
 
@@ -147,6 +207,18 @@ const sessionModeControl = requireElement<HTMLDivElement>("[data-testid='session
 const sessionModeCurrent = requireElement<HTMLElement>("[data-testid='session-mode-current']");
 const playerList = requireElement<HTMLDivElement>("#player-list");
 const thoughtSeedList = requireElement<HTMLDivElement>("#thought-seed-list");
+const ollamaBaseUrlInput = requireElement<HTMLInputElement>("[data-testid='ollama-base-url-input']");
+const ollamaModelInput = requireElement<HTMLInputElement>("[data-testid='ollama-model-input']");
+const ollamaHealthButton = requireElement<HTMLButtonElement>("[data-testid='ollama-health-check']");
+const ollamaSendThoughtButton = requireElement<HTMLButtonElement>("[data-testid='ollama-send-thought']");
+const ollamaHealthStatus = requireElement<HTMLElement>("[data-testid='ollama-health-status']");
+const ollamaModelStatus = requireElement<HTMLElement>("[data-testid='ollama-model-status']");
+const ollamaLatency = requireElement<HTMLElement>("[data-testid='ollama-latency']");
+const ollamaParseResult = requireElement<HTMLElement>("[data-testid='ollama-parse-result']");
+const ollamaValidationResult = requireElement<HTMLElement>("[data-testid='ollama-validation-result']");
+const ollamaFallbackStatus = requireElement<HTMLElement>("[data-testid='ollama-fallback-status']");
+const ollamaErrors = requireElement<HTMLElement>("[data-testid='ollama-errors']");
+const ollamaRawResponse = requireElement<HTMLElement>("[data-testid='ollama-raw-response']");
 const listeningEventCount = requireElement<HTMLElement>("[data-testid='listening-event-count']");
 const listeningWindow = requireElement<HTMLElement>("[data-testid='listening-window']");
 const listeningLatestEvent = requireElement<HTMLElement>("[data-testid='listening-latest-event']");
@@ -170,6 +242,9 @@ const thoughtSeedFragmentsNodes = new Map<string, HTMLElement>();
 const thoughtRequestNodes = new Map<string, HTMLElement>();
 const thoughtIntentNodes = new Map<string, HTMLElement>();
 const pendingPlayerFlashes = new Set<string>();
+
+ollamaBaseUrlInput.value = ollamaConfig.baseUrl;
+ollamaModelInput.value = ollamaConfig.model;
 
 function createDefinition(
   term: string,
@@ -391,6 +466,19 @@ function renderLookahead(lookahead: GrowLookaheadState): void {
   lookaheadPendingSlots.textContent = String(lookahead.pendingSlotCount);
 }
 
+function renderOllama(): void {
+  ollamaHealthButton.disabled = ollamaRequestInFlight;
+  ollamaSendThoughtButton.disabled = ollamaRequestInFlight;
+  ollamaHealthStatus.textContent = `${ollamaHealth.status}: ${ollamaHealth.message}`;
+  ollamaModelStatus.textContent = `${ollamaConfig.model} @ ${ollamaConfig.baseUrl}`;
+  ollamaLatency.textContent = formatOllamaLatency(ollamaThoughtTest, ollamaHealth);
+  ollamaParseResult.textContent = formatOllamaParse(ollamaThoughtTest.parse);
+  ollamaValidationResult.textContent = formatOllamaValidation(ollamaThoughtTest);
+  ollamaFallbackStatus.textContent = formatOllamaFallback(ollamaThoughtTest);
+  ollamaErrors.textContent = formatOllamaErrors(ollamaThoughtTest);
+  ollamaRawResponse.textContent = formatRawResponse(ollamaThoughtTest.rawResponse);
+}
+
 function renderSessionMode(): void {
   const mode = world.getSessionMode();
   sessionModeCurrent.textContent = getSessionModeLabel(mode);
@@ -402,6 +490,151 @@ function renderSessionMode(): void {
 function renderStatus(state: GrowTransportState): void {
   button.textContent = state.status === "playing" ? "Stop" : "Start";
   status.value = `mode ${getSessionModeLabel(state.sessionMode).toLowerCase()} | ${state.status} | ${state.bpm} BPM | bar ${state.bar} | beat ${state.currentBeat.toFixed(1)} | lookahead ${state.lookahead.health} ${state.lookahead.leadBeats.toFixed(1)}/${state.lookahead.targetBeats.toFixed(0)} | pending slots ${state.lookahead.pendingSlotCount}`;
+}
+
+function getCurrentListeningFrame(): ListeningFrame {
+  const state = getState();
+  return world.getListeningFrame({
+    tempo: state.bpm,
+    meter: [4, 4],
+    currentBeat: state.currentBeat,
+    transportStatus: state.status,
+  });
+}
+
+function getCurrentThoughtRequest(
+  playerId = "melody",
+  requestLevel: ThoughtRequestLevel = "in_song_short",
+): PlayerThoughtRequest {
+  const frame = getCurrentListeningFrame();
+  const requests = world.getThoughtRequests(frame, {
+    requestLevel,
+    horizonBeats: requestLevel === "influence_probe" ? 8 : undefined,
+  });
+  return requests.find((request) => request.playerId === playerId) ?? requests[0];
+}
+
+function readOllamaConfigFromInputs(): OllamaConfig {
+  ollamaConfig = {
+    ...ollamaConfig,
+    baseUrl: ollamaBaseUrlInput.value.trim() || ollamaConfig.baseUrl,
+    model: ollamaModelInput.value.trim() || ollamaConfig.model,
+  };
+  ollamaBaseUrlInput.value = ollamaConfig.baseUrl;
+  ollamaModelInput.value = ollamaConfig.model;
+  return ollamaConfig;
+}
+
+function setOllamaConfig(nextConfig: Partial<OllamaConfig>): OllamaConfig {
+  ollamaConfig = {
+    ...ollamaConfig,
+    ...nextConfig,
+  };
+  ollamaBaseUrlInput.value = ollamaConfig.baseUrl;
+  ollamaModelInput.value = ollamaConfig.model;
+  ollamaHealth = {
+    ...createInitialOllamaHealth(ollamaConfig),
+    message: "Config changed; health not checked",
+  };
+  renderOllama();
+  return ollamaConfig;
+}
+
+async function runOllamaHealthCheck(): Promise<OllamaHealthState> {
+  const config = readOllamaConfigFromInputs();
+  ollamaRequestInFlight = true;
+  ollamaHealth = {
+    ...createInitialOllamaHealth(config),
+    status: "checking",
+    message: "Checking local Ollama",
+  };
+  renderOllama();
+  try {
+    ollamaHealth = await checkOllamaHealth(config);
+    return ollamaHealth;
+  } finally {
+    ollamaRequestInFlight = false;
+    renderOllama();
+  }
+}
+
+async function runManualOllamaThoughtTest(playerId = "melody"): Promise<OllamaThoughtTestResult> {
+  const config = readOllamaConfigFromInputs();
+  const request = getCurrentThoughtRequest(playerId);
+  ollamaRequestInFlight = true;
+  ollamaThoughtTest = {
+    ...createInitialOllamaThoughtTest(config),
+    status: "running",
+    provider: "ollama",
+    requestId: request.id,
+    playerId: request.playerId,
+    message: "Sending one thought request to local Ollama",
+  };
+  renderOllama();
+  try {
+    ollamaThoughtTest = await runOllamaThoughtTest(request, config);
+    return ollamaThoughtTest;
+  } finally {
+    ollamaRequestInFlight = false;
+    renderOllama();
+  }
+}
+
+function getInfluenceProbePrompt(playerId = "melody"): string {
+  const request = getCurrentThoughtRequest(playerId, "influence_probe");
+  return createOllamaInfluenceProbePrompt(
+    request,
+    "a remembered influence or genre named by the player, translated into abstract technique only",
+  );
+}
+
+function parseManualOllamaThoughtResponse(
+  rawResponse: string,
+  playerId = "melody",
+): OllamaThoughtParseResult {
+  return parseOllamaThoughtResponse(rawResponse, getCurrentThoughtRequest(playerId));
+}
+
+function formatOllamaLatency(
+  thoughtTest: OllamaThoughtTestResult,
+  health: OllamaHealthState,
+): string {
+  if (thoughtTest.latencyMs !== undefined) return `${thoughtTest.latencyMs} ms`;
+  if (health.latencyMs !== undefined) return `${health.latencyMs} ms`;
+  return "none";
+}
+
+function formatOllamaParse(parse: OllamaThoughtParseResult): string {
+  if (parse.status === "idle") return "idle";
+  return parse.status === "ok" ? "ok" : `error (${parse.errors.length})`;
+}
+
+function formatOllamaValidation(thoughtTest: OllamaThoughtTestResult): string {
+  if (thoughtTest.status === "idle") return "idle";
+  if (thoughtTest.status === "running") return "running";
+  return thoughtTest.validation.valid
+    ? "valid"
+    : `invalid (${thoughtTest.validation.errors.length})`;
+}
+
+function formatOllamaFallback(thoughtTest: OllamaThoughtTestResult): string {
+  if (!thoughtTest.fallbackValidation) return "mock ready";
+  return thoughtTest.fallbackValidation.valid
+    ? `mock fallback valid (${thoughtTest.fallbackIntent?.action ?? "intent"})`
+    : "mock fallback invalid";
+}
+
+function formatOllamaErrors(thoughtTest: OllamaThoughtTestResult): string {
+  const errors = [...new Set([
+    ...thoughtTest.parse.errors,
+    ...thoughtTest.validation.errors,
+  ])];
+  return errors.length > 0 ? errors.join(" | ") : "none";
+}
+
+function formatRawResponse(rawResponse: string): string {
+  if (!rawResponse.trim()) return "none";
+  return rawResponse.length > 700 ? `${rawResponse.slice(0, 700)}...` : rawResponse;
 }
 
 function renderWorld(state: GrowTransportState = getState()): void {
@@ -422,6 +655,7 @@ function renderWorld(state: GrowTransportState = getState()): void {
   renderPlayerInspector(players, evaluations);
   renderThoughts(thoughtRequests, thoughtIntents);
   renderListening(frame);
+  renderOllama();
   for (const { player, state: playerState } of players) {
     terrarium?.setPlayerState(player.id, playerState);
   }
@@ -511,6 +745,22 @@ sessionModeControl.addEventListener("change", (event) => {
   applySessionMode(input.value);
 });
 
+ollamaBaseUrlInput.addEventListener("change", () => {
+  setOllamaConfig({ baseUrl: ollamaBaseUrlInput.value.trim() || ollamaConfig.baseUrl });
+});
+
+ollamaModelInput.addEventListener("change", () => {
+  setOllamaConfig({ model: ollamaModelInput.value.trim() || ollamaConfig.model });
+});
+
+ollamaHealthButton.addEventListener("click", () => {
+  void runOllamaHealthCheck();
+});
+
+ollamaSendThoughtButton.addEventListener("click", () => {
+  void runManualOllamaThoughtTest();
+});
+
 terrarium = await createTerrariumView(container, world.getPlayers());
 renderWorld();
 
@@ -532,6 +782,17 @@ declare global {
       getMode(): SessionMode;
       getModes(): readonly SessionModeOption[];
       setMode(mode: string): SessionMode;
+    };
+    ollama?: {
+      getConfig(): OllamaConfig;
+      setConfig(config: Partial<OllamaConfig>): OllamaConfig;
+      getHealth(): OllamaHealthState;
+      checkHealth(): Promise<OllamaHealthState>;
+      getLastThoughtTest(): OllamaThoughtTestResult;
+      runManualThoughtTest(playerId?: string): Promise<OllamaThoughtTestResult>;
+      getSessionPrimer(): string;
+      getInfluenceProbePrompt(playerId?: string): string;
+      parseThoughtResponse(rawResponse: string, playerId?: string): OllamaThoughtParseResult;
     };
   }
 }
@@ -597,6 +858,21 @@ window.session = {
   },
 };
 
+window.ollama = {
+  getConfig: () => ({ ...ollamaConfig }),
+  setConfig: (config) => setOllamaConfig(config),
+  getHealth: () => ({
+    ...ollamaHealth,
+    availableModels: [...ollamaHealth.availableModels],
+  }),
+  checkHealth: () => runOllamaHealthCheck(),
+  getLastThoughtTest: () => ollamaThoughtTest,
+  runManualThoughtTest: (playerId) => runManualOllamaThoughtTest(playerId),
+  getSessionPrimer: () => createOllamaSessionPrimer(),
+  getInfluenceProbePrompt: (playerId) => getInfluenceProbePrompt(playerId),
+  parseThoughtResponse: (rawResponse, playerId) => parseManualOllamaThoughtResponse(rawResponse, playerId),
+};
+
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
     if (renderFrameId !== null) {
@@ -608,5 +884,6 @@ if (import.meta.hot) {
     window.taste = undefined;
     window.thinking = undefined;
     window.session = undefined;
+    window.ollama = undefined;
   });
 }

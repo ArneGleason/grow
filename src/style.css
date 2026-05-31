@@ -151,6 +151,29 @@ button {
   outline-offset: 3px;
 }
 
+.mini-button {
+  min-height: 32px;
+  border: 1px solid rgba(174, 183, 165, 0.34);
+  border-radius: 6px;
+  background: rgba(217, 247, 167, 0.16);
+  color: #eef3e5;
+  cursor: pointer;
+}
+
+.mini-button:hover {
+  background: rgba(217, 247, 167, 0.26);
+}
+
+.mini-button:disabled {
+  cursor: wait;
+  opacity: 0.62;
+}
+
+.mini-button:focus-visible {
+  outline: 3px solid #f6cc6b;
+  outline-offset: 2px;
+}
+
 .status-line {
   min-width: 240px;
   border: 1px solid rgba(174, 183, 165, 0.26);
@@ -213,6 +236,52 @@ button {
 
 .player-inspector + .player-inspector {
   margin-top: 14px;
+}
+
+.ollama-controls {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.ollama-field {
+  display: grid;
+  gap: 4px;
+  color: #aeb7a5;
+  font-size: 0.85rem;
+}
+
+.ollama-field input {
+  width: 100%;
+  min-height: 32px;
+  border: 1px solid rgba(174, 183, 165, 0.28);
+  border-radius: 6px;
+  padding: 6px 8px;
+  background: rgba(8, 12, 10, 0.82);
+  color: #eef3e5;
+  font: inherit;
+}
+
+.ollama-field input:focus-visible {
+  outline: 3px solid #f6cc6b;
+  outline-offset: 2px;
+}
+
+.ollama-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.raw-response {
+  max-height: 130px;
+  max-width: 100%;
+  margin: 0;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: #d7dfcf;
+  font: 0.78rem/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
 .inspector dl {

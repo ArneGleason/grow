@@ -221,6 +221,9 @@ export function validateMusicalExcerpt(excerpt: MusicalExcerpt): ValidationResul
   const errors: string[] = [];
 
   if (!excerpt.label.trim()) errors.push("excerpt label is required");
+  if (!["self", "heard", "imagined", "group"].includes(excerpt.origin)) {
+    errors.push("excerpt origin is unknown");
+  }
   if (!isFiniteNumber(excerpt.sourceStartBeat) || excerpt.sourceStartBeat < 0) {
     errors.push("sourceStartBeat must be a non-negative number");
   }
@@ -277,6 +280,10 @@ export function validateMusicalExcerpt(excerpt: MusicalExcerpt): ValidationResul
     if (step.octave !== undefined && !Number.isInteger(step.octave)) {
       errors.push(`step ${index} octave must be an integer`);
     }
+    const pitchOctave = parsePitch(step.pitch)?.octave;
+    if (pitchOctave !== undefined && step.octave !== undefined && pitchOctave !== step.octave) {
+      errors.push(`step ${index} pitch and octave disagree`);
+    }
     if (step.velocity !== undefined && (step.velocity < 0 || step.velocity > 1)) {
       errors.push(`step ${index} velocity must be between 0 and 1`);
     }
@@ -326,7 +333,9 @@ export function validatePlayerThoughtIntent(
   if (!RESPONSE_LEVELS.includes(intent.responseLevel)) errors.push("responseLevel is unknown");
   if (!THOUGHT_ACTIONS.includes(intent.action)) errors.push("action is unknown");
   if (!request.allowedActions.includes(intent.action)) errors.push("action is not allowed by request");
-  if (intent.confidence < 0 || intent.confidence > 1) errors.push("confidence must be between 0 and 1");
+  if (!isFiniteNumber(intent.confidence) || intent.confidence < 0 || intent.confidence > 1) {
+    errors.push("confidence must be between 0 and 1");
+  }
   if (!isFiniteNumber(intent.target.startAfterBeats) || intent.target.startAfterBeats < 0) {
     errors.push("target startAfterBeats must be non-negative");
   }
