@@ -888,6 +888,35 @@ Review result:
 - Claude approved Byte 10f-b1 with no required fixes. The review verified the proxy is transport-only, the browser uses same-origin `/api/ollama/*`, the localhost target guard rejects non-local targets, and a real qwen3 invalid response is safely rejected by the existing validator.
 - Forward notes before automatic slow thinking: drop model-authored `pitch` from the model-facing step schema and derive pitch from `scaleDegree` plus `octave` in system code, add upstream abort propagation, and re-host the Vite dev middleware as a standalone local server when persistence/backend work arrives.
 
+### Byte 10f-b2: Model-Safe Pitch Derivation And Proxy Abort
+
+Status: implemented.
+
+Remove duplicate music-theory arithmetic from model output before any automatic slow-thinking loop exists.
+
+Scope:
+
+- Remove `pitch` from the projected JSON response schema used by Ollama.
+- Tell the model to emit `scaleDegree` plus `octave` for note steps and never include `pitch`.
+- Derive canonical `pitch` in system code during response coercion, before the existing `PlayerThoughtIntent` validator runs.
+- Avoid masking invalid output: only derive pitch for integer, in-range scale degrees plus integer octaves, so out-of-range model output still fails validation.
+- Propagate browser-side aborts through the Vite proxy to upstream Ollama `fetch()` calls.
+- Add a mocked unavailable/proxy-failure smoke path that confirms deterministic mock fallback remains valid and transport stays stopped.
+
+Review focus:
+
+- whether the model-facing schema and prompt have truly removed model-authored `pitch`,
+- whether pitch derivation belongs in Ollama response coercion or should move into a shared normalization layer before Byte 11,
+- whether the abort propagation is enough for future cancelled slow-thinking requests,
+- whether additional invalid-response fixtures are needed before model output can drive music.
+
+Implementation notes:
+
+- `src/thought-prompt-protocols.ts` no longer includes `pitch` in the response step schema.
+- `src/ollama.ts` derives pitch with `noteFromScaleDegree()` only after checking the model-provided `scaleDegree` and `octave` are valid integers in range.
+- `vite.config.js` attaches an abort controller to proxied requests and passes its signal into upstream Ollama fetches.
+- Smoke coverage now checks pitch derivation on a pitchless mocked response and verifies a `503` proxy chat response leaves mock fallback valid.
+
 ### Byte 10f: Ollama Backend Proxy And Prompt Protocol Registry
 
 Status: planned.
@@ -903,8 +932,6 @@ Scope:
 - Start the registry with `projected-json`, `music-card`, `split-cards`, and a debug/reference `full-json`.
 - Default production use to `projected-json` with `qwen3:4b-instruct-2507-q4_K_M` until a calibrated pairing proves better.
 - Use Ollama `format` as a JSON schema for the intended intent shape rather than the bare `"json"` string.
-- For model-facing step schemas, prefer `scaleDegree` plus `octave` and omit `pitch`; system code should derive pitch before canonical validation/scheduling so models cannot disagree with music-theory arithmetic.
-- Add upstream abort propagation for proxied Ollama calls before any automatic slow-thinking loop can queue or cancel requests.
 - Add a small calibration/bakeoff harness that runs fixed thought fixtures against available models and protocol adapters, then scores parse success, validation success, required-field preservation, latency, and compactness.
 - Cache or record the selected model/protocol pairing for later use; do not run calibration inside the musical performance loop.
 - Add mocked invalid-response and unavailable-Ollama smoke cases.

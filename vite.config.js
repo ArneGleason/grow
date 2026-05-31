@@ -21,6 +21,12 @@ function ollamaProxyPlugin() {
         try {
           await handleOllamaProxy(request, response);
         } catch (error) {
+          if (isAbortError(error) || request.destroyed || response.destroyed) {
+            if (!response.destroyed && !response.writableEnded) {
+              sendJson(response, 499, { error: "Ollama proxy request aborted" });
+            }
+            return;
+          }
           sendJson(response, error instanceof ProxyRequestError ? 400 : 500, {
             error: error instanceof Error ? error.message : String(error),
           });
@@ -33,26 +39,59 @@ function ollamaProxyPlugin() {
 async function handleOllamaProxy(request, response) {
   const requestUrl = new URL(request.url ?? "", "http://127.0.0.1");
   const path = requestUrl.pathname;
+  const abort = createProxyAbortController(request, response);
   if (path === `${OLLAMA_PROXY_PREFIX}/tags` && request.method === "GET") {
-    const baseUrl = sanitizeOllamaBaseUrl(requestUrl.searchParams.get("baseUrl"));
-    const upstream = await fetch(`${baseUrl}/api/tags`, { method: "GET" });
-    await pipeJsonResponse(response, upstream);
+    try {
+      const baseUrl = sanitizeOllamaBaseUrl(requestUrl.searchParams.get("baseUrl"));
+      const upstream = await fetch(`${baseUrl}/api/tags`, {
+        method: "GET",
+        signal: abort.signal,
+      });
+      await pipeJsonResponse(response, upstream);
+    } finally {
+      abort.cleanup();
+    }
     return;
   }
 
   if (path === `${OLLAMA_PROXY_PREFIX}/chat` && request.method === "POST") {
-    const payload = await readJsonBody(request);
-    const baseUrl = sanitizeOllamaBaseUrl(payload.baseUrl);
-    const upstream = await fetch(`${baseUrl}/api/chat`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload.request ?? {}),
-    });
-    await pipeJsonResponse(response, upstream);
+    try {
+      const payload = await readJsonBody(request, abort.signal);
+      const baseUrl = sanitizeOllamaBaseUrl(payload.baseUrl);
+      const upstream = await fetch(`${baseUrl}/api/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload.request ?? {}),
+        signal: abort.signal,
+      });
+      await pipeJsonResponse(response, upstream);
+    } finally {
+      abort.cleanup();
+    }
     return;
   }
 
+  abort.cleanup();
   sendJson(response, 404, { error: "Unknown Ollama proxy route" });
+}
+
+function createProxyAbortController(request, response) {
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  const abortIfResponseDidNotFinish = () => {
+    if (!response.writableEnded) abort();
+  };
+
+  request.once("aborted", abort);
+  response.once("close", abortIfResponseDidNotFinish);
+
+  return {
+    signal: controller.signal,
+    cleanup() {
+      request.off("aborted", abort);
+      response.off("close", abortIfResponseDidNotFinish);
+    },
+  };
 }
 
 async function pipeJsonResponse(response, upstream) {
@@ -80,21 +119,39 @@ function sanitizeOllamaBaseUrl(value) {
   return url.toString().replace(/\/+$/, "");
 }
 
-function readJsonBody(request) {
+function readJsonBody(request, signal) {
   return new Promise((resolve, reject) => {
+    if (signal.aborted) {
+      reject(createAbortError());
+      return;
+    }
     const chunks = [];
+    const abort = () => {
+      cleanup();
+      reject(createAbortError());
+    };
+    const cleanup = () => {
+      signal.removeEventListener("abort", abort);
+      request.off("error", fail);
+    };
+    const fail = (error) => {
+      cleanup();
+      reject(error);
+    };
+    signal.addEventListener("abort", abort, { once: true });
     request.on("data", (chunk) => {
       chunks.push(chunk);
     });
     request.on("end", () => {
       try {
+        cleanup();
         const rawBody = Buffer.concat(chunks).toString("utf8");
         resolve(rawBody.length > 0 ? JSON.parse(rawBody) : {});
       } catch (error) {
         reject(error);
       }
     });
-    request.on("error", reject);
+    request.on("error", fail);
   });
 }
 
@@ -106,3 +163,13 @@ function sendJson(response, statusCode, payload) {
 }
 
 class ProxyRequestError extends Error {}
+
+function isAbortError(error) {
+  return error instanceof Error && error.name === "AbortError";
+}
+
+function createAbortError() {
+  const error = new Error("Ollama proxy request aborted");
+  error.name = "AbortError";
+  return error;
+}

@@ -132,7 +132,7 @@ const HELP_TOPICS = {
   },
   ollama: {
     title: "Ollama",
-    body: "Ollama is the local model boundary for slow player thoughts. Check verifies the local server and model, while Send thought runs one validated manual projected-JSON request without scheduling model output into the music.",
+    body: "Ollama is the local model boundary for slow player thoughts. Check verifies the local server and model, while Send thought runs one validated manual projected-JSON request without scheduling model output into the music. The model names scale degrees; Grow derives exact pitches.",
   },
   players: {
     title: "Players",
@@ -340,7 +340,7 @@ ${renderHelpButton("ollama", "Ollama thought probe")}
             <dt>Errors</dt>
             <dd data-testid="ollama-errors">none</dd>
             <dt>Primer</dt>
-            <dd data-testid="ollama-primer-summary">Projected JSON intent; scaleDegree 0..scale-1 plus octave; system owns sourceStartBeat.</dd>
+            <dd data-testid="ollama-primer-summary">Projected JSON intent; scaleDegree 0..scale-1 plus octave; system derives pitch/sourceStartBeat.</dd>
             <dt>Raw</dt>
             <dd><pre class="raw-response" data-testid="ollama-raw-response">none</pre></dd>
           </dl>

@@ -690,6 +690,7 @@ test("manual Ollama thought probe is inspectable with a mocked local endpoint", 
   expect(probe?.promptProtocol).toBe("projected-json");
   expect(probe?.validation.valid).toBe(true);
   expect(probe?.fallbackValidation?.valid).toBe(true);
+  expect(probe?.intent?.musicalIdea.steps[0]?.pitch).toBe("E4");
   expect(probe?.intent?.musicalIdea.sourceStartBeat).not.toBe(999);
   expect((await getTransportState(page)).lookahead.pendingSlotCount).toBe(0);
   expect((await getTransportState(page)).status).toBe("stopped");
@@ -704,6 +705,7 @@ test("manual Ollama thought probe is inspectable with a mocked local endpoint", 
   expect(chatPayload.stream).toBe(false);
   expect(chatPayload.think).toBe(false);
   expect(chatPayload.options?.num_predict).toBeLessThanOrEqual(512);
+  expect(JSON.stringify(chatPayload.format)).not.toContain('"pitch"');
   expect(chatPayload.format).toMatchObject({
     type: "object",
     additionalProperties: false,
@@ -715,9 +717,42 @@ test("manual Ollama thought probe is inspectable with a mocked local endpoint", 
   expect(userMessage).toContain("Request projection:");
   expect(userMessage).toContain('"v":"grow.thought/1"');
   expect(userMessage).toContain('"motif"');
+  expect(userMessage).toContain("Do not include pitch");
   expect(userMessage).not.toContain("Request JSON:");
   expect(userMessage).not.toContain('"seed"');
   expect(userMessage).not.toContain('"sourceStartBeat"');
+});
+
+test("manual Ollama thought probe keeps mock fallback when proxy chat fails", async ({ page }) => {
+  await page.route("**/api/ollama/chat**", async (route) => {
+    await route.fulfill({
+      status: 503,
+      headers: {
+        "content-type": "application/json",
+        "x-grow-ollama-proxy": "smoke",
+      },
+      body: JSON.stringify({ error: "offline for smoke" }),
+    });
+  });
+
+  await page.goto("/");
+  await page.getByTestId("ollama-send-thought").click();
+  await expect(page.getByTestId("ollama-parse-result")).toHaveText("error (1)");
+  await expect(page.getByTestId("ollama-validation-result")).toHaveText("invalid (1)");
+  await expect(page.getByTestId("ollama-fallback-status")).toContainText("mock fallback valid");
+  await expect(page.getByTestId("ollama-errors")).toContainText("HTTP 503");
+
+  const probe = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      ollama?: { getLastThoughtTest(): OllamaThoughtProbe };
+    };
+    return appWindow.ollama?.getLastThoughtTest();
+  });
+
+  expect(probe?.status).toBe("failed");
+  expect(probe?.provider).toBe("mock-fallback");
+  expect(probe?.fallbackValidation?.valid).toBe(true);
+  expect((await getTransportState(page)).status).toBe("stopped");
 });
 
 test("local Ollama proxy rejects non-local targets", async ({ request }) => {

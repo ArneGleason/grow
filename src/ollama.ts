@@ -11,6 +11,7 @@ import {
   type ThoughtResponseLevel,
   type ValidationResult,
 } from "./thought-protocol";
+import { noteFromScaleDegree } from "./tonal-context";
 import {
   DEFAULT_THOUGHT_PROMPT_PROTOCOL_ID,
   getThoughtPromptProtocol,
@@ -147,8 +148,8 @@ export function createOllamaSessionPrimer(): string {
     "Allowed actions are provided in the request. Choose exactly one allowed action.",
     "MusicalExcerpt convention: steps[].positionBeats is phrase-relative and monotonic from 0.",
     "MusicalExcerpt convention: steps[].scaleDegree is a pitch-class index from 0 to scale.length - 1.",
-    "MusicalExcerpt convention: steps[].octave is separate. Do not use wrapping scale degrees.",
-    "If you include pitch and scaleDegree, they must agree with tonalContext.scale.",
+    "MusicalExcerpt convention: note steps include separate steps[].octave. Do not use wrapping scale degrees.",
+    "Do not include pitch in model output. The system derives pitch from scaleDegree plus octave before validation.",
     "The system owns sourceStartBeat and placement. Copy requestId/playerId, but target.startAfterBeats and target.durationBeats own future placement.",
     "For influence probes, return an abstract transferable technique. Do not copy or imitate a named artist's melody, lyric, or signature passage.",
   ].join("\n");
@@ -397,34 +398,54 @@ function coercePlayerThoughtIntent(
 
 function coerceMusicalExcerpt(value: unknown, request: PlayerThoughtRequest): MusicalExcerpt {
   const object = isRecord(value) ? value : {};
+  const tonalContext = isTonalContext(object.tonalContext)
+    ? object.tonalContext
+    : request.constraints.tonalContext;
   return {
     label: getString(object.label),
     origin: (getString(object.origin) || "imagined") as MusicalExcerptOrigin,
     meter: isMeter(object.meter) ? object.meter : request.constraints.meter,
-    tonalContext: isTonalContext(object.tonalContext)
-      ? object.tonalContext
-      : request.constraints.tonalContext,
+    tonalContext,
     sourceStartBeat: request.generatedAtBeat,
     durationBeats: getNumber(object.durationBeats),
     steps: Array.isArray(object.steps)
-      ? object.steps.map(coerceMusicalExcerptStep)
+      ? object.steps.map((step) => coerceMusicalExcerptStep(step, tonalContext))
       : [],
     tags: getStringArray(object.tags),
   };
 }
 
-function coerceMusicalExcerptStep(value: unknown): MusicalExcerptStep {
+function coerceMusicalExcerptStep(
+  value: unknown,
+  tonalContext: MusicalExcerpt["tonalContext"],
+): MusicalExcerptStep {
   const object = isRecord(value) ? value : {};
+  const kind = getString(object.kind) as MusicalExcerptStepKind;
+  const scaleDegree = getOptionalNumber(object.scaleDegree);
+  const octave = getOptionalNumber(object.octave);
   return {
-    kind: getString(object.kind) as MusicalExcerptStepKind,
+    kind,
     positionBeats: getNumber(object.positionBeats),
     durationBeats: getNumber(object.durationBeats),
-    pitch: getOptionalString(object.pitch),
-    scaleDegree: getOptionalNumber(object.scaleDegree),
-    octave: getOptionalNumber(object.octave),
+    pitch: derivePitchFromModelStep(kind, scaleDegree, octave, tonalContext),
+    scaleDegree,
+    octave,
     velocity: getOptionalNumber(object.velocity),
     tags: getStringArray(object.tags),
   };
+}
+
+function derivePitchFromModelStep(
+  kind: MusicalExcerptStepKind,
+  scaleDegree: number | undefined,
+  octave: number | undefined,
+  tonalContext: MusicalExcerpt["tonalContext"],
+): string | undefined {
+  if (kind !== "note") return undefined;
+  if (typeof scaleDegree !== "number" || typeof octave !== "number") return undefined;
+  if (!Number.isInteger(scaleDegree) || !Number.isInteger(octave)) return undefined;
+  if (scaleDegree < 0 || scaleDegree >= tonalContext.scale.length) return undefined;
+  return noteFromScaleDegree(tonalContext, scaleDegree, octave);
 }
 
 async function fetchWithTimeout(
@@ -494,10 +515,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function getString(value: unknown): string {
   return typeof value === "string" ? value : "";
-}
-
-function getOptionalString(value: unknown): string | undefined {
-  return typeof value === "string" ? value : undefined;
 }
 
 function getNumber(value: unknown): number {

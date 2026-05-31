@@ -70,7 +70,8 @@ const PROJECTED_JSON_PROTOCOL: ThoughtPromptProtocol = {
       "Use the request projection only; it is a compact view of the canonical internal request.",
       "Return one JSON object matching the provided schema. No markdown. No prose outside JSON.",
       "Copy request id/player exactly. Choose one allowed action.",
-      "Use scaleDegree as 0..scale.length-1 plus separate octave. Omit sourceStartBeat; the system owns provenance and placement.",
+      "For note steps, use scaleDegree as 0..scale.length-1 plus separate octave. Do not include pitch; the system derives pitch.",
+      "Omit sourceStartBeat; the system owns provenance and placement.",
       "Keep rationale under 160 characters.",
       `Request projection: ${JSON.stringify(projection)}`,
     ].join("\n\n");
@@ -219,7 +220,6 @@ function createStepSchema(request: PlayerThoughtRequest): Record<string, unknown
         minimum: 0.25,
         maximum: request.constraints.maxDurationBeats,
       },
-      pitch: { type: "string" },
       scaleDegree: {
         type: "integer",
         minimum: 0,
