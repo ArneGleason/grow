@@ -21,7 +21,7 @@ The repo is initialized with the Studio Pattern so future work has a clear place
 - Byte 5 lookahead buffer added: deterministic player material is committed into an 8-beat scheduled-ahead queue with visible buffer health and bounded cleanup.
 - Byte 6a session mode shell added: break, solo practice, rehearsal, and performance are selectable and inspectable without changing musical behavior yet.
 - Byte 6b first mode behavior added and approved: break drains the lookahead without canceling committed material, and rehearsal resumes refill from the current beat.
-- Byte 6c session policy boundary added: mode-to-lookahead-refill behavior now lives in an explicit session policy map instead of transport mode literals.
+- Byte 6c session policy boundary added and approved: mode-to-lookahead-refill behavior now lives in an explicit session policy map instead of transport mode literals.
 - Planning update: player thinking now comes before producer work, with profiles, compact musical-excerpt thought requests, influence probes, Ollama-backed future intents, song sketches, and thought memory as the next arc.
 
 ## First Work

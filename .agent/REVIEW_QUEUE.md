@@ -36,7 +36,7 @@ Use this file for known risks, open questions, and review focus. Keep entries sh
 - Scope guidance from Arne: keep Grow solo for now, but leave a future hook for multiple terrariums/bands that can observe, inspire, or react to each other.
 - Claude reviewed `docs/implementation-plan.md`; current Byte 1 guidance is stationary pulse player + percussive beat + explicit Tone.js lifecycle cleanup before adding movement or more players.
 - First implementation review should pay special attention to repeated start/stop cycles and whether scheduled Tone.js objects are disposed rather than stacked.
-- Byte 6c is ready for Claude review. Review focus: confirm the mode-to-refill scheduling policy now lives in `src/session-mode.ts`, transport no longer hardcodes mode literals for refill behavior, and Byte 6b break/rehearsal behavior is unchanged.
+- Byte 6c is approved. Forward note: when richer mode behavior arrives, grow `SessionModePolicy` explicitly; if it gains several fields, consider passing the whole policy object rather than one transport handler per policy field.
 - Planning review focus after Byte 6c: player thinking now precedes producer work. Review whether the new Byte 7-12 arc is small enough: profiles/backstory -> musical-excerpt thought protocol -> Ollama health/primer -> one slow-thinking player -> song sketch/piece construction -> thought memory/persistence prep.
 - Byte 6b feel note: posture lags the audible silence by up to the 8-beat recent-activity window during a sustained break. This is correct now; revisit only if the break should read visually faster.
 - Byte 6b smoke waits through an 8-beat drain and is intentionally longer. If it gets flaky, prefer probing latest recorded beat/dwell gaps over shortening the behavioral window.

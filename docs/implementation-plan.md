@@ -442,7 +442,7 @@ Implementation notes:
 
 ### Byte 6c: Session Policy Boundary
 
-Status: implemented.
+Status: implemented and approved.
 
 Keep Byte 6 mode behavior from leaking policy into the transport.
 
@@ -467,6 +467,8 @@ Implementation notes:
 - `src/transport.ts` no longer hardcodes `break` for scheduling. It receives a narrow `shouldRefillLookahead` handler and falls back to refill when no session layer is present.
 - `sessionMode` remains on transport state for display/debugging.
 - The smoke test includes a fast policy-map assertion and still verifies Byte 6b drain/resume behavior.
+- Claude's Byte 6c review approved the cleanup with no required fixes. Claude also empirically checked the compile-time fail-safe: adding a new mode without a policy entry fails TypeScript.
+- Forward note: if `SessionModePolicy` gains several fields, consider passing a whole policy object rather than growing a long transport handler list.
 
 ## Player Thinking Before Producer
 
