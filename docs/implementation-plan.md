@@ -153,7 +153,7 @@ Review focus:
 
 ### Byte 2: Musical Event Ledger + Minimum Listening Frame
 
-Status: implemented.
+Status: implemented and approved.
 
 Add the foundation for hearing before adding more players.
 
@@ -579,6 +579,7 @@ Implementation notes:
 - `validatePlayerThoughtIntent()` now rejects over-horizon musical ideas, not just over-horizon target durations.
 - The smoke test includes intentionally invalid model-like excerpts/intents to prove the new failures are caught.
 - The app subtitle is `Byte 9a: thought validation hardening`; protocol hooks and mock intents remain otherwise unchanged.
+- Claude's Byte 9a review approved the validator hardening with no required fixes. Forward notes for Byte 9b: specify the excerpt scale-degree convention in the primer, surface validator errors in the manual display, keep deterministic mock fallback, keep `sourceStartBeat`/placement system-owned, and optionally validate pitch-embedded octave against the separate `octave` field.
 
 ### Byte 9b: Ollama Health And Session Primer
 
@@ -588,11 +589,13 @@ Scope:
 - Add configurable model tag, initially targeting the user's local Gemma 4 31B Ollama model.
 - Add health/status UI and dev hooks.
 - Add a session primer that tells the model the protocol, allowed action vocabulary, current musical primitives, output schema, and short-response rule.
+- In that primer, explicitly define `MusicalExcerpt.steps[].scaleDegree` as a pitch-class index from `0` to `scale.length - 1` with a separate `octave` field. This is different from the app's wrapping `noteFromScaleDegree()` helper.
 - Add one manual test call that sends a tiny `in_song_short` thought request and displays raw latency, raw response, parse result, and validation result.
-- Surface `validatePlayerThoughtIntent` errors directly in the manual test display.
+- Surface `validateMusicalExcerpt` and `validatePlayerThoughtIntent` errors directly in the manual test display, preferably with offending values or bounds when practical.
 - Add one manual or fixture-level `influence_probe` request that asks for an abstract transferable technique, not a direct style clone or copied melody.
 - Keep the deterministic mock responder as the offline/fallback path.
-- Document `sourceStartBeat` as provenance/debug in the prompt contract; the model should use `intent.target` for placement.
+- Document `sourceStartBeat` as provenance/debug in the prompt contract; the system owns source extraction and placement, and the model should use `intent.target` for placement.
+- Optionally extend the validator to reject disagreement between a pitch-embedded octave and the explicit `octave` field if this stays small.
 - Do not schedule model output into music yet.
 
 Review focus:

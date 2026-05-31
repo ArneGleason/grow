@@ -167,7 +167,10 @@ Resume work:
 - Byte 8 review approved the protocol with no required fixes. Before Byte 9 trusts model-authored intents, tighten validators so `scaleDegree < scale.length`, pitched steps belong to the active scale, and `musicalIdea.durationBeats` cannot exceed the request horizon.
 - Byte 9 should surface `validatePlayerThoughtIntent` errors in the manual Ollama test display, keep the deterministic mock responder as offline fallback, and treat `sourceStartBeat` as provenance/debug while `intent.target` owns placement.
 - Byte 9a implements the validator hardening only. `validateMusicalExcerpt()` now rejects out-of-scale `scaleDegree`, out-of-scale `pitch`, and pitch/degree disagreement; `validatePlayerThoughtIntent()` now rejects `musicalIdea.durationBeats` beyond `maxDurationBeats`.
-- Byte 9a still has no Ollama calls and no scheduling of thought intents into audio. Byte 9b should add health/status, session primer, manual test call, and validation/error display only.
+- Byte 9a review approved the validator hardening with no required fixes. Byte 9a still has no Ollama calls and no scheduling of thought intents into audio.
+- Byte 9b should add health/status, session primer, manual test call, and validation/error display only.
+- Byte 9b's primer must define `MusicalExcerpt.steps[].scaleDegree` as a pitch-class index from `0` to `scale.length - 1` with a separate `octave` field. That is intentionally different from the app's wrapping `noteFromScaleDegree()` helper.
+- Byte 9b should surface `validateMusicalExcerpt()` and `validatePlayerThoughtIntent()` errors directly in the manual test display, keep deterministic mock intents as offline fallback, and keep `sourceStartBeat`/placement owned by the system rather than the model.
 - Before runtime key/mode changes, remember that transport patterns currently materialize from tonal context at `initTransport`/start time; tonal changes will need pattern re-materialization.
 - PixiJS v8 clamps alpha to 1.0, so note-on flashes should not rely on `alpha > 1`. Use scale, tint, or a resting alpha below 1.0 so the flash has visible headroom.
 - Use `git ls-files --cached --others --exclude-standard | sort` for the file inventory now that ignored `node_modules/` and `dist/` trees exist.
