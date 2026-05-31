@@ -53,19 +53,28 @@ Live Ollama results against local `qwen3:4b-instruct-2507-q4_K_M` with the same 
 | music-card | 1616 | stop | 507 | ok | ok | yes |
 | split-cards | 4501 | length | 1559 | fail | n/a | n/a |
 
+Live Ollama results against local `gemma3:4b-it-q4_K_M` with the same settings:
+
+| shape | ms | done | content chars | parse | required fields | action allowed |
+| --- | ---: | --- | ---: | --- | --- | --- |
+| current-full-json | 6103 | stop | 1062 | ok | ok | yes |
+| projected-json | 2300 | stop | 635 | ok | ok | yes |
+| music-card | 1642 | stop | 384 | ok | missing:rationale | yes |
+| split-cards | 4433 | stop | 1357 | ok | ok | yes |
+
 The heuristic is intentionally rough: it rewards constraint coverage and compactness, and slightly favors a JSON projection because it is easiest to parse, log, validate, and debug.
 
 ## Read
 
-The current full JSON shape is too large for the job on `gemma4:31b`. It spends a lot of prompt budget on implementation details the model does not need, and in the first live test it hit the prediction limit with non-parseable output. The much smaller `qwen3:4b-instruct-2507-q4_K_M` handled the full JSON prompt, but it was still roughly four times slower than its best compact prompt.
+The current full JSON shape is too large for the job on `gemma4:31b`. It spends a lot of prompt budget on implementation details the model does not need, and in the first live test it hit the prediction limit with non-parseable output. The smaller 4B models handled the full JSON prompt, but it was still roughly three to four times slower than their best compact prompts.
 
-The line-card and split-card shapes are the smallest. The music-card shape worked live on both tested models and was the fastest Qwen 4B result. Split-cards hit the prediction limit on both tested models. The card approach is still worth exploring because it is compact, fast, and musically readable, but projected JSON is easier to validate and less surprising.
+The line-card and split-card shapes are the smallest. The music-card shape worked live on Qwen 4B and was its fastest result, but Gemma 3 4B omitted `rationale`, so the card form needs stricter validation or a smaller response contract before it can be trusted. Split-cards hit the prediction limit on Gemma 4 and Qwen 4B, but Gemma 3 4B completed it. The card approach is still worth exploring because it is compact, fast, and musically readable, but projected JSON is easier to validate and less surprising.
 
-The projected JSON shape still looks like the safest next production candidate. It cuts roughly 44 percent of the prompt size while preserving every validation-critical field in a form that remains familiar to the app and review tooling. `qwen3:4b-instruct-2507-q4_K_M` is the first strong candidate for a fast local slow-thinking model: it returned valid JSON for projected JSON in about 2.7 seconds and for music-card in about 1.6 seconds.
+The projected JSON shape still looks like the safest next production candidate. It cuts roughly 44 percent of the prompt size while preserving every validation-critical field in a form that remains familiar to the app and review tooling. `qwen3:4b-instruct-2507-q4_K_M` and `gemma3:4b-it-q4_K_M` are both strong fast local candidates. On this fixture, Gemma 3 4B returned valid projected JSON in about 2.3 seconds and Qwen 4B returned it in about 2.7 seconds.
 
 ## Recommendation
 
-For Byte 10f prompt tuning, replace the full `Request JSON: ${JSON.stringify(request)}` payload with a projected request object and send `think: false` in the Ollama chat request for short structured intents. Keep `qwen3:4b-instruct-2507-q4_K_M` available as the first fast-model target alongside the larger Gemma model.
+For Byte 10f prompt tuning, replace the full `Request JSON: ${JSON.stringify(request)}` payload with a projected request object and send `think: false` in the Ollama chat request for short structured intents. Keep both `qwen3:4b-instruct-2507-q4_K_M` and `gemma3:4b-it-q4_K_M` available as fast-model targets alongside the larger Gemma model.
 
 Suggested first projected shape:
 
