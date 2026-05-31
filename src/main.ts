@@ -70,7 +70,7 @@ app.innerHTML = `
           <dl>
             <dt>Mode</dt>
             <dd data-testid="listening-tonal-context">C mixolydian</dd>
-            <dt>Events</dt>
+            <dt>Heard</dt>
             <dd data-testid="listening-event-count">0</dd>
             <dt>Window</dt>
             <dd data-testid="listening-window">beats 0-0</dd>
@@ -88,8 +88,8 @@ app.innerHTML = `
             <dd data-testid="lookahead-lead">0.0 / 8 beats</dd>
             <dt>Through</dt>
             <dd data-testid="lookahead-through">beat 0.0</dd>
-            <dt>Items</dt>
-            <dd data-testid="lookahead-items">0</dd>
+            <dt>Pending</dt>
+            <dd data-testid="lookahead-pending-slots">0</dd>
           </dl>
         </section>
       </aside>
@@ -108,7 +108,7 @@ const listeningTonalContext = requireElement<HTMLElement>("[data-testid='listeni
 const lookaheadHealth = requireElement<HTMLElement>("[data-testid='lookahead-health']");
 const lookaheadLead = requireElement<HTMLElement>("[data-testid='lookahead-lead']");
 const lookaheadThrough = requireElement<HTMLElement>("[data-testid='lookahead-through']");
-const lookaheadItems = requireElement<HTMLElement>("[data-testid='lookahead-items']");
+const lookaheadPendingSlots = requireElement<HTMLElement>("[data-testid='lookahead-pending-slots']");
 
 let terrarium: TerrariumView | null = null;
 let previousTransportStatus = getState().status;
@@ -225,12 +225,12 @@ function renderLookahead(lookahead: GrowLookaheadState): void {
   lookaheadHealth.textContent = lookahead.health;
   lookaheadLead.textContent = `${lookahead.leadBeats.toFixed(1)} / ${lookahead.targetBeats.toFixed(0)} beats`;
   lookaheadThrough.textContent = `beat ${lookahead.scheduledThroughBeat.toFixed(1)}`;
-  lookaheadItems.textContent = String(lookahead.scheduledItemCount);
+  lookaheadPendingSlots.textContent = String(lookahead.pendingSlotCount);
 }
 
 function renderStatus(state: GrowTransportState): void {
   button.textContent = state.status === "playing" ? "Stop" : "Start";
-  status.value = `${state.status} | ${state.bpm} BPM | bar ${state.bar} | beat ${state.currentBeat.toFixed(1)} | buffer ${state.lookahead.health} ${state.lookahead.leadBeats.toFixed(1)}/${state.lookahead.targetBeats.toFixed(0)} | scheduled ${state.scheduledEventCount}`;
+  status.value = `${state.status} | ${state.bpm} BPM | bar ${state.bar} | beat ${state.currentBeat.toFixed(1)} | lookahead ${state.lookahead.health} ${state.lookahead.leadBeats.toFixed(1)}/${state.lookahead.targetBeats.toFixed(0)} | pending slots ${state.lookahead.pendingSlotCount}`;
 }
 
 function renderWorld(state: GrowTransportState = getState()): void {

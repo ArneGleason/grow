@@ -87,7 +87,7 @@ See `docs/github-setup.md` before adding tokens, OAuth credentials, webhook secr
 
 For software projects, record the testing conventions that future agents should preserve:
 
-- Stable selectors or test IDs: Byte 5 exposes `transport-toggle`, `transport-status`, `terrarium-container`, `terrarium-canvas`, `player-list`, `player-pulse-*`, `player-bass-*`, `player-melody-*`, `listening-event-count`, `listening-window`, `listening-latest-event`, `lookahead-health`, `lookahead-lead`, `lookahead-through`, and `lookahead-items`.
+- Stable selectors or test IDs: Byte 5 exposes `transport-toggle`, `transport-status`, `terrarium-container`, `terrarium-canvas`, `player-list`, `player-pulse-*`, `player-bass-*`, `player-melody-*`, `listening-event-count`, `listening-window`, `listening-latest-event`, `lookahead-health`, `lookahead-lead`, `lookahead-through`, and `lookahead-pending-slots`.
 - E2E state setup and teardown: TBD.
 - E2E smoke command: `npm run smoke`; Playwright starts or reuses Vite at `http://127.0.0.1:5173/`.
 - Page readiness and realtime waits: wait for `window.transport.getState()` before transport assertions and `window.listening.getFrame()` before listening-frame assertions.
@@ -127,7 +127,7 @@ Resume work:
 - Byte 1 pins PixiJS, Tone.js, Vite, and TypeScript directly in `package.json`.
 - Byte 2a adds `src/players.ts`; renderers and inspectors should consume player registry data instead of hardcoding visible players.
 - Byte 2 adds `src/listening.ts` and `src/world-state.ts`. Static player data belongs in the registry; transient state such as `waiting`, `performing`, `thinking`, and `resting` belongs in `GrowWorldState`.
-- Byte 5 schedules one-shot Tone.js events into an 8-beat lookahead queue. While playing, `scheduledEventCount` counts pending note/rest slots and should stay bounded; after stop it should return to `0`.
+- Byte 5 schedules one-shot Tone.js events into an 8-beat lookahead queue. While playing, `window.transport.getState().lookahead.pendingSlotCount` counts pending note/rest slots and should stay bounded; after stop it should return to `0`.
 - Musical events should be stamped from scheduled transport time and snapped to the current pattern grid, not from live `Transport.position`.
 - The inspector DOM is built only when the player registry changes; state/listening values update on a browser render cadence.
 - Before Byte 4 taste logic, player runtime state needs to represent musical posture over a recent window instead of individual note-on articulation. Use a separate visual flash for note-on emphasis.
@@ -139,14 +139,14 @@ Resume work:
 - Playwright smoke tests pass Chromium `--autoplay-policy=no-user-gesture-required` so the test can focus on lifecycle cleanup rather than browser audio policy.
 - Vite dev HMR can leave audio objects alive if cleanup regresses; preserve transport disposal hooks.
 - Byte 1 validation passed with `npm run build`, `npm audit`, and a Playwright smoke check for repeated start/stop cleanup.
-- Byte 3 validation should include confirming all three player IDs appear in the listening frame and repeated start/stop cycles keep `scheduledEventCount` at 3 while playing and 0 while stopped.
+- Byte 3 validation historically checked that repeated start/stop cycles kept the three Tone sequences at 3 while playing and 0 while stopped. Current Byte 5+ validation should use `lookahead.pendingSlotCount` instead.
 - Byte 3b validation should include confirming all three player states remain `performing` after they have participated recently, rather than blinking between `performing` and `resting` between staccato notes.
 - Byte 3c validation should include confirming emitted event pitch classes belong to `window.listening.getFrame().tonalContext.scale` and that the note-on halo flash is visible by eye.
 - Byte 4 validation should include `window.taste.getEvaluations()`, taste summaries/reasons in the inspector, at least one taste-driven `rest` event, and continued cleanup of scheduled sequences across start/stop cycles.
 - Byte 4b validation should sample `window.taste.getEvaluations()` across several render frames to confirm melody action does not flip rapidly around the rest threshold.
 - Byte 5 validation should check `window.transport.getState().lookahead`, visible `Lookahead` inspector values, a healthy lead while playing, and a zero pending queue after stop/restart cycles.
 - Byte 4b review found that dwell reduces but does not settle melody rest/contrast oscillation. If this becomes distracting, add hysteresis; also harden the smoke assertion to check dwell spacing rather than relying on a short sample window.
-- Byte 5 review approved the one-shot lookahead queue. Before Byte 6 labels pile up, consolidate or rename the duplicated scheduled-count surface: `scheduledEventCount` and `lookahead.scheduledItemCount` currently report the same pending-slot count.
+- Byte 5 review approved the one-shot lookahead queue. The follow-up naming cleanup removed duplicate `scheduledEventCount`, kept the canonical count at `lookahead.pendingSlotCount`, and disambiguated the visible labels as `Pending` lookahead slots versus `Heard` listening events.
 - Byte 5 lookahead refill uses a 250ms wall-clock interval. Background tabs can throttle it and drain the queue; current behavior is safe but may drop new notes until the tab foregrounds and refills.
 - Byte 5 commits pitch/timing ahead, but taste rest/velocity is still decided at fire time. Later "committed material" work should make that boundary explicit.
 - Before runtime key/mode changes, remember that transport patterns currently materialize from tonal context at `initTransport`/start time; tonal changes will need pattern re-materialization.
@@ -156,5 +156,5 @@ Resume work:
 ## Known Gotchas
 
 - Browser autoplay policy can block audio if start is not triggered by a click/tap.
-- Repeated start/stop should not let `scheduledEventCount` grow without bound while playing, and it should always return to `0` after stop.
+- Repeated start/stop should not let `lookahead.pendingSlotCount` grow without bound while playing, and it should always return to `0` after stop.
 - `silenceRatio` should measure actual silent coverage. If multiple players overlap, compute active interval union rather than summing durations across players.

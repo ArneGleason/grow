@@ -100,7 +100,7 @@ Exclude:
 - Restart does not duplicate scheduled notes after at least five start/stop cycles.
 - A visual beat, bar, or status indicator changes while playing.
 - The status line documents whether restart resumes from bar 1 or a paused position.
-- `window.transport.getState()` or an equivalent dev hook exposes `{ status, bar, scheduledEventCount }`.
+- `window.transport.getState()` or an equivalent dev hook exposes transport status, bar, and scheduler debug state.
 - There are no console errors during basic start/stop/restart.
 - No `AudioContext was not allowed to start` warning after user gesture.
 
@@ -361,12 +361,12 @@ Review focus:
 Implementation notes:
 
 - `src/transport.ts` now schedules deterministic note slots into a bounded 8-beat lookahead queue using one-shot Tone transport events instead of long-lived repeating sequences.
-- `window.transport.getState()` exposes `lookahead.targetBeats`, `minimumBeats`, `scheduledThroughBeat`, `leadBeats`, `scheduledItemCount`, and `health`.
-- `scheduledEventCount` now counts pending scheduled note/rest slots rather than pattern sequencers, so it can detect event accumulation more directly.
-- The inspector and status line show lookahead health, lead beats, scheduled-through beat, and pending item count.
+- `window.transport.getState()` exposes `lookahead.targetBeats`, `minimumBeats`, `scheduledThroughBeat`, `leadBeats`, `pendingSlotCount`, and `health`.
+- The inspector and status line show lookahead health, lead beats, scheduled-through beat, and pending slot count.
 - Stop/restart clears the timer and scheduled transport events; the smoke test checks the queue returns to zero across rapid cycles.
 - The buffer is still deterministic and rule-based. Ollama thinking, buffer underrun behavior, fallback pauses, and session modes remain future bytes.
 - Claude's Byte 5 review approved the one-shot lookahead queue with no required fixes. Forward notes: consolidate or rename the duplicated scheduled-count surface before labels pile up, remember that wall-clock `setInterval` can drain in background tabs, and note that pitch/timing are committed ahead while rest/velocity decisions still happen at fire time.
+- Byte 5 naming cleanup removed the duplicate top-level `scheduledEventCount`, renamed the surviving lookahead value to `pendingSlotCount`, changed the visible scheduler label to `Pending`, and changed the listening label from `Events` to `Heard` so scheduled future slots and heard past events do not read as the same count.
 
 ### Byte 6: Simple Session Modes
 

@@ -5,13 +5,12 @@ type TransportState = {
   bpm: number;
   bar: number;
   currentBeat: number;
-  scheduledEventCount: number;
   lookahead: {
     targetBeats: number;
     minimumBeats: number;
     scheduledThroughBeat: number;
     leadBeats: number;
-    scheduledItemCount: number;
+    pendingSlotCount: number;
     health: "stopped" | "empty" | "thin" | "healthy";
   };
 };
@@ -115,7 +114,7 @@ test("Grow starts three players, hears events, and cleans up the transport", asy
   await expect(page.locator(".brand__subtitle")).toHaveText("Byte 5: lookahead buffer");
   await expect(button).toHaveText("Start");
   await expect(status).toContainText(
-    "stopped | 90 BPM | bar 1 | beat 0.0 | buffer stopped 0.0/8 | scheduled 0",
+    "stopped | 90 BPM | bar 1 | beat 0.0 | lookahead stopped 0.0/8 | pending slots 0",
   );
   await expect(canvas).toBeVisible();
   await expect(page.getByTestId("player-pulse-name")).toHaveText("pulse");
@@ -138,7 +137,7 @@ test("Grow starts three players, hears events, and cleans up the transport", asy
   await expect(page.getByTestId("lookahead-health")).toHaveText("stopped");
   await expect(page.getByTestId("lookahead-lead")).toHaveText("0.0 / 8 beats");
   await expect(page.getByTestId("lookahead-through")).toHaveText("beat 0.0");
-  await expect(page.getByTestId("lookahead-items")).toHaveText("0");
+  await expect(page.getByTestId("lookahead-pending-slots")).toHaveText("0");
 
   const box = await canvas.boundingBox();
   expect(box?.width).toBeGreaterThan(400);
@@ -148,7 +147,7 @@ test("Grow starts three players, hears events, and cleans up the transport", asy
   await button.click();
   await expect(button).toHaveText("Stop");
   await expect
-    .poll(async () => (await getTransportState(page)).scheduledEventCount)
+    .poll(async () => (await getTransportState(page)).lookahead.pendingSlotCount)
     .toBeGreaterThan(0);
   await expect.poll(async () => (await getTransportState(page)).lookahead.health).toBe("healthy");
   await expect(page.getByTestId("lookahead-health")).toHaveText("healthy");
@@ -162,8 +161,7 @@ test("Grow starts three players, hears events, and cleans up the transport", asy
     playingState.lookahead.targetBeats + 0.5,
   );
   expect(playingState.lookahead.scheduledThroughBeat).toBeGreaterThanOrEqual(8);
-  expect(playingState.lookahead.scheduledItemCount).toBe(playingState.scheduledEventCount);
-  expect(playingState.scheduledEventCount).toBeLessThanOrEqual(40);
+  expect(playingState.lookahead.pendingSlotCount).toBeLessThanOrEqual(40);
   await expect.poll(async () => (await getListeningFrame(page)).eventCount).toBeGreaterThan(0);
   await expect(page.getByTestId("listening-latest-event")).toContainText("note");
   await expect
@@ -246,22 +244,21 @@ test("Grow starts three players, hears events, and cleans up the transport", asy
   await expect(page.getByTestId("player-bass-state")).toHaveText("waiting");
   await expect(page.getByTestId("player-melody-state")).toHaveText("waiting");
   await expect
-    .poll(async () => (await getTransportState(page)).scheduledEventCount)
+    .poll(async () => (await getTransportState(page)).lookahead.pendingSlotCount)
     .toBe(0);
   await expect.poll(async () => (await getTransportState(page)).lookahead.health).toBe("stopped");
-  await expect(page.getByTestId("lookahead-items")).toHaveText("0");
+  await expect(page.getByTestId("lookahead-pending-slots")).toHaveText("0");
   await expect.poll(async () => (await getListeningFrame(page)).eventCount).toBe(0);
 
   for (let index = 0; index < 10; index += 1) {
     await button.click();
     await expect(button).toHaveText("Stop");
     await expect
-      .poll(async () => (await getTransportState(page)).scheduledEventCount)
+      .poll(async () => (await getTransportState(page)).lookahead.pendingSlotCount)
       .toBeGreaterThan(0);
     const cycleState = await getTransportState(page);
     expect(cycleState.lookahead.health).toBe("healthy");
-    expect(cycleState.lookahead.scheduledItemCount).toBe(cycleState.scheduledEventCount);
-    expect(cycleState.scheduledEventCount).toBeLessThanOrEqual(40);
+    expect(cycleState.lookahead.pendingSlotCount).toBeLessThanOrEqual(40);
 
     await page.waitForTimeout(150);
 
@@ -271,13 +268,13 @@ test("Grow starts three players, hears events, and cleans up the transport", asy
     await expect(page.getByTestId("player-bass-state")).toHaveText("waiting");
     await expect(page.getByTestId("player-melody-state")).toHaveText("waiting");
     await expect
-      .poll(async () => (await getTransportState(page)).scheduledEventCount)
+      .poll(async () => (await getTransportState(page)).lookahead.pendingSlotCount)
       .toBe(0);
     await expect.poll(async () => (await getTransportState(page)).lookahead.health).toBe("stopped");
   }
 
   await expect(status).toContainText(
-    "stopped | 90 BPM | bar 1 | beat 0.0 | buffer stopped 0.0/8 | scheduled 0",
+    "stopped | 90 BPM | bar 1 | beat 0.0 | lookahead stopped 0.0/8 | pending slots 0",
   );
   await expect.poll(async () => (await getTransportState(page)).status).toBe("stopped");
   expect(consoleErrors).toEqual([]);

@@ -12,7 +12,7 @@ export interface GrowLookaheadState {
   minimumBeats: number;
   scheduledThroughBeat: number;
   leadBeats: number;
-  scheduledItemCount: number;
+  pendingSlotCount: number;
   health: LookaheadHealth;
 }
 
@@ -21,7 +21,6 @@ export interface GrowTransportState {
   bpm: number;
   bar: number;
   currentBeat: number;
-  scheduledEventCount: number;
   lookahead: GrowLookaheadState;
 }
 
@@ -599,7 +598,6 @@ export function getState(): GrowTransportState {
     bpm: BPM,
     bar: Math.floor(currentBeat / BEATS_PER_BAR) + 1,
     currentBeat,
-    scheduledEventCount: scheduledEventIds.size,
     lookahead: getLookaheadState(currentBeat),
   };
 }
@@ -608,11 +606,11 @@ function getLookaheadState(currentBeat: number): GrowLookaheadState {
   const leadBeats = status === "playing"
     ? Math.max(0, snapBeat(scheduledThroughBeat - currentBeat))
     : 0;
-  const scheduledItemCount = status === "playing" ? scheduledEventIds.size : 0;
+  const pendingSlotCount = status === "playing" ? scheduledEventIds.size : 0;
   let health: LookaheadHealth = "stopped";
 
   if (status === "playing") {
-    if (scheduledItemCount === 0 || leadBeats <= 0) {
+    if (pendingSlotCount === 0 || leadBeats <= 0) {
       health = "empty";
     } else if (leadBeats < LOOKAHEAD_MINIMUM_BEATS) {
       health = "thin";
@@ -626,7 +624,7 @@ function getLookaheadState(currentBeat: number): GrowLookaheadState {
     minimumBeats: LOOKAHEAD_MINIMUM_BEATS,
     scheduledThroughBeat: status === "playing" ? scheduledThroughBeat : 0,
     leadBeats,
-    scheduledItemCount,
+    pendingSlotCount,
     health,
   };
 }

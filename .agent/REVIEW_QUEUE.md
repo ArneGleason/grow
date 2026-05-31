@@ -37,6 +37,6 @@ Use this file for known risks, open questions, and review focus. Keep entries sh
 - Claude reviewed `docs/implementation-plan.md`; current Byte 1 guidance is stationary pulse player + percussive beat + explicit Tone.js lifecycle cleanup before adding movement or more players.
 - First implementation review should pay special attention to repeated start/stop cycles and whether scheduled Tone.js objects are disposed rather than stacked.
 - Byte 5 is approved. Current Codex next bite: Byte 6 session modes should add break, solo practice, rehearsal, and performance states without turning Grow into nonstop ambience.
-- Before or with Byte 6, tidy the Byte 5 naming surface: `scheduledEventCount` duplicates `lookahead.scheduledItemCount`, and the status `scheduled N` label can be confused with Listening `Events N`.
+- Byte 5 naming cleanup is implemented. Future review should check that `lookahead.pendingSlotCount`, visible `Pending`, and listening `Heard` labels stay distinct as Byte 6 adds more state.
 - Byte 5 forward risk to keep visible: the lookahead refill uses wall-clock `setInterval`, so background tabs may drain the queue safely but drop newly scheduled notes until foregrounded.
 - Byte 5 commitment boundary to keep visible: pitch/timing are committed into the lookahead queue, while rest/velocity taste decisions still happen at fire time.
