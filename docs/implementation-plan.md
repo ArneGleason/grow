@@ -317,7 +317,7 @@ Implementation notes:
 
 ### Byte 4b: Taste Action Dwell
 
-Status: implemented.
+Status: implemented and approved.
 
 Small stabilization follow-up before Byte 5 lookahead.
 
@@ -334,7 +334,15 @@ Review focus:
 - whether held actions remain inspectable and explain why they are being held,
 - whether the note-event snapshot cleanup preserves exact event timing.
 
+Implementation notes:
+
+- Claude's Byte 4b review approved the dwell with no required fixes before Byte 5.
+- The dwell reduces melody hunting and quantizes action changes to roughly bar-length phrasing, but it rate-limits rather than fully settles the rest/contrast threshold oscillation. A future hysteresis band can resolve this if the alternation becomes distracting.
+- Forward cleanup: harden the smoke assertion so it checks dwell spacing rather than relying on a short sample window, and replace warm-up detection by summary string with an explicit marker.
+
 ### Byte 5: Lookahead Scheduling
+
+Status: ready to implement.
 
 Add a tiny lookahead buffer even before Ollama.
 
