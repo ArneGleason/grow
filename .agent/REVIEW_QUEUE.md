@@ -37,6 +37,7 @@ Use this file for known risks, open questions, and review focus. Keep entries sh
 - Claude reviewed `docs/implementation-plan.md`; current Byte 1 guidance is stationary pulse player + percussive beat + explicit Tone.js lifecycle cleanup before adding movement or more players.
 - First implementation review should pay special attention to repeated start/stop cycles and whether scheduled Tone.js objects are disposed rather than stacked.
 - Byte 6c is ready for Claude review. Review focus: confirm the mode-to-refill scheduling policy now lives in `src/session-mode.ts`, transport no longer hardcodes mode literals for refill behavior, and Byte 6b break/rehearsal behavior is unchanged.
+- Planning review focus after Byte 6c: player thinking now precedes producer work. Review whether the new Byte 7-11 arc is small enough: profiles/backstory -> thought protocol -> Ollama health/primer -> one slow-thinking player -> thought memory/persistence prep.
 - Byte 6b feel note: posture lags the audible silence by up to the 8-beat recent-activity window during a sustained break. This is correct now; revisit only if the break should read visually faster.
 - Byte 6b smoke waits through an 8-beat drain and is intentionally longer. If it gets flaky, prefer probing latest recorded beat/dwell gaps over shortening the behavioral window.
 - Byte 5 naming cleanup is implemented. Future review should check that `lookahead.pendingSlotCount`, visible `Pending`, and listening `Heard` labels stay distinct as Byte 6 adds more state.

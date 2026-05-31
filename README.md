@@ -22,6 +22,7 @@ The repo is initialized with the Studio Pattern so future work has a clear place
 - Byte 6a session mode shell added: break, solo practice, rehearsal, and performance are selectable and inspectable without changing musical behavior yet.
 - Byte 6b first mode behavior added and approved: break drains the lookahead without canceling committed material, and rehearsal resumes refill from the current beat.
 - Byte 6c session policy boundary added: mode-to-lookahead-refill behavior now lives in an explicit session policy map instead of transport mode literals.
+- Planning update: player thinking now comes before producer work, with profiles, compact thought requests, Ollama-backed future intents, and thought memory as the next arc.
 
 ## First Work
 
@@ -60,7 +61,7 @@ npm run smoke
 - `.agent/`: project memory, session state, handoffs, and workflows.
 - `.agent/reviews/`: review notes received through the Studio Pattern relay.
 - `docs/implementation-plan.md`: small-byte implementation sequence and first build candidate.
-- `docs/principles/`: foundational interaction principles for listening, inner music, and subjective taste.
+- `docs/principles/`: foundational interaction principles for listening, inner music, subjective taste, and player thinking.
 - `docs/vision-and-plan.md`: the initial creative and technical direction for Grow.
 - `docs/time-and-lookahead.md`: delayed-now and lookahead-buffer model for player thinking and playback.
 - `docs/session-modes.md`: explicit break, solo practice, rehearsal, performance, reflection, and piece model.

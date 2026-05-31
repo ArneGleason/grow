@@ -468,7 +468,114 @@ Implementation notes:
 - `sessionMode` remains on transport state for display/debugging.
 - The smoke test includes a fast policy-map assertion and still verifies Byte 6b drain/resume behavior.
 
-### Byte 7: Producer Marker, No LLM
+## Player Thinking Before Producer
+
+Before adding the producer proxy, Grow should give the players their own slow-thinking creative mechanism.
+
+The producer will be more interesting if it enters a world where players already listen, remember, imagine, and occasionally change course. Otherwise the producer becomes the only source of creative intent.
+
+The next sequence should therefore move Ollama-backed player thinking earlier and push producer work later.
+
+Relevant principle doc: `docs/principles/player-thinking.md`.
+
+### Byte 7: Player Profiles And Thought Seeds
+
+Status: next candidate after Byte 6c review.
+
+Give each player persistent-feeling creative material without calling Ollama yet.
+
+Scope:
+
+- Add player disposition data beyond the current taste profile: steadiness, disruption, caution, novelty, density, responsiveness, and similar small traits.
+- Add a few backstory or influence fragments per player.
+- Add a deterministic selector that chooses a compact set of thought ingredients from disposition, listening frame, taste evaluation, recent motif, and one or two memory fragments.
+- Expose the selected thought context in the inspector or a dev hook.
+- Keep sound behavior unchanged.
+- Keep data in source or memory for this byte; do not add SQLite yet unless the data becomes painful to review.
+
+Review focus:
+
+- whether the selected context feels musically useful rather than decorative,
+- whether the profile/backstory data is compact enough for prompts,
+- whether this creates a path to persistence without requiring it immediately.
+
+### Byte 8: Player Thought Protocol, No Ollama
+
+Define the contract between a player and the future LLM.
+
+Scope:
+
+- Add a strict `PlayerThoughtRequest` shape.
+- Add a strict `PlayerThoughtIntent` response shape.
+- Include allowed action vocabulary such as `rest`, `simplify`, `vary_motif`, `answer_player`, `shift_register`, `change_density`, and `disrupt_for_bars`.
+- Include musical fields the app can validate: scale degrees, rhythm cells, target density, duration bars, target player, and confidence.
+- Add a validator and a deterministic mock responder that returns one valid intent from a request.
+- Add a compiler that can translate the mock intent into the same future scheduling path or into a pending-intent inspection surface.
+
+Review focus:
+
+- whether the schema is actionable enough to change music,
+- whether invalid or overlarge responses are easy to reject,
+- whether this avoids vague prose that the app cannot use.
+
+### Byte 9: Ollama Health And Session Primer
+
+Connect to local Ollama without letting it drive music yet.
+
+Scope:
+
+- Add a local backend or thin service boundary for `localhost:11434`.
+- Add configurable model tag, initially targeting the user's local Gemma 4 31B Ollama model.
+- Add health/status UI and dev hooks.
+- Add a session primer that tells the model the protocol, allowed action vocabulary, current musical primitives, output schema, and short-response rule.
+- Add one manual test call that sends a tiny thought request and displays raw latency, raw response, parse result, and validation result.
+- Do not schedule model output into music yet.
+
+Review focus:
+
+- whether the protocol is small enough for 10-15 second responses when possible,
+- whether failures are visible and harmless,
+- whether the primer creates useful, parseable, bounded responses.
+
+### Byte 10: One Slow-Thinking Player Loop
+
+Let one player occasionally ask Ollama for a future musical intent.
+
+Scope:
+
+- Start with one player, probably `melody`, and one mode, probably `rehearsal`.
+- Trigger a thought request at a slow interval or at a session boundary, not every bar.
+- Show the player as `thinking` or equivalent while the request is pending.
+- Validate the returned intent.
+- Retarget late output to a future bar or discard it.
+- Compile only one or two safe intent types into audible future material, such as a motif variation or a bounded rest/disruption.
+- Keep rule-based fallback active while thinking.
+- Record latency, selected context, validated intent, target beat, and discard reason if any.
+
+Review focus:
+
+- whether model output creates audible creative change without breaking timing,
+- whether the player still feels musical when the model is slow or unavailable,
+- whether the inspectable trail explains what happened.
+
+### Byte 11: Thought Memory And Persistence Prep
+
+Prepare to preserve player identity, backstory fragments, thoughts, and useful motifs.
+
+Scope:
+
+- Decide which player data must persist: disposition, backstory fragments, recent accepted intents, motifs, rejected thoughts, and session summaries.
+- Add a minimal local storage or SQLite design spike only if needed for the next byte.
+- Prefer an event-log-friendly schema that records thought request, response, validation, scheduled result, and playback outcome.
+- Keep heavyweight checkpoint/fork work deferred.
+
+Review focus:
+
+- whether preserved memory will improve future prompts,
+- whether persistence stays small and queryable,
+- whether it supports replay/debugging without archiving everything.
+
+### Byte 12: Producer Marker, No LLM
 
 Add the producer proxy visually and with a rule-based command interpreter.
 
@@ -484,15 +591,14 @@ Review focus:
 - whether natural-language input feels like it enters the world,
 - whether the proxy is distinct from a control panel.
 
-### Byte 8: Ollama Health And One Interpretation
+### Byte 13: Producer Interpretation
 
-Add backend health check for Ollama and one safe prompt-to-action path.
+Add one safe prompt-to-action path for the producer, using the existing thought/action protocol where possible.
 
 Scope:
 
-- Model tag configuration.
-- Health/status UI.
 - One producer prompt interpreted into a validated world action.
+- Producer requests can land as future cues, not current-frame edits.
 - Keep rule-based fallback.
 
 Review focus:
@@ -501,7 +607,7 @@ Review focus:
 - safety of action schema,
 - inspectability of prompt interpretation.
 
-### Byte 9: Minimal Persistence
+### Byte 14: Minimal Persistence
 
 Add SQLite only after there is something worth preserving.
 

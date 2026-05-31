@@ -20,6 +20,7 @@ The project is exploratory. Drift is allowed. The repo should keep enough memory
 - First running slice: rule-based PixiJS/Tone.js terrarium with one pulse player. Next foundation: musical events and listening frames before adding multiple players.
 - Time model: not hard real-time. Players can think ahead, commit material into a lookahead buffer, and perform it later in time with the transport.
 - Session model: not nonstop generation. Grow has breaks, solo practice, rehearsals, performances, reflection, and constructed pieces.
+- Player thinking model: players should gain their own slow Ollama-backed creative planning before the producer proxy is added, so they can generate future musical ideas from listening frames, dispositions, and compact memory fragments.
 - Scope model: solo local instrument first; future architecture may allow multiple terrariums/bands that can observe or react to each other.
 
 ## Product Feel
@@ -58,10 +59,11 @@ Tauri can become useful later if Grow wants to feel like a native desktop instru
 4. Visual actions are rendered in the terrarium without waiting for agent reasoning.
 5. Rule-based agents provide the first musical behavior and remain useful as a fallback.
 6. Players listen first through structured musical events and listening frames, then later through lightweight raw audio features.
-7. Later, Ollama decisions arrive on slower intervals and update future intent rather than the currently sounding bar.
-8. The simulation validates all agent proposals and turns them into safe world actions.
-9. Validated material is committed into a lookahead buffer and scheduled at musical boundaries.
-10. The human can eventually type ordinary language that a producer proxy interprets into in-world movement, speech, cues, and future musical requests.
+7. Player thought requests assemble compact context from disposition, backstory fragments, listening frames, taste evaluations, and recent motifs.
+8. Ollama decisions arrive on slower intervals and update future intent rather than the currently sounding bar.
+9. The simulation validates all agent proposals and turns them into safe world actions.
+10. Validated material is committed into a lookahead buffer and scheduled at musical boundaries.
+11. The human can eventually type ordinary language that a producer proxy interprets into in-world movement, speech, cues, and future musical requests.
 
 ## Time and Lookahead
 

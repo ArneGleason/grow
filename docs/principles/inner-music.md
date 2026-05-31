@@ -27,6 +27,8 @@ The player has chosen to perform the material and scheduled it into the future t
 
 Committed material becomes visible to the world through musical events and the lookahead buffer.
 
+LLM-backed thoughts should still enter the world through this same committed layer. A model response is only a private draft until the app validates it and schedules it into a future musical boundary.
+
 ### Heard
 
 The player receives the shared listening frame after material is performed.
@@ -60,4 +62,3 @@ Later, a player can audition a draft through the same synth engine before commit
 Do not make inner music invisible magic.
 
 If a player is thinking or drafting, the UI should eventually show a simple state, such as `thinking`, `practicing`, or `auditioning`, and the dev tools should expose enough draft metadata for review.
-

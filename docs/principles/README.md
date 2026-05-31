@@ -17,4 +17,4 @@ Use these docs for ideas that shape several implementation phases. Keep feature 
 - `listening-model.md`: players hear structured musical behavior first, raw audio features second.
 - `inner-music.md`: players can privately imagine, revise, and later commit musical material.
 - `subjective-taste.md`: judgments like good, bad, boring, or neat come from player temperaments applied to shared listening frames.
-
+- `player-thinking.md`: local LLM reasoning should produce compact, inspectable, future musical intents for players rather than live audio or hidden narration.

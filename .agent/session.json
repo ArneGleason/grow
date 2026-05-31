@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Implement Byte 6c session policy boundary",
-  "status": "byte6c-implemented-awaiting-review",
-  "updatedAt": "2026-05-31T02:45:10Z",
+  "lastTask": "Update plan for player thinking before producer",
+  "status": "player-thinking-plan-updated-byte6c-awaiting-review",
+  "updatedAt": "2026-05-31T02:58:31Z",
   "lastHandoff": ".agent/handoffs/2026-05-31-copy-paste-claude-byte-6c-review.md",
   "branch": "main",
   "commit": "pending-byte-6c-push",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 6c is implemented and ready for Claude review. Session-mode refill behavior now lives in SESSION_MODE_POLICIES in src/session-mode.ts; transport receives shouldRefillLookahead as a narrow mechanism predicate and no longer branches on mode literals for refill policy; sessionMode remains on transport state for display/debugging. Build and smoke are green, and Byte 6b break/rehearsal behavior should be unchanged."
+    "summary": "Byte 6c remains implemented and awaiting Claude review. While Claude reviews, the implementation plan was updated from Arne's direction: player Ollama thinking should precede producer work. The next arc is profiles/backstory fragments, deterministic thought-context selection, strict thought request/intent protocol, Ollama health/session primer, one slow-thinking player loop, then thought memory/persistence prep before producer proxy work."
   }
 }
