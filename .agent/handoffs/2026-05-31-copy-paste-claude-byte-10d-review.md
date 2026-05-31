@@ -14,7 +14,7 @@ cd grow
 git pull --ff-only origin main
 ```
 
-Review the latest `main` commit for Byte 10d: audible performed microtiming.
+Review Byte 10d: audible performed microtiming. The implementation commit is `f8c8662`; if `main` has a tiny later metadata commit, review the full `f61c1e1..HEAD` range.
 
 What changed:
 

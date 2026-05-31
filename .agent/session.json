@@ -27,7 +27,7 @@
   "updatedAt": "2026-05-31T13:35:00Z",
   "lastHandoff": ".agent/handoffs/2026-05-31-copy-paste-claude-byte-10d-review.md",
   "branch": "main",
-  "commit": "pending-byte10d-implementation-commit",
+  "commit": "f8c8662",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
     "summary": "Byte 10d is implemented and ready for Claude review. Performed offsets now schedule Tone one-shots at shifted transport ticks while `MusicalEvent.absoluteBeat` remains grid truth. Synth fire times clamp late callbacks to `now + epsilon`; events also carry `performedOffsetSeconds` and `timing:audible-offset`. The performed-time model now includes leap, register, and local-density difficulty weighted by disposition, and smoke adds a restart replay assertion for deterministic offsets."
