@@ -1,5 +1,6 @@
 import type { PlayerRole, PlayerRuntimeState } from "./players";
 import { RECENT_ACTIVITY_WINDOW_BEATS } from "./music-time";
+import type { PlayerExpressionSnapshot } from "./expression";
 
 export type MusicalEventKind = "note" | "rest" | "effect";
 
@@ -21,6 +22,7 @@ export interface MusicalEvent {
   durationBeats: number;
   velocity: number;
   pitch?: string;
+  expression?: PlayerExpressionSnapshot;
   tags: string[];
   createdAtMs: number;
 }

@@ -637,7 +637,7 @@ The real Byte 9b model probe took roughly 22 seconds on the Mac Mini. That makes
 
 ### Byte 10a: Reproducible Aliveness Principle
 
-Status: planned.
+Status: implemented.
 
 Make the creative/review lens explicit before adding more behavior.
 
@@ -656,7 +656,7 @@ Review focus:
 
 ### Byte 10b: Velocity Modulator Bank
 
-Status: planned.
+Status: implemented.
 
 Add the smallest audible deterministic-aliveness layer.
 
@@ -674,6 +674,14 @@ Review focus:
 - whether the music breathes without becoming random,
 - whether the modulators are replayable from beat/player/event index,
 - whether velocity stays bounded and inspectable.
+
+Implementation notes:
+
+- `src/expression.ts` owns a pure deterministic expression calculator keyed by player, absolute beat, event index, base velocity, and taste velocity multiplier.
+- Transport applies the expression at the scheduled-note fire boundary and clamps the final audible velocity to `0..1`.
+- `MusicalEvent.expression` records the applied snapshot, and `window.transport.getState().expression.latest` exposes the latest per-player snapshots for inspection.
+- The player inspector shows a `Dynamics` row through `player-*-expression` test IDs.
+- Byte 10b deliberately does not alter timing, pitch material, lookahead refill, session behavior, or Ollama output.
 
 ### Byte 10c: Performed Offset Data Model
 

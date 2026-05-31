@@ -1,4 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
+import { calculatePlayerExpression } from "../src/expression";
+import { MELODY_PLAYER } from "../src/players";
 import {
   SESSION_MODES,
   shouldSessionModeRefillLookahead,
@@ -29,6 +31,22 @@ type TransportState = {
     pendingSlotCount: number;
     health: "stopped" | "empty" | "thin" | "healthy";
   };
+  expression: {
+    latest: Array<{
+      playerId: string;
+      velocityMultiplier: number;
+      finalVelocity: number;
+      eventIndex: number;
+      summary: string;
+      modulators: {
+        longCycle: number;
+        mediumCycle: number;
+        shortCycle: number;
+        eventStep: number;
+        crossCoupling: number;
+      };
+    }>;
+  };
 };
 
 type ListeningFrame = {
@@ -40,6 +58,14 @@ type ListeningFrame = {
     kind: string;
     pitch?: string;
     absoluteBeat: number;
+    velocity: number;
+    expression?: {
+      playerId: string;
+      velocityMultiplier: number;
+      finalVelocity: number;
+      eventIndex: number;
+      summary: string;
+    };
     tags: string[];
   }>;
   players: Array<{ id: string; state: string; recentEvents: unknown[] }>;
@@ -218,6 +244,30 @@ async function getLatestRecordedBeat(page: Page): Promise<number> {
   return latestBeat;
 }
 
+test("velocity expression snapshots are deterministic and bounded", () => {
+  const input = {
+    player: MELODY_PLAYER,
+    absoluteBeat: 12.5,
+    eventIndex: 8,
+    baseVelocity: 0.32,
+    tasteVelocityMultiplier: 1.08,
+  };
+  const first = calculatePlayerExpression(input);
+  const second = calculatePlayerExpression(input);
+  const nextStep = calculatePlayerExpression({
+    ...input,
+    eventIndex: input.eventIndex + 1,
+  });
+
+  expect(first).toEqual(second);
+  expect(first.velocityMultiplier).toBeGreaterThanOrEqual(0.8);
+  expect(first.velocityMultiplier).toBeLessThanOrEqual(1.22);
+  expect(first.finalVelocity).toBeGreaterThanOrEqual(0);
+  expect(first.finalVelocity).toBeLessThanOrEqual(1);
+  expect(first.summary.length).toBeGreaterThan(0);
+  expect(nextStep.velocityMultiplier).not.toBe(first.velocityMultiplier);
+});
+
 test("session mode refill policy is explicit", () => {
   expect(SESSION_MODES).toEqual(["break", "solo-practice", "rehearsal", "performance"]);
   expect(Object.fromEntries(
@@ -338,7 +388,7 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   const status = page.getByTestId("transport-status");
   const canvas = page.getByTestId("terrarium-canvas");
 
-  await expect(page.locator(".brand__subtitle")).toHaveText("Byte 9b: Ollama health and manual thought probe");
+  await expect(page.locator(".brand__subtitle")).toHaveText("Byte 10b: deterministic velocity modulators");
   await expect(button).toHaveText("Start");
   await expect(status).toContainText(
     "mode rehearsal | stopped | 90 BPM | bar 1 | beat 0.0 | lookahead stopped 0.0/8 | pending slots 0",
@@ -388,6 +438,7 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   await expect(page.getByTestId("player-pulse-state")).toHaveText("waiting");
   await expect(page.getByTestId("player-pulse-taste-action")).toHaveText("repeat");
   await expect(page.getByTestId("player-pulse-taste-summary")).toContainText("Listening");
+  await expect(page.getByTestId("player-pulse-expression")).toHaveText("waiting");
   await expect(page.getByTestId("player-bass-name")).toHaveText("bass");
   await expect(page.getByTestId("player-bass-role")).toHaveText("bass");
   await expect(page.getByTestId("player-bass-sound")).toHaveText("modal bass");
@@ -397,6 +448,7 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   await expect(page.getByTestId("player-melody-role")).toHaveText("melody");
   await expect(page.getByTestId("player-melody-sound")).toHaveText("modal line");
   await expect(page.getByTestId("player-melody-state")).toHaveText("waiting");
+  await expect(page.getByTestId("player-melody-expression")).toHaveText("waiting");
   await expect(page.getByTestId("thought-seed-pulse-focus")).not.toHaveText("");
   await expect(page.getByTestId("thought-seed-bass-fragments")).not.toHaveText("");
   await expect(page.getByTestId("thought-seed-melody-motif")).toContainText("resting");
@@ -480,8 +532,25 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
       return [...new Set(frame.recentEvents.map((event) => event.playerId))].sort().join(",");
     })
     .toBe("bass,melody,pulse");
+  await expect
+    .poll(async () => (await getTransportState(page)).expression.latest.length)
+    .toBe(3);
+  await expect(page.getByTestId("player-pulse-expression")).toContainText("x");
 
   const frame = await getListeningFrame(page);
+  const expressionState = await getTransportState(page);
+  expect(expressionState.expression.latest.map((expression) => expression.playerId).sort()).toEqual([
+    "bass",
+    "melody",
+    "pulse",
+  ]);
+  expect(expressionState.expression.latest.every((expression) => (
+    expression.velocityMultiplier >= 0.78
+    && expression.velocityMultiplier <= 1.24
+    && expression.finalVelocity >= 0
+    && expression.finalVelocity <= 1
+    && expression.summary.length > 0
+  ))).toBe(true);
   expect(frame.tonalContext).toEqual({
     tonic: "C",
     mode: "mixolydian",
@@ -510,6 +579,9 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
       return Math.abs(snappedHalfBeat - Math.round(snappedHalfBeat)) < 0.000001;
     }),
   ).toBe(true);
+  expect(frame.recentEvents.every((event) => event.velocity >= 0 && event.velocity <= 1)).toBe(true);
+  expect(frame.recentEvents.some((event) => event.tags.includes("expression:velocity"))).toBe(true);
+  expect(frame.recentEvents.some((event) => event.expression && event.expression.velocityMultiplier !== 1)).toBe(true);
   await expect
     .poll(async () => {
       const seeds = await getThoughtSeeds(page);
@@ -717,6 +789,7 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   await expect
     .poll(async () => (await getTransportState(page)).lookahead.pendingSlotCount)
     .toBe(0);
+  await expect.poll(async () => (await getTransportState(page)).expression.latest.length).toBe(0);
   await expect.poll(async () => (await getTransportState(page)).lookahead.health).toBe("stopped");
   await expect(page.getByTestId("lookahead-pending-slots")).toHaveText("0");
   await expect.poll(async () => (await getListeningFrame(page)).eventCount).toBe(0);

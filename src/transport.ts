@@ -1,4 +1,8 @@
 import type * as ToneNS from "tone";
+import {
+  calculatePlayerExpression,
+  type PlayerExpressionSnapshot,
+} from "./expression";
 import type { MusicalEvent, TonalContext } from "./listening";
 import { getPlayerById } from "./players";
 import { DEFAULT_SESSION_MODE, type SessionMode } from "./session-mode";
@@ -24,6 +28,9 @@ export interface GrowTransportState {
   bar: number;
   currentBeat: number;
   lookahead: GrowLookaheadState;
+  expression: {
+    latest: readonly PlayerExpressionSnapshot[];
+  };
 }
 
 export interface TransportHandlers {
@@ -96,6 +103,8 @@ let activePatterns: readonly PlayerPattern[] = [];
 let lookaheadTimerId = 0;
 let nextScheduleBeat = 0;
 let scheduledThroughBeat = 0;
+const expressionEventIndexes = new Map<string, number>();
+const latestExpressionByPlayer = new Map<string, PlayerExpressionSnapshot>();
 
 const PLAYER_PATTERN_SOURCES: readonly PlayerPatternSource[] = [
   {
@@ -297,6 +306,8 @@ function emitNoteEvent(
   },
   note: ScheduledNote,
   decision: TasteNoteDecision,
+  expression: PlayerExpressionSnapshot,
+  velocity: number,
 ): void {
   if (status !== "playing") return;
   const player = getPlayerById(note.playerId);
@@ -312,11 +323,10 @@ function emitNoteEvent(
     beat: snapshot.beat,
     absoluteBeat: snapshot.absoluteBeat,
     durationBeats: note.durationBeats,
-    velocity: decision.shouldPlay
-      ? Math.max(0, Math.min(1, note.velocity * decision.velocityMultiplier))
-      : 0,
+    velocity,
     pitch: decision.shouldPlay ? note.pitch : undefined,
-    tags: [...player.tags, `taste:${decision.action}`],
+    expression,
+    tags: [...player.tags, `taste:${decision.action}`, "expression:velocity"],
     createdAtMs: performance.now(),
   };
   eventSerial += 1;
@@ -434,7 +444,19 @@ function triggerScheduledNote(
     absoluteBeat: snapshot.absoluteBeat,
     velocity: note.velocity,
   }) ?? DEFAULT_NOTE_DECISION;
-  const velocity = Math.max(0, Math.min(1, note.velocity * decision.velocityMultiplier));
+  const expression = calculatePlayerExpression({
+    player,
+    absoluteBeat: snapshot.absoluteBeat,
+    eventIndex: getNextExpressionEventIndex(note.playerId),
+    baseVelocity: note.velocity,
+    tasteVelocityMultiplier: decision.velocityMultiplier,
+  });
+  const velocity = decision.shouldPlay ? expression.finalVelocity : 0;
+  const appliedExpression = {
+    ...expression,
+    finalVelocity: velocity,
+  };
+  latestExpressionByPlayer.set(note.playerId, appliedExpression);
 
   if (decision.shouldPlay && note.playerId === "pulse") {
     ensurePulseSynth(tone).triggerAttackRelease(note.pitch, note.duration, scheduledTime, velocity);
@@ -444,7 +466,13 @@ function triggerScheduledNote(
     ensureMelodySynth(tone).triggerAttackRelease(note.pitch, note.duration, scheduledTime, velocity);
   }
 
-  emitNoteEvent(snapshot, note, decision);
+  emitNoteEvent(snapshot, note, decision, appliedExpression, velocity);
+}
+
+function getNextExpressionEventIndex(playerId: string): number {
+  const eventIndex = expressionEventIndexes.get(playerId) ?? 0;
+  expressionEventIndexes.set(playerId, eventIndex + 1);
+  return eventIndex;
 }
 
 function getFirstFutureGridBeat(currentBeat: number): number {
@@ -529,6 +557,8 @@ function disposeLookaheadSchedule(tone: typeof ToneNS | null = Tone): void {
   activePatterns = [];
   nextScheduleBeat = 0;
   scheduledThroughBeat = 0;
+  expressionEventIndexes.clear();
+  latestExpressionByPlayer.clear();
 }
 
 export function initTransport(
@@ -561,6 +591,8 @@ export async function startTransport(): Promise<GrowTransportState> {
   transport.position = "0:0:0";
   status = "playing";
   eventSerial = 0;
+  expressionEventIndexes.clear();
+  latestExpressionByPlayer.clear();
   nextScheduleBeat = 0;
   scheduledThroughBeat = 0;
   activePatterns = buildPlayerPatterns(activeTonalContext);
@@ -613,6 +645,9 @@ export function getState(): GrowTransportState {
     bar: Math.floor(currentBeat / BEATS_PER_BAR) + 1,
     currentBeat,
     lookahead: getLookaheadState(currentBeat),
+    expression: {
+      latest: [...latestExpressionByPlayer.values()],
+    },
   };
 }
 

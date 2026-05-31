@@ -28,13 +28,14 @@ The repo is initialized with the Studio Pattern so future work has a clear place
 - Byte 9a validation hardening added and approved: thought validators now reject out-of-scale pitches/degrees and over-horizon musical ideas before any Ollama-authored intent can be trusted.
 - Byte 9b Ollama probe added and approved: the app can check local Ollama health, send one manual thought request, display raw/parsed/validated results, and keep mock fallback without scheduling model output into music.
 - Planning update: deterministic reproducible aliveness comes before automatic model-driven music, starting with velocity modulators and then microtiming/agitation work.
+- Byte 10b velocity modulators added: each scheduled player gesture now gets a deterministic, bounded expression snapshot that shapes velocity only and is visible in the player inspector and transport state.
 
 ## First Work
 
 1. Install dependencies with `npm install`.
 2. Run the first byte with `npm run dev`.
 3. Verify repeated start/stop does not duplicate the beat or event subscription.
-4. Start Byte 10a/10b by documenting reproducible aliveness and adding deterministic velocity modulation before allowing Ollama output to affect audible player behavior.
+4. Start Byte 10c by separating grid truth from future performed-offset data before making microtiming audible.
 5. Wire any future GitHub app/API access using the least-privileged credential model for the job.
 
 ## Run
@@ -77,6 +78,7 @@ npm run smoke
 - `src/players.ts`: player data types and the initial `pulse`, `bass`, and `melody` registry entries.
 - `src/world-state.ts`: in-memory runtime state owner for players and the musical event ledger.
 - `src/listening.ts`: musical event and listening-frame types plus the recent-event summarizer.
+- `src/expression.ts`: deterministic per-player velocity expression modulators for reproducible aliveness.
 - `src/session-mode.ts`: session mode names, labels, and validation helpers.
 - `src/taste.ts`: deterministic player taste evaluation and note-decision logic.
 - `src/ollama.ts`: local Ollama health, prompt/primer, manual thought test, response parsing, validation, and mock fallback boundary.
