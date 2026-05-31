@@ -295,6 +295,14 @@ async function collectPerformedOffsets(page: Page): Promise<Record<string, numbe
   });
 }
 
+async function helpPanelIsInsideSection(page: Page, helpButtonTestId: string): Promise<boolean> {
+  return page.evaluate((testId) => {
+    const helpButton = document.querySelector(`[data-testid="${testId}"]`);
+    const helpPanel = document.querySelector("[data-testid='inspector-help-panel']");
+    return Boolean(helpButton?.closest(".inspector-section")?.contains(helpPanel));
+  }, helpButtonTestId);
+}
+
 test("velocity expression snapshots are deterministic and bounded", () => {
   const input = {
     player: MELODY_PLAYER,
@@ -486,12 +494,14 @@ test("inspector help icons explain current controls", async ({ page }) => {
   await expect(page.getByTestId("inspector-help-title")).toHaveText("Ollama");
   await expect(page.getByTestId("inspector-help-body")).toContainText("local model boundary");
   await expect(page.getByTestId("help-ollama")).toHaveAttribute("aria-expanded", "true");
+  expect(await helpPanelIsInsideSection(page, "help-ollama")).toBe(true);
 
   await page.getByTestId("help-lookahead").click();
   await expect(page.getByTestId("inspector-help-title")).toHaveText("Lookahead");
   await expect(page.getByTestId("inspector-help-body")).toContainText("delayed-now buffer");
   await expect(page.getByTestId("help-ollama")).toHaveAttribute("aria-expanded", "false");
   await expect(page.getByTestId("help-lookahead")).toHaveAttribute("aria-expanded", "true");
+  expect(await helpPanelIsInsideSection(page, "help-lookahead")).toBe(true);
 
   await page.getByTestId("inspector-help-close").click();
   await expect(page.getByTestId("inspector-help-panel")).toBeHidden();

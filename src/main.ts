@@ -361,14 +361,21 @@ function createDefinition(
   return [dt, dd];
 }
 
-function showHelpTopic(topicId: HelpTopicId): void {
+function showHelpTopic(topicId: HelpTopicId, sourceButton: HTMLButtonElement): void {
   const topic = HELP_TOPICS[topicId];
+  const heading = sourceButton.closest(".section-heading");
+  if (heading) {
+    heading.insertAdjacentElement("afterend", helpPanel);
+  }
   helpPanel.hidden = false;
   helpTitle.textContent = topic.title;
   helpBody.textContent = topic.body;
   for (const button of helpButtons) {
     button.setAttribute("aria-expanded", String(button.dataset.helpTopic === topicId));
   }
+  requestAnimationFrame(() => {
+    helpPanel.scrollIntoView({ block: "nearest" });
+  });
 }
 
 function hideHelpTopic(): void {
@@ -924,7 +931,7 @@ for (const button of helpButtons) {
   button.addEventListener("click", () => {
     const topic = button.dataset.helpTopic;
     if (!topic || !isHelpTopicId(topic)) return;
-    showHelpTopic(topic);
+    showHelpTopic(topic, button);
   });
 }
 
