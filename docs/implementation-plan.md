@@ -791,7 +791,8 @@ Prompt-shape experiment note:
 
 - `docs/experiments/2026-05-31-thought-prompt-shapes.md` compares the current full JSON prompt with projected JSON, line-card, and split-card shapes.
 - The first recommended production change is projected JSON: it preserves every validation-critical field while cutting the representative prompt from about 979 estimated tokens to about 546.
-- The music-card and split-card shapes are smaller still, but should wait for live-model comparison because they introduce a compact grammar the model must infer.
+- Live `gemma4:31b` testing showed `think: false` is required for short structured responses; otherwise useful output may sit in `message.thinking` while `message.content` stays empty.
+- In the live comparison, projected JSON and music-card parsed with required fields; full JSON and split-cards hit `num_predict` length and failed parsing. Projected JSON remains the safest first implementation target.
 
 ### Byte 11: One Slow-Thinking Player Loop
 

@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Run thought prompt shape experiment",
-  "status": "byte10d-implemented-ready-review-plus-prompt-experiment",
-  "updatedAt": "2026-05-31T14:10:00Z",
+  "lastTask": "Confirm Ollama reachability and live prompt shapes",
+  "status": "byte10d-implemented-ready-review-plus-live-ollama-prompt-experiment",
+  "updatedAt": "2026-05-31T14:35:00Z",
   "lastHandoff": ".agent/handoffs/2026-05-31-copy-paste-claude-byte-10d-review.md",
   "branch": "main",
-  "commit": "5ce90b7",
+  "commit": "40a946a",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 10d is implemented and ready for Claude review. Performed offsets now schedule Tone one-shots at shifted transport ticks while `MusicalEvent.absoluteBeat` remains grid truth. A break-time prompt-shape experiment compared full request JSON, projected JSON, music-card, and split-card prompts for future Ollama tuning; projected JSON is the safest first Byte 10f replacement, with card protocols worth live-testing when Ollama is reachable."
+    "summary": "Byte 10d is implemented and ready for Claude review. Local Ollama is reachable outside the Codex sandbox at `127.0.0.1:11434`, with `gemma4:31b` installed. Live prompt tests show short structured requests should send `think: false`; projected JSON and music-card prompts parsed, while full JSON and split-cards hit prediction length. Grow's manual Ollama probe now sends `think: false`."
   }
 }

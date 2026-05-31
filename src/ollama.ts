@@ -65,6 +65,7 @@ interface OllamaTagsResponse {
 interface OllamaChatResponse {
   message?: {
     content?: string;
+    thinking?: string;
   };
   response?: string;
 }
@@ -236,6 +237,7 @@ export async function runOllamaThoughtTest(
         ],
         stream: false,
         format: "json",
+        think: false,
         options: {
           temperature: 0.35,
           num_predict: 700,
@@ -255,7 +257,7 @@ export async function runOllamaThoughtTest(
     }
 
     const payload = await response.json() as OllamaChatResponse;
-    const rawResponse = payload.message?.content ?? payload.response ?? "";
+    const rawResponse = getOllamaResponseText(payload);
     const parse = parseOllamaThoughtResponse(rawResponse, request);
     const validation = parse.intent
       ? validatePlayerThoughtIntent(parse.intent, request)
@@ -289,6 +291,15 @@ export async function runOllamaThoughtTest(
       getErrorMessage(error),
     );
   }
+}
+
+function getOllamaResponseText(payload: OllamaChatResponse): string {
+  const candidates = [
+    payload.message?.content,
+    payload.response,
+    payload.message?.thinking,
+  ];
+  return candidates.find((candidate) => (candidate?.trim().length ?? 0) > 0) ?? "";
 }
 
 export function parseOllamaThoughtResponse(

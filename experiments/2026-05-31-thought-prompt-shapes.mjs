@@ -236,6 +236,10 @@ for (const variant of variants) {
   console.log("```");
 }
 
+if (process.argv.includes("--live")) {
+  await runLiveOllamaComparison();
+}
+
 function compactStep(step) {
   if (step.kind === "rest") {
     return ["r", step.positionBeats, step.durationBeats];
@@ -264,4 +268,101 @@ function scaleCard(context) {
 function truncatePrompt(prompt, maxChars) {
   if (prompt.length <= maxChars) return prompt;
   return `${prompt.slice(0, maxChars)}\n... (${prompt.length - maxChars} chars omitted)`;
+}
+
+async function runLiveOllamaComparison() {
+  const baseUrl = process.env.GROW_OLLAMA_BASE_URL ?? "http://127.0.0.1:11434";
+  const model = process.env.GROW_OLLAMA_MODEL ?? "gemma4:31b";
+  console.log("\n## Live Ollama Comparison");
+  console.log("");
+  console.log(`Model: ${model}`);
+  console.log("");
+  console.log("| shape | ms | done | content chars | thinking chars | parse | required fields | action allowed |");
+  console.log("| --- | ---: | --- | ---: | ---: | --- | --- | --- |");
+
+  for (const variant of variants) {
+    const startedAt = Date.now();
+    try {
+      const response = await fetchWithTimeout(`${baseUrl}/api/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: "system", content: "You are a local structured-output music planner. Obey the requested JSON contract exactly." },
+            { role: "user", content: variant.prompt },
+          ],
+          stream: false,
+          format: "json",
+          think: false,
+          options: {
+            temperature: 0.25,
+            num_predict: 512,
+          },
+        }),
+      }, 45_000);
+      const payload = await response.json();
+      const elapsedMs = Date.now() - startedAt;
+      const content = payload.message?.content ?? payload.response ?? "";
+      const thinking = payload.message?.thinking ?? "";
+      const parsed = parseJson(content);
+      const fieldCheck = parsed
+        ? getMissingRequiredFields(parsed).length === 0
+          ? "ok"
+          : `missing:${getMissingRequiredFields(parsed).join(",")}`
+        : "n/a";
+      const actionAllowed = parsed
+        ? fixtureRequest.allowedActions.includes(parsed.action) ? "yes" : "no"
+        : "n/a";
+      console.log([
+        `| ${variant.id}`,
+        elapsedMs,
+        payload.done_reason ?? "unknown",
+        content.length,
+        thinking.length,
+        parsed ? "ok" : "fail",
+        fieldCheck,
+        `${actionAllowed} |`,
+      ].join(" | "));
+    } catch (error) {
+      const elapsedMs = Date.now() - startedAt;
+      console.log(`| ${variant.id} | ${elapsedMs} | error | 0 | 0 | ${getErrorMessage(error)} | n/a | n/a |`);
+    }
+  }
+}
+
+function parseJson(content) {
+  try {
+    return JSON.parse(content);
+  } catch {
+    return undefined;
+  }
+}
+
+function getMissingRequiredFields(value) {
+  return [
+    "id",
+    "requestId",
+    "playerId",
+    "responseLevel",
+    "action",
+    "confidence",
+    "target",
+    "musicalIdea",
+    "rationale",
+  ].filter((field) => !(field in value));
+}
+
+async function fetchWithTimeout(url, init, timeoutMs) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function getErrorMessage(error) {
+  return error instanceof Error ? error.message : String(error);
 }

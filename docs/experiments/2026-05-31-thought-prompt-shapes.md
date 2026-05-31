@@ -22,7 +22,9 @@ Experiment script:
 node experiments/2026-05-31-thought-prompt-shapes.mjs
 ```
 
-I also tried to reach local Ollama at `127.0.0.1:11434`, but it was not running or not reachable from this session, so this pass measures prompt shape rather than live model output.
+Initial sandboxed access to local Ollama failed, but the server was running. `lsof` showed `ollama` listening on `127.0.0.1:11434`, and allowing the command to run outside the Codex sandbox made both `ollama list` and `/api/tags` work.
+
+The key live-model finding: `gemma4:31b` writes reasoning to `message.thinking` and may leave `message.content` empty unless the request disables thinking. A tiny JSON test with default thinking returned empty content and stopped early in `message.thinking`; the same request with `think: false` returned `{"ok":true}` in `message.content`.
 
 ## Results
 
@@ -33,19 +35,28 @@ I also tried to reach local Ollama at `127.0.0.1:11434`, but it was not running 
 | music-card | 1218 | 305 | 13 | 8/8 | 82 |
 | split-cards | 1175 | 294 | 18 | 8/8 | 83 |
 
+Live Ollama results against local `gemma4:31b` with `/api/chat`, `format: "json"`, `think: false`, `temperature: 0.25`, and `num_predict: 512`:
+
+| shape | ms | done | content chars | parse | required fields | action allowed |
+| --- | ---: | --- | ---: | --- | --- | --- |
+| current-full-json | 31353 | length | 1348 | fail | n/a | n/a |
+| projected-json | 20887 | stop | 1083 | ok | ok | yes |
+| music-card | 24550 | stop | 1148 | ok | ok | yes |
+| split-cards | 27232 | length | 1339 | fail | n/a | n/a |
+
 The heuristic is intentionally rough: it rewards constraint coverage and compactness, and slightly favors a JSON projection because it is easiest to parse, log, validate, and debug.
 
 ## Read
 
-The current full JSON shape is too large for the job. It spends a lot of prompt budget on implementation details the model does not need, which matches Claude's Byte 9b observation that the real reasoning model returned empty or invalid content after a long response.
+The current full JSON shape is too large for the job. It spends a lot of prompt budget on implementation details the model does not need, and in the live test it hit the prediction limit with non-parseable output.
 
-The line-card and split-card shapes are the smallest. They are attractive for speed and musical readability, but they add a second grammar the model has to infer. That may work well after we have live-model evidence, but it is a slightly bigger bet.
+The line-card and split-card shapes are the smallest. The music-card shape worked live, but split-cards hit the prediction limit. The card approach is still worth exploring because it is compact and musically readable, but projected JSON is easier to validate and less surprising.
 
 The projected JSON shape looks like the safest next production candidate. It cuts roughly 44 percent of the prompt size while preserving every validation-critical field in a form that remains familiar to the app and review tooling.
 
 ## Recommendation
 
-For Byte 10f prompt tuning, replace the full `Request JSON: ${JSON.stringify(request)}` payload with a projected request object.
+For Byte 10f prompt tuning, replace the full `Request JSON: ${JSON.stringify(request)}` payload with a projected request object and send `think: false` in the Ollama chat request for short structured intents.
 
 Suggested first projected shape:
 
@@ -76,10 +87,4 @@ Keep the response schema separate and short. Do not send `sourceStartBeat` to th
 
 ## Next Experiment
 
-When Ollama is reachable, run the same melody request through:
-
-- current full JSON,
-- projected JSON,
-- music-card.
-
-Measure latency, raw response length, whether `message.content` or `message.thinking` carries the useful output, parse success, validation success, and whether the musical idea is actually useful.
+Next, inspect the actual valid `projected-json` and `music-card` responses for musical usefulness, then run them through Grow's full `validatePlayerThoughtIntent` rather than only checking JSON fields. Also test a smaller response schema and `num_predict` budget to see whether latency can drop below 10-15 seconds without increasing invalid output.
