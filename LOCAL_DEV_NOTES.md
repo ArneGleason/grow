@@ -150,6 +150,8 @@ Resume work:
 - Byte 5 lookahead refill uses a 250ms wall-clock interval. Background tabs can throttle it and drain the queue; current behavior is safe but may drop new notes until the tab foregrounds and refills.
 - Byte 5 commits pitch/timing ahead, but taste rest/velocity is still decided at fire time. Later "committed material" work should make that boundary explicit.
 - Byte 6a adds `src/session-mode.ts`, stores current mode in `GrowWorldState`, and exposes `window.session.getMode()`, `window.session.setMode(mode)`, and `window.session.getModes()`. Mode switching is intentionally side-effect-free until Byte 6b.
+- Byte 6a review approved the mode shell. Before or during Byte 6b, derive static initial mode UI from `DEFAULT_SESSION_MODE`, share the set-mode/render helper, and add the transport wire needed for the scheduler to read mode state.
+- Byte 6b recommended first behavior: `break` stops refilling new lookahead slots and lets queued material drain; `rehearsal` resumes refill; `solo-practice` and `performance` remain rehearsal-equivalent no-ops.
 - Before runtime key/mode changes, remember that transport patterns currently materialize from tonal context at `initTransport`/start time; tonal changes will need pattern re-materialization.
 - PixiJS v8 clamps alpha to 1.0, so note-on flashes should not rely on `alpha > 1`. Use scale, tint, or a resting alpha below 1.0 so the flash has visible headroom.
 - Use `git ls-files --cached --others --exclude-standard | sort` for the file inventory now that ignored `node_modules/` and `dist/` trees exist.

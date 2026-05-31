@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Implement Byte 6a session mode shell",
-  "status": "byte6a-implemented-ready-for-review",
-  "updatedAt": "2026-05-31T01:17:16Z",
+  "lastTask": "Record Claude Byte 6a review and prepare Byte 6b",
+  "status": "byte6a-approved-ready-for-byte6b",
+  "updatedAt": "2026-05-31T02:09:10Z",
   "lastHandoff": ".agent/handoffs/2026-05-31-copy-paste-claude-byte-6a-review.md",
   "branch": "main",
-  "commit": "pending-byte-6a-commit",
+  "commit": "e327326",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 6a is implemented and ready for Claude review. It adds canonical session modes, stores current mode in world state, renders top-bar segmented mode controls plus inspector/status readouts, and exposes window.session hooks. Playback behavior is intentionally unchanged until Byte 6b."
+    "summary": "Byte 6a is approved by Claude with no required fixes. Byte 6b is clear to start: wire mode into transport, make break stop committing new lookahead slots while the queued material drains, make rehearsal resume refill, and keep solo-practice/performance as no-ops for now. Forward nits: derive static default mode UI from DEFAULT_SESSION_MODE and share set-mode/render logic."
   }
 }

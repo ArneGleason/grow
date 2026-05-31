@@ -389,7 +389,7 @@ Review focus:
 
 ### Byte 6a: Session Mode State + Controls
 
-Status: implemented.
+Status: implemented and approved.
 
 Add the session mode shell without changing musical behavior yet.
 
@@ -409,11 +409,25 @@ Review focus:
 - whether mode switching is side-effect-free for now,
 - whether this creates a clean hook for Byte 6b behavior.
 
+Implementation notes:
+
+- Claude's Byte 6a review approved the session-mode shell with no required fixes.
+- Forward nits: derive the static initial Session label/radio checked state from `DEFAULT_SESSION_MODE`, and share the `setMode + renderWorld` helper used by the DOM listener and `window.session.setMode`.
+- Byte 6b needs one new wire from session mode into the transport scheduler, since the transport currently has no channel to read mode state.
+
 ### Byte 6b: First Mode Behavior
 
 Status: next candidate.
 
-Make the modes do one small thing each, probably starting with break and rehearsal.
+Make the modes do one small thing each, starting with break and rehearsal.
+
+Proposed scope:
+
+- Keep `solo-practice` and `performance` as rehearsal-equivalent no-ops.
+- `rehearsal -> break`: stop committing new lookahead slots and let already-queued material drain gracefully.
+- `break -> rehearsal`: resume lookahead refill from the current beat.
+- Keep committed slots rather than hard-canceling them when entering break.
+- Let existing health/posture machinery reveal the drain: `healthy -> thin -> empty`, then player posture ages toward rest.
 
 ### Byte 7: Producer Marker, No LLM
 
