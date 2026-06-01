@@ -49,7 +49,6 @@ import {
   type TasteNoteDecisionInput,
 } from "./taste";
 import type {
-  MusicalExcerptStep,
   PlayerThoughtIntent,
   PlayerThoughtRequest,
   ThoughtRequestLevel,
@@ -379,7 +378,7 @@ ${renderHelpButton("ollama", "Ollama thought probe")}
             <dt>Errors</dt>
             <dd data-testid="ollama-errors">none</dd>
             <dt>Primer</dt>
-            <dd data-testid="ollama-primer-summary">Projected JSON intent; scaleDegree 0..scale-1 plus octave; system derives pitch/sourceStartBeat.</dd>
+            <dd data-testid="ollama-primer-summary">Projected JSON intent; scaleDegree 0..scale-1 plus octave; registerDelta for shifts; system derives pitch/sourceStartBeat.</dd>
             <dt>Raw</dt>
             <dd><pre class="raw-response" data-testid="ollama-raw-response">none</pre></dd>
           </dl>
@@ -1057,25 +1056,7 @@ function getSlowThoughtPlaybackMode(action: ThoughtAction): SlowThoughtPlaybackM
 }
 
 function getRegisterShiftFromAcceptedThought(accepted: AcceptedSlowThought): number {
-  const sourceOctave = getAverageNoteOctave(
-    accepted.request.excerpts.flatMap((excerpt) => excerpt.steps),
-  );
-  const targetOctave = getAverageNoteOctave(accepted.intent.musicalIdea.steps);
-  const requestedShift = sourceOctave === undefined || targetOctave === undefined
-    ? 0
-    : Math.round(targetOctave - sourceOctave);
-  const boundedShift = clampInteger(requestedShift, -1, 1);
-  if (boundedShift !== 0) return boundedShift;
-  return (sourceOctave ?? 4) >= 5 ? -1 : 1;
-}
-
-function getAverageNoteOctave(steps: readonly MusicalExcerptStep[]): number | undefined {
-  const octaves = steps
-    .filter((step) => step.kind === "note")
-    .map((step) => step.octave ?? parsePitchOctave(step.pitch))
-    .filter((octave): octave is number => octave !== undefined && Number.isFinite(octave));
-  if (octaves.length === 0) return undefined;
-  return octaves.reduce((sum, octave) => sum + octave, 0) / octaves.length;
+  return clampInteger(accepted.intent.registerDelta ?? 0, -1, 1);
 }
 
 function getNextSlowThoughtBoundaryBeat(beat: number): number {
@@ -1167,13 +1148,6 @@ function shiftPitchOctave(pitch: string, registerShift: number): string | undefi
   if (!Number.isInteger(octave)) return undefined;
   const shiftedOctave = clampInteger(octave + registerShift, 1, 7);
   return `${pitchClass}${shiftedOctave}`;
-}
-
-function parsePitchOctave(pitch: string | undefined): number | undefined {
-  const octaveText = pitch?.match(/-?\d+$/)?.[0];
-  if (!octaveText) return undefined;
-  const octave = Number(octaveText);
-  return Number.isInteger(octave) ? octave : undefined;
 }
 
 function formatSignedInteger(value: number): string {

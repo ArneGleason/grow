@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Merge Byte 11c-a bounded melody register shift",
-  "status": "byte11c-a-approved-merged",
-  "updatedAt": "2026-06-01T12:14:01Z",
+  "lastTask": "Implement Byte 11c-b explicit register delta",
+  "status": "byte11c-b-ready-for-review",
+  "updatedAt": "2026-06-01T12:26:10Z",
   "lastHandoff": "",
-  "branch": "main",
-  "commit": "main HEAD",
+  "branch": "codex/byte-11c-b",
+  "commit": "codex/byte-11c-b HEAD",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 11c-a is approved by Claude and merged to main. Melody slow-thinking now allows `shift_register`; accepted register intents derive a bounded one-octave shift from source/target octave, expose it through `window.thinking.getSlowPlayback().registerShift`, and apply it as a pitch override to existing scheduled melody notes only. Shifted events are tagged `thought:shift_register` plus `register:+/-N`. Pulse/bass are untouched, no note slots are added or reordered, and future material injection still belongs in the commit/lookahead path. Claude accepted the bounded rescue behavior but asked that it be named as slow-thought precedence over taste rests; next protocol cleanup should add explicit `registerDelta`, and replay/event-log work should record grid pitch versus performed pitch structurally. Validation: Claude reran build/audit/diff/smoke 15/15."
+    "summary": "Byte 11c-b is implemented on `codex/byte-11c-b` and ready for review. `shift_register` no longer infers direction from average source/target octaves; `PlayerThoughtIntent.registerDelta` is now the explicit model-authored register move, required for `shift_register`, bounded to -1/0/1, and rejected on other actions. The Ollama primer/projected JSON prompt/schema, coercer, validator, deterministic mock path, slow playback compiler, and smoke tests all use that contract. Byte 11c-a playback behavior remains for `registerDelta: 1`: only existing melody slots shift, tagged `thought:shift_register` and `register:+1`; no slots are added or reordered. Validation: `npm run build`, `npm audit`, `git diff --check`, and full unsandboxed `npm run smoke` passed 15/15."
   }
 }

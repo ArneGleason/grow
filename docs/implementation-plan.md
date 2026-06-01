@@ -1035,7 +1035,7 @@ Implementation notes:
 
 ### Byte 11c-a: Bounded Melody Register Shift
 
-Status: implemented.
+Status: implemented and approved.
 
 Let a slow thought move the existing melody line into a nearby register without adding notes or rewriting the motif.
 
@@ -1064,6 +1064,33 @@ Implementation notes:
 - Claude approved Byte 11c-a. The "rescue" behavior is acceptable as a bounded precedence rule: inside a shift-register window, a slow thought may un-suppress an already-scheduled melody slot that taste would otherwise rest, softened to keep it from becoming a hidden note-injection path.
 - Forward note: replace the implicit source/target octave inference with an explicit `registerDelta` field soon, so the model can state direction and choose `0` instead of every shift defaulting to one octave when the inferred delta is flat.
 - Forward note: when event-log/replay work lands, record grid pitch versus performed pitch structurally, not only through `register:+/-N` tags.
+
+### Byte 11c-b: Explicit Register Delta
+
+Status: implemented.
+
+Clean up the Byte 11c-a register gesture so the model states the intended register move directly.
+
+Scope:
+
+- Add optional `registerDelta` to `PlayerThoughtIntent`.
+- Require `registerDelta` only when `action === "shift_register"`.
+- Bound `registerDelta` to `-1`, `0`, or `1`; reject stray register deltas on other actions.
+- Teach the Ollama primer and projected JSON prompt/schema about `registerDelta`.
+- Coerce model-authored `registerDelta` through the existing canonical parse/validate path.
+- Remove the hidden average-octave inference and delta-zero fallback from the slow playback compiler.
+- Preserve Byte 11c-a playback behavior for `registerDelta: 1`: existing melody slots shift up one octave and remain tagged `thought:shift_register` plus `register:+1`.
+
+Review focus:
+
+- whether `registerDelta` should remain top-level or eventually move into an action-specific modifier object,
+- whether the schema should become conditional when the Ollama format path can reliably express `required when action is shift_register`,
+- whether allowing `registerDelta: 0` as a valid no-op is useful for model restraint,
+- whether the old `accepted.request` field should be kept for upcoming decisions or pruned now that register inference no longer reads it.
+
+Implementation notes:
+
+- Smoke coverage now checks the prompt/schema mention `registerDelta`, validates missing/out-of-range/stray register deltas, accepts `registerDelta: 0`, and keeps the audible register-shift smoke passing with explicit `registerDelta: 1`.
 
 ### Coordination Principle: Personal Intents Versus Band Proposals
 

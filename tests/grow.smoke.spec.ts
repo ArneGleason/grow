@@ -769,11 +769,13 @@ test("manual Ollama thought probe is inspectable with a mocked local endpoint", 
     properties: {
       requestId: { enum: [probe?.requestId] },
       playerId: { enum: [probe?.playerId] },
+      registerDelta: { type: "integer", minimum: -1, maximum: 1 },
     },
   });
   expect(userMessage).toContain("Request projection:");
   expect(userMessage).toContain('"v":"grow.thought/1"');
   expect(userMessage).toContain('"motif"');
+  expect(userMessage).toContain("registerDelta");
   expect(userMessage).toContain("Do not include pitch");
   expect(userMessage).not.toContain("Request JSON:");
   expect(userMessage).not.toContain('"seed"');
@@ -1013,6 +1015,7 @@ test("slow thinking loop compiles a bounded register shift for existing melody n
             id: "slow-loop-register-intent",
             responseLevel: "variation_intent",
             action: "shift_register",
+            registerDelta: 1,
             confidence: 0.76,
             target: { startAfterBeats: 2, durationBeats: 2 },
             musicalIdea: {
@@ -1250,6 +1253,7 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   await expect(page.getByTestId("ollama-health-status")).toContainText("unknown");
   await expect(page.getByTestId("ollama-validation-result")).toHaveText("idle");
   await expect(page.getByTestId("ollama-primer-summary")).toContainText("scaleDegree");
+  await expect(page.getByTestId("ollama-primer-summary")).toContainText("registerDelta");
   const primer = await page.evaluate(() => {
     const appWindow = window as unknown as {
       ollama?: { getSessionPrimer(): string };
@@ -1257,6 +1261,7 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
     return appWindow.ollama?.getSessionPrimer();
   });
   expect(primer).toContain("scaleDegree is a pitch-class index");
+  expect(primer).toContain("registerDelta as -1, 0, or 1");
   expect(primer).toContain("system owns sourceStartBeat");
   const influenceProbePrompt = await page.evaluate(() => {
     const appWindow = window as unknown as {
@@ -1577,6 +1582,36 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   };
   expect(validatePlayerThoughtIntent(tooLongIntent, melodyRequest).errors).toContain(
     "musical idea duration exceeds request constraint",
+  );
+  const missingRegisterDeltaIntent: PlayerThoughtIntent = {
+    ...melodyIntent,
+    action: "shift_register",
+    registerDelta: undefined,
+  };
+  expect(validatePlayerThoughtIntent(missingRegisterDeltaIntent, melodyRequest).errors).toContain(
+    "shift_register requires registerDelta",
+  );
+  const outOfRangeRegisterDeltaIntent: PlayerThoughtIntent = {
+    ...melodyIntent,
+    action: "shift_register",
+    registerDelta: 2,
+  };
+  expect(validatePlayerThoughtIntent(outOfRangeRegisterDeltaIntent, melodyRequest).errors).toContain(
+    "registerDelta must be -1, 0, or 1",
+  );
+  const noOpRegisterDeltaIntent: PlayerThoughtIntent = {
+    ...melodyIntent,
+    action: "shift_register",
+    registerDelta: 0,
+  };
+  expect(validatePlayerThoughtIntent(noOpRegisterDeltaIntent, melodyRequest).valid).toBe(true);
+  const strayRegisterDeltaIntent: PlayerThoughtIntent = {
+    ...melodyIntent,
+    action: "rest",
+    registerDelta: 1,
+  };
+  expect(validatePlayerThoughtIntent(strayRegisterDeltaIntent, melodyRequest).errors).toContain(
+    "registerDelta is only allowed for shift_register",
   );
   expect(melodyRequest && JSON.stringify(createMockThoughtIntent(melodyRequest))).toBe(
     melodyRequest && JSON.stringify(createMockThoughtIntent(melodyRequest)),

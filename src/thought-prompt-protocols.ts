@@ -70,6 +70,7 @@ const PROJECTED_JSON_PROTOCOL: ThoughtPromptProtocol = {
       "Use the request projection only; it is a compact view of the canonical internal request.",
       "Return one JSON object matching the provided schema. No markdown. No prose outside JSON.",
       "Copy request id/player exactly. Choose one allowed action.",
+      "For shift_register, include registerDelta as -1, 0, or 1. Omit registerDelta for every other action.",
       "For note steps, use scaleDegree as 0..scale.length-1 plus separate octave. Do not include pitch; the system derives pitch.",
       "Omit sourceStartBeat; the system owns provenance and placement.",
       "Keep rationale under 160 characters.",
@@ -153,6 +154,7 @@ function createThoughtIntentJsonSchema(request: PlayerThoughtRequest): ThoughtIn
       playerId: { type: "string", enum: [request.playerId] },
       responseLevel: { type: "string", enum: RESPONSE_LEVELS },
       action: { type: "string", enum: request.allowedActions },
+      registerDelta: { type: "integer", minimum: -1, maximum: 1 },
       confidence: { type: "number", minimum: 0, maximum: 1 },
       target: {
         type: "object",

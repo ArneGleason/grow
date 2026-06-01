@@ -79,6 +79,8 @@ export interface PlayerThoughtIntent {
   playerId: string;
   responseLevel: ThoughtResponseLevel;
   action: ThoughtAction;
+  // Required for shift_register; omitted for other actions.
+  registerDelta?: number;
   confidence: number;
   target: {
     startAfterBeats: number;
@@ -199,7 +201,8 @@ export function createPlayerThoughtRequest(
 
 export function createMockThoughtIntent(request: PlayerThoughtRequest): PlayerThoughtIntent {
   const action = chooseMockAction(request);
-  const musicalIdea = createMockMusicalIdea(request, action);
+  const registerDelta = action === "shift_register" ? chooseMockRegisterDelta(request) : undefined;
+  const musicalIdea = createMockMusicalIdea(request, action, registerDelta);
 
   return {
     id: `intent-${stableHash(`${request.id}:${action}:${formatMusicalExcerpt(musicalIdea)}`).toString(16)}`,
@@ -207,6 +210,7 @@ export function createMockThoughtIntent(request: PlayerThoughtRequest): PlayerTh
     playerId: request.playerId,
     responseLevel: chooseResponseLevel(request, action),
     action,
+    registerDelta,
     confidence: round(0.55 + (stableHash(`${request.id}:confidence`) % 35) / 100),
     target: {
       startAfterBeats: request.requestLevel === "in_song_short" ? 1 : request.horizonBeats,
@@ -333,6 +337,18 @@ export function validatePlayerThoughtIntent(
   if (!RESPONSE_LEVELS.includes(intent.responseLevel)) errors.push("responseLevel is unknown");
   if (!THOUGHT_ACTIONS.includes(intent.action)) errors.push("action is unknown");
   if (!request.allowedActions.includes(intent.action)) errors.push("action is not allowed by request");
+  if (intent.action === "shift_register" && intent.registerDelta === undefined) {
+    errors.push("shift_register requires registerDelta");
+  }
+  if (intent.action !== "shift_register" && intent.registerDelta !== undefined) {
+    errors.push("registerDelta is only allowed for shift_register");
+  }
+  if (
+    intent.registerDelta !== undefined &&
+    (!Number.isInteger(intent.registerDelta) || intent.registerDelta < -1 || intent.registerDelta > 1)
+  ) {
+    errors.push("registerDelta must be -1, 0, or 1");
+  }
   if (!isFiniteNumber(intent.confidence) || intent.confidence < 0 || intent.confidence > 1) {
     errors.push("confidence must be between 0 and 1");
   }
@@ -405,6 +421,10 @@ function chooseMockAction(request: PlayerThoughtRequest): ThoughtAction {
   }
 }
 
+function chooseMockRegisterDelta(request: PlayerThoughtRequest): number {
+  return stableHash(`${request.id}:register-delta`) % 2 === 0 ? 1 : -1;
+}
+
 function chooseResponseLevel(
   request: PlayerThoughtRequest,
   action: ThoughtAction,
@@ -420,6 +440,7 @@ function chooseResponseLevel(
 function createMockMusicalIdea(
   request: PlayerThoughtRequest,
   action: ThoughtAction,
+  registerDelta: number | undefined,
 ): MusicalExcerpt {
   const source = request.excerpts[0];
   const sourceSteps = source.steps.length > 0
@@ -451,7 +472,9 @@ function createMockMusicalIdea(
       ? {
         ...cloneStep(step),
         pitch: undefined,
-        octave: step.octave === undefined ? undefined : step.octave + direction,
+        octave: step.octave === undefined || registerDelta === undefined
+          ? undefined
+          : step.octave + registerDelta,
         tags: [...step.tags, "mock:register"],
       }
       : cloneStep(step));

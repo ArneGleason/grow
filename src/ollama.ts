@@ -150,6 +150,7 @@ export function createOllamaSessionPrimer(): string {
     SHORT_RESPONSE_RULE,
     "Do not schedule sound. Do not describe audio playback. Only propose a future intent.",
     "Allowed actions are provided in the request. Choose exactly one allowed action.",
+    "For shift_register, include registerDelta as -1, 0, or 1. Omit registerDelta for every other action.",
     "MusicalExcerpt convention: steps[].positionBeats is phrase-relative and monotonic from 0.",
     "MusicalExcerpt convention: steps[].scaleDegree is a pitch-class index from 0 to scale.length - 1.",
     "MusicalExcerpt convention: note steps include separate steps[].octave. Do not use wrapping scale degrees.",
@@ -396,6 +397,7 @@ function coercePlayerThoughtIntent(
     playerId: request.playerId,
     responseLevel: getString(value.responseLevel) as ThoughtResponseLevel,
     action: getString(value.action) as ThoughtAction,
+    registerDelta: getOptionalNumber(value.registerDelta),
     confidence: getNumber(value.confidence),
     target: {
       startAfterBeats: getNumber(target.startAfterBeats),
