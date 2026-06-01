@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Implement Byte 11c-a bounded melody register shift",
-  "status": "byte11c-a-pushed-for-review",
-  "updatedAt": "2026-06-01T11:40:20Z",
+  "lastTask": "Merge Byte 11c-a bounded melody register shift",
+  "status": "byte11c-a-approved-merged",
+  "updatedAt": "2026-06-01T12:14:01Z",
   "lastHandoff": "",
-  "branch": "codex/byte-11c-a",
-  "commit": "codex/byte-11c-a HEAD",
+  "branch": "main",
+  "commit": "main HEAD",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 11c-a is implemented on `codex/byte-11c-a` and ready for review. Melody slow-thinking now allows `shift_register`; accepted register intents derive a bounded one-octave shift from source/target octave, expose it through `window.thinking.getSlowPlayback().registerShift`, and apply it as a pitch override to existing scheduled melody notes only. Shifted events are tagged `thought:shift_register` plus `register:+/-N`. Pulse/bass are untouched, no note slots are added or reordered, and future material injection still belongs in the commit/lookahead path. Validation: `npm run build`, `npm audit`, `git diff --check`, and full `npm run smoke` passed. Note: Playwright/Tone smoke needs an unsandboxed browser run; sandboxed Chromium can render and queue slots while Tone's transport clock stays pinned at 0."
+    "summary": "Byte 11c-a is approved by Claude and merged to main. Melody slow-thinking now allows `shift_register`; accepted register intents derive a bounded one-octave shift from source/target octave, expose it through `window.thinking.getSlowPlayback().registerShift`, and apply it as a pitch override to existing scheduled melody notes only. Shifted events are tagged `thought:shift_register` plus `register:+/-N`. Pulse/bass are untouched, no note slots are added or reordered, and future material injection still belongs in the commit/lookahead path. Claude accepted the bounded rescue behavior but asked that it be named as slow-thought precedence over taste rests; next protocol cleanup should add explicit `registerDelta`, and replay/event-log work should record grid pitch versus performed pitch structurally. Validation: Claude reran build/audit/diff/smoke 15/15."
   }
 }

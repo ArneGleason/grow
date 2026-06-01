@@ -60,8 +60,8 @@ Use this file for known risks, open questions, and review focus. Keep entries sh
 - Byte 11a is approved. Claude verified no surprise calls before health check, playing+rehearsal+ready gating, one request at a time, thinking posture cleanup, non-blocking transport, clean discard on gate loss/stop, and real qwen3 pending-to-accepted cycles.
 - Byte 11b is approved and merged. Claude verified the first audible bridge is bounded, melody-only, bar-snapped, rest/thin only, validator/fallback-gated, lifecycle-clean, live-qwen3 compatible, and smoke-covered against accepted-but-inert output.
 - Byte 11b accepted-queue cleanup is implemented: `src/slow-thinking.ts` now has one accepted-intent handoff path, `onAccepted`.
-- Byte 11c-a is ready for review. Focus on bounded `shift_register`: it is melody-only, one-octave max, pitch-class-preserving, fire-time, and modifies only existing scheduled melody notes.
-- Byte 11c-a review should decide whether rescuing a scheduled melody note that taste would otherwise rest is acceptable inside a shift-register window.
+- Byte 11c-a is approved and merged. Claude verified the first pitch-changing slow thought stays inside the safety envelope: melody-only, +/-1 octave, <=4-beat bar-snapped window, only existing scheduled notes, pulse/bass untouched, no slot changes, smoke 15/15, and live qwen3 compiling bounded `shift_register` windows.
+- Byte 11c-a forward notes: the rescue behavior is acceptable but should be named as slow-thought precedence over taste rests; add explicit `registerDelta` so the model can state direction and choose no-op; when replay/event logging lands, record grid pitch versus performed pitch structurally.
 - Future material-injecting actions still need the commit/lookahead path; the current pitch override should not become a backdoor for adding notes or changing motif shape.
 - Future band-level changes such as key, mode, chord sequence, or song section changes should use a coordinated band proposal/song-sketch path, not private per-player intent.
 - Model picker is convenience, not a pre-Byte-11 blocker; env/input/`window.ollama.setConfig()` already cover model selection.

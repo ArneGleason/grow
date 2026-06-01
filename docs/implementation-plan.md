@@ -637,7 +637,7 @@ The real Byte 9b model probe took roughly 22 seconds on the Mac Mini. That makes
 
 ### Byte 10a: Reproducible Aliveness Principle
 
-Status: implemented.
+Status: implemented and approved.
 
 Make the creative/review lens explicit before adding more behavior.
 
@@ -1061,6 +1061,9 @@ Implementation notes:
 
 - Smoke coverage now includes a mocked valid `shift_register` intent, verifies `registerShift` is `+1`, and waits for shifted melody note events tagged `thought:shift_register` and `register:+1`.
 - Fire-time register shift is intentionally allowed only because it modifies scheduled notes. Future note injection or motif rewrites still need the commit/lookahead path.
+- Claude approved Byte 11c-a. The "rescue" behavior is acceptable as a bounded precedence rule: inside a shift-register window, a slow thought may un-suppress an already-scheduled melody slot that taste would otherwise rest, softened to keep it from becoming a hidden note-injection path.
+- Forward note: replace the implicit source/target octave inference with an explicit `registerDelta` field soon, so the model can state direction and choose `0` instead of every shift defaulting to one octave when the inferred delta is flat.
+- Forward note: when event-log/replay work lands, record grid pitch versus performed pitch structurally, not only through `register:+/-N` tags.
 
 ### Coordination Principle: Personal Intents Versus Band Proposals
 
