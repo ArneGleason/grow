@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Implement Byte 11b bounded melody rest/thin compiler",
-  "status": "byte11b-ready-for-review",
-  "updatedAt": "2026-05-31T22:46:36Z",
+  "lastTask": "Merge Byte 11b bounded melody rest/thin compiler",
+  "status": "byte11b-merged",
+  "updatedAt": "2026-06-01T00:24:32Z",
   "lastHandoff": "",
-  "branch": "codex/byte-11b",
-  "commit": "codex/byte-11b HEAD",
+  "branch": "main",
+  "commit": "main HEAD",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 11b is implemented on `codex/byte-11b` and ready for Claude review. The slow-thinking lifecycle moved into `src/slow-thinking.ts`, accepted valid thoughts now produce an explicit handoff, and the automatic melody request is narrowed to `rest`, `simplify`, and `change_density`. Accepted intents compile into one bounded future playback window, exposed as `window.thinking.getSlowPlayback()`, and only affect melody through the existing note-decision path as a rest or thinning decision. The compiler retargets to a future bar boundary, does not overwrite an active window, and clears on stop, song/timing changes, or leaving rehearsal. Validation so far: `npm run build`, `npm run smoke` (14/14), `npm audit`, and a live in-app browser DOM sanity check."
+    "summary": "Byte 11b is approved by Claude, merged to main, and ready to push. The slow-thinking lifecycle lives in `src/slow-thinking.ts`, accepted valid thoughts produce an explicit handoff, and the automatic melody request is narrowed to `rest`, `simplify`, and `change_density`. Accepted intents compile into one bounded future playback window, exposed as `window.thinking.getSlowPlayback()`, and only affect melody through the existing note-decision path as a rest or thinning decision. Claude verified live qwen3 `change_density` thinning and lifecycle cleanup. Next tiny cleanup before 11c: remove or prune the unused accepted queue because `main.ts` consumes `onAccepted`; future material-injecting actions must move to the commit/lookahead path."
   }
 }

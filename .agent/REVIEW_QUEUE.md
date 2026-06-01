@@ -58,9 +58,9 @@ Use this file for known risks, open questions, and review focus. Keep entries sh
 - Byte 10f-b2 is approved. Claude verified pitch is removed from the model schema, system-side pitch derivation does not mask bad degrees, proxy abort propagation works, and real qwen3 returned 6/6 valid manual thought tests.
 - Pre-Byte-11 invalid-200 smoke fixture is implemented. A mocked HTTP 200 with validator-failing JSON yields `invalid`, provider `ollama`, valid mock fallback, and stopped transport.
 - Byte 11a is approved. Claude verified no surprise calls before health check, playing+rehearsal+ready gating, one request at a time, thinking posture cleanup, non-blocking transport, clean discard on gate loss/stop, and real qwen3 pending-to-accepted cycles.
-- Byte 11b is ready for review. Focus on the new `src/slow-thinking.ts` controller boundary, the explicit accepted-intent handoff, and the first narrow compiler from accepted `rest`/`simplify`/`change_density` intents into a bounded melody playback window.
-- Byte 11b review should check whether applying the compiled rest/thin intent through the fire-time note-decision path is acceptable for this first audible bridge, or whether the next slice should move intent application closer to lookahead commit data.
-- Byte 11b intentionally leaves pitch/motif rewriting, multi-player thinking, and band-level coordination out of scope.
+- Byte 11b is approved and merged. Claude verified the first audible bridge is bounded, melody-only, bar-snapped, rest/thin only, validator/fallback-gated, lifecycle-clean, live-qwen3 compatible, and smoke-covered against accepted-but-inert output.
+- Byte 11c setup note: prune or remove the unused `acceptedQueue` in `src/slow-thinking.ts` because `main.ts` currently consumes the `onAccepted` callback path instead.
+- Byte 11c direction: rest/thin can remain fire-time, but the first material-injecting action must move to the commit/lookahead path. Consider either bounded `shift_register` next, or a second thinking player with a per-player active-window map.
 - Future band-level changes such as key, mode, chord sequence, or song section changes should use a coordinated band proposal/song-sketch path, not private per-player intent.
 - Model picker is convenience, not a pre-Byte-11 blocker; env/input/`window.ollama.setConfig()` already cover model selection.
 - The current Ollama proxy is a Vite dev middleware. When SQLite/persistence or a durable backend lands, re-host the same proxy protocol in a standalone local server rather than changing the thought contract.
