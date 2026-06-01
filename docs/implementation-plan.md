@@ -1005,7 +1005,7 @@ Review result:
 
 ### Byte 11b: Compile A Bounded Melody Rest
 
-Status: implemented.
+Status: implemented and approved.
 
 Let the first accepted slow thought make a very small audible change without opening the full motif-rewrite problem.
 
@@ -1032,6 +1032,35 @@ Implementation notes:
 - The smoke test now mocks a valid `rest` intent, verifies the slow-loop prompt only offers rest/thin-style actions, checks `window.thinking.getSlowPlayback()`, and waits for a melody `rest` event inside the compiled window.
 - The visible subtitle now reads `Slow thinking loop: melody can rest or thin ahead`.
 - Claude approved Byte 11b and the accepted-queue cleanup has been applied. `SlowThinkingController` now has a single accepted-intent handoff path: `onAccepted`.
+
+### Byte 11c-a: Bounded Melody Register Shift
+
+Status: implemented.
+
+Let a slow thought move the existing melody line into a nearby register without adding notes or rewriting the motif.
+
+Scope:
+
+- Add `shift_register` to the automatic melody slow-thinking allowed actions.
+- Extend the note-decision path with an optional pitch override and decision tags.
+- Derive a bounded one-octave register shift from the accepted intent's musical idea compared with the request source excerpt.
+- Apply the shift only inside the accepted future playback window and only to existing scheduled melody notes.
+- Keep pulse and bass untouched.
+- Keep pitch class unchanged, so shifted notes remain in the active tonal context.
+- Surface the active register shift through `window.thinking.getSlowPlayback()` and the Thoughts inspector.
+- Do not add, remove, or reorder scheduled note slots.
+
+Review focus:
+
+- whether allowing `shift_register` to play an already-scheduled melody note that taste would otherwise rest is acceptable,
+- whether pitch override belongs in `TasteNoteDecision` for this byte or should become a separate thought-decision layer soon,
+- whether the register-shift derivation from source/target octave is too implicit for future model output,
+- whether the first material-injecting action should still wait for the lookahead commit path.
+
+Implementation notes:
+
+- Smoke coverage now includes a mocked valid `shift_register` intent, verifies `registerShift` is `+1`, and waits for shifted melody note events tagged `thought:shift_register` and `register:+1`.
+- Fire-time register shift is intentionally allowed only because it modifies scheduled notes. Future note injection or motif rewrites still need the commit/lookahead path.
 
 ### Coordination Principle: Personal Intents Versus Band Proposals
 

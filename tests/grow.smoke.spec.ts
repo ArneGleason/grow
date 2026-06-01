@@ -107,11 +107,12 @@ type SlowThoughtPlayback = {
   requestId: string;
   playerId: string;
   action: string;
-  mode: "rest" | "thin";
+  mode: "rest" | "thin" | "shift-register";
   startBeat: number;
   endBeat: number;
   acceptedAtBeat: number;
   retargeted: boolean;
+  registerShift?: number;
   summary: string;
 };
 
@@ -898,6 +899,7 @@ test("slow thinking loop asks melody once and compiles a bounded rest", async ({
     expect(userMessage).toContain('"player":"melody"');
     expect(userMessage).toContain('"rest"');
     expect(userMessage).toContain('"simplify"');
+    expect(userMessage).toContain('"shift_register"');
     expect(userMessage).toContain('"change_density"');
     expect(userMessage).not.toContain('"vary_motif"');
     await route.fulfill({
@@ -967,6 +969,107 @@ test("slow thinking loop asks melody once and compiles a bounded rest", async ({
       event.kind === "rest" &&
       event.absoluteBeat >= (playback?.startBeat ?? Infinity) &&
       event.absoluteBeat < (playback?.endBeat ?? -Infinity)
+    );
+  }, { timeout: 10_000 }).toBe(true);
+  expect((await getTransportState(page)).status).toBe("playing");
+
+  await button.click();
+  await expect(button).toHaveText("Start");
+});
+
+test("slow thinking loop compiles a bounded register shift for existing melody notes", async ({ page }) => {
+  let chatRequestCount = 0;
+
+  await page.route("**/api/ollama/tags**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      headers: {
+        "content-type": "application/json",
+        "x-grow-ollama-proxy": "smoke",
+      },
+      body: JSON.stringify({ models: [{ name: "qwen3:4b-instruct-2507-q4_K_M" }] }),
+    });
+  });
+
+  await page.route("**/api/ollama/chat**", async (route) => {
+    chatRequestCount += 1;
+    const payload = JSON.parse(route.request().postData() ?? "{}") as {
+      request?: { messages?: Array<{ role?: string; content?: string }> };
+    };
+    const userMessage = payload.request?.messages?.find((message) => message.role === "user")?.content ?? "";
+    expect(userMessage).toContain('"player":"melody"');
+    expect(userMessage).toContain('"shift_register"');
+    await route.fulfill({
+      status: 200,
+      headers: {
+        "content-type": "application/json",
+        "x-grow-ollama-proxy": "smoke",
+      },
+      body: JSON.stringify({
+        model: "qwen3:4b-instruct-2507-q4_K_M",
+        message: {
+          role: "assistant",
+          content: JSON.stringify({
+            id: "slow-loop-register-intent",
+            responseLevel: "variation_intent",
+            action: "shift_register",
+            confidence: 0.76,
+            target: { startAfterBeats: 2, durationBeats: 2 },
+            musicalIdea: {
+              label: "slow loop register lift",
+              origin: "imagined",
+              durationBeats: 2,
+              steps: [{
+                kind: "note",
+                positionBeats: 0,
+                durationBeats: 0.5,
+                scaleDegree: 2,
+                octave: 5,
+                velocity: 0.52,
+                tags: ["slow-loop", "register-up"],
+              }],
+              tags: ["slow-loop-intent", "register"],
+            },
+            rationale: "Lift the melody above the bass for a short answer.",
+          }),
+        },
+        done: true,
+      }),
+    });
+  });
+
+  await page.goto("/");
+  await page.getByTestId("ollama-health-check").click();
+  await expect(page.getByTestId("ollama-health-status")).toContainText("ready");
+
+  const button = page.getByTestId("transport-toggle");
+  await button.click();
+  await expect(button).toHaveText("Stop");
+
+  await expect.poll(async () => (await getSlowThinkingLoop(page)).status).toBe("accepted");
+  const slowLoop = await getSlowThinkingLoop(page);
+  expect(chatRequestCount).toBe(1);
+  expect(slowLoop.playerId).toBe("melody");
+  expect(slowLoop.provider).toBe("ollama");
+  expect(slowLoop.action).toBe("shift_register");
+  expect(slowLoop.validation?.valid).toBe(true);
+  expect(slowLoop.fallbackValid).toBe(true);
+  await expect.poll(async () => (await getSlowThinkingPlayback(page))?.mode).toBe("shift-register");
+  const playback = await getSlowThinkingPlayback(page);
+  expect(playback?.playerId).toBe("melody");
+  expect(playback?.registerShift).toBe(1);
+  expect(playback?.startBeat).toBeGreaterThanOrEqual(slowLoop.committedStartBeat ?? 0);
+  await expect(page.getByTestId("thought-slow-melody-status")).toContainText("shift +1");
+  await expect.poll(async () => {
+    const frame = await getListeningFrame(page);
+    return frame.recentEvents.some((event) =>
+      event.playerId === "melody" &&
+      event.kind === "note" &&
+      event.pitch?.endsWith("5") &&
+      event.absoluteBeat >= (playback?.startBeat ?? Infinity) &&
+      event.absoluteBeat < (playback?.endBeat ?? -Infinity) &&
+      event.tags.includes("thought:shift_register") &&
+      event.tags.includes("register:+1")
     );
   }, { timeout: 10_000 }).toBe(true);
   expect((await getTransportState(page)).status).toBe("playing");
@@ -1066,7 +1169,7 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   const canvasFrame = page.getByTestId("terrarium-container");
   const canvas = page.getByTestId("terrarium-canvas");
 
-  await expect(page.locator(".brand__subtitle")).toHaveText("Slow thinking loop: melody can rest or thin ahead");
+  await expect(page.locator(".brand__subtitle")).toHaveText("Slow thinking loop: melody can rest, thin, or shift register");
   await expect(button).toHaveText("Start");
   await expect(status).toContainText(
     "mode rehearsal | song Lantern | stopped | 90 BPM | bar 1 | beat 0.0 | lookahead stopped 0.0/8 | pending slots 0",

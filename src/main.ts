@@ -49,6 +49,7 @@ import {
   type TasteNoteDecisionInput,
 } from "./taste";
 import type {
+  MusicalExcerptStep,
   PlayerThoughtIntent,
   PlayerThoughtRequest,
   ThoughtRequestLevel,
@@ -97,10 +98,11 @@ const SLOW_THINKING_MAX_COMPILED_DURATION_BEATS = 4;
 const SLOW_THINKING_COMPILABLE_ACTIONS = [
   "rest",
   "simplify",
+  "shift_register",
   "change_density",
 ] as const satisfies readonly ThoughtAction[];
 
-type SlowThoughtPlaybackMode = "rest" | "thin";
+type SlowThoughtPlaybackMode = "rest" | "thin" | "shift-register";
 
 interface SlowThoughtPlayback {
   id: string;
@@ -112,6 +114,7 @@ interface SlowThoughtPlayback {
   endBeat: number;
   acceptedAtBeat: number;
   retargeted: boolean;
+  registerShift?: number;
   summary: string;
 }
 
@@ -229,11 +232,11 @@ function getSongLabel(nextSongId: SongId): string {
 }
 
 app.innerHTML = `
-  <section class="app-shell" aria-label="Grow Byte 11b">
+  <section class="app-shell" aria-label="Grow Byte 11c-a">
     <header class="topbar">
       <div class="brand">
         <h1 class="brand__title">Grow</h1>
-        <p class="brand__subtitle">Slow thinking loop: melody can rest or thin ahead</p>
+        <p class="brand__subtitle">Slow thinking loop: melody can rest, thin, or shift register</p>
       </div>
       <div class="transport-controls">
         <fieldset class="mode-control">
@@ -871,9 +874,17 @@ function formatSlowThinkingForPlayer(playerId: string): string {
   const action = slowThinkingState.action ? ` ${slowThinkingState.action}` : "";
   const retargeted = slowThinkingState.retargeted ? " retargeted" : "";
   const playbackSummary = playback
-    ? ` | ${playback.mode} ${playback.startBeat.toFixed(1)}-${playback.endBeat.toFixed(1)}`
+    ? ` | ${formatSlowThoughtPlayback(playback)}`
     : "";
   return `${slowThinkingState.status}${action}${retargeted}${timing}: ${slowThinkingState.message}${playbackSummary}`;
+}
+
+function formatSlowThoughtPlayback(playback: SlowThoughtPlayback): string {
+  const window = `${playback.startBeat.toFixed(1)}-${playback.endBeat.toFixed(1)}`;
+  if (playback.mode === "shift-register") {
+    return `shift ${formatSignedInteger(playback.registerShift ?? 0)} ${window}`;
+  }
+  return `${playback.mode} ${window}`;
 }
 
 function formatPlayerContagion(framePlayer: ListeningFramePlayer | undefined): string {
@@ -1019,6 +1030,9 @@ function compileAcceptedSlowThought(accepted: AcceptedSlowThought): SlowThoughtP
     SLOW_THINKING_MAX_COMPILED_DURATION_BEATS,
   );
   const endBeat = startBeat + durationBeats;
+  const registerShift = mode === "shift-register"
+    ? getRegisterShiftFromAcceptedThought(accepted)
+    : undefined;
 
   return {
     id: accepted.id,
@@ -1030,6 +1044,7 @@ function compileAcceptedSlowThought(accepted: AcceptedSlowThought): SlowThoughtP
     endBeat,
     acceptedAtBeat: accepted.acceptedAtBeat,
     retargeted: accepted.retargeted || startBeat !== accepted.committedStartBeat,
+    registerShift,
     summary: accepted.intent.rationale,
   };
 }
@@ -1037,7 +1052,30 @@ function compileAcceptedSlowThought(accepted: AcceptedSlowThought): SlowThoughtP
 function getSlowThoughtPlaybackMode(action: ThoughtAction): SlowThoughtPlaybackMode | undefined {
   if (action === "rest") return "rest";
   if (action === "simplify" || action === "change_density") return "thin";
+  if (action === "shift_register") return "shift-register";
   return undefined;
+}
+
+function getRegisterShiftFromAcceptedThought(accepted: AcceptedSlowThought): number {
+  const sourceOctave = getAverageNoteOctave(
+    accepted.request.excerpts.flatMap((excerpt) => excerpt.steps),
+  );
+  const targetOctave = getAverageNoteOctave(accepted.intent.musicalIdea.steps);
+  const requestedShift = sourceOctave === undefined || targetOctave === undefined
+    ? 0
+    : Math.round(targetOctave - sourceOctave);
+  const boundedShift = clampInteger(requestedShift, -1, 1);
+  if (boundedShift !== 0) return boundedShift;
+  return (sourceOctave ?? 4) >= 5 ? -1 : 1;
+}
+
+function getAverageNoteOctave(steps: readonly MusicalExcerptStep[]): number | undefined {
+  const octaves = steps
+    .filter((step) => step.kind === "note")
+    .map((step) => step.octave ?? parsePitchOctave(step.pitch))
+    .filter((octave): octave is number => octave !== undefined && Number.isFinite(octave));
+  if (octaves.length === 0) return undefined;
+  return octaves.reduce((sum, octave) => sum + octave, 0) / octaves.length;
 }
 
 function getNextSlowThoughtBoundaryBeat(beat: number): number {
@@ -1077,25 +1115,69 @@ function applySlowThoughtDecision(
       action: "rest",
       shouldPlay: false,
       velocityMultiplier: 0,
+      tags: ["thought:rest"],
+      reason: `Slow thought ${playback.action}: ${playback.summary}`,
+    };
+  }
+
+  if (playback.mode === "shift-register") {
+    const registerShift = playback.registerShift ?? 0;
+    const shiftedPitch = shiftPitchOctave(input.pitch, registerShift);
+    if (!shiftedPitch || shiftedPitch === input.pitch) return baseDecision;
+    return {
+      ...baseDecision,
+      action: "vary",
+      shouldPlay: true,
+      velocityMultiplier: baseDecision.shouldPlay ? baseDecision.velocityMultiplier : 0.82,
+      pitch: shiftedPitch,
+      tags: [
+        ...(baseDecision.tags ?? []),
+        "thought:shift_register",
+        `register:${formatSignedInteger(registerShift)}`,
+      ],
       reason: `Slow thought ${playback.action}: ${playback.summary}`,
     };
   }
 
   if (!baseDecision.shouldPlay) return baseDecision;
+
   const shouldDrop = !isWholeBeat(input.absoluteBeat);
   return shouldDrop
     ? {
       action: "simplify",
       shouldPlay: false,
       velocityMultiplier: 0,
+      tags: [`thought:${playback.action}`],
       reason: `Slow thought ${playback.action}: thinning offbeats.`,
     }
     : {
       action: "simplify",
       shouldPlay: true,
       velocityMultiplier: Math.min(baseDecision.velocityMultiplier, 0.76),
+      tags: [`thought:${playback.action}`],
       reason: `Slow thought ${playback.action}: keeping only the anchored tones.`,
     };
+}
+
+function shiftPitchOctave(pitch: string, registerShift: number): string | undefined {
+  const match = pitch.match(/^(.+?)(-?\d+)$/);
+  if (!match) return undefined;
+  const [, pitchClass, octaveText] = match;
+  const octave = Number(octaveText);
+  if (!Number.isInteger(octave)) return undefined;
+  const shiftedOctave = clampInteger(octave + registerShift, 1, 7);
+  return `${pitchClass}${shiftedOctave}`;
+}
+
+function parsePitchOctave(pitch: string | undefined): number | undefined {
+  const octaveText = pitch?.match(/-?\d+$/)?.[0];
+  if (!octaveText) return undefined;
+  const octave = Number(octaveText);
+  return Number.isInteger(octave) ? octave : undefined;
+}
+
+function formatSignedInteger(value: number): string {
+  return value > 0 ? `+${value}` : String(value);
 }
 
 function isWholeBeat(value: number): boolean {
@@ -1104,6 +1186,10 @@ function isWholeBeat(value: number): boolean {
 
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(maximum, Math.max(minimum, value));
+}
+
+function clampInteger(value: number, minimum: number, maximum: number): number {
+  return Math.trunc(clamp(value, minimum, maximum));
 }
 
 function readOllamaConfigFromInputs(): OllamaConfig {

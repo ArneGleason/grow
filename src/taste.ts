@@ -36,6 +36,8 @@ export interface TasteNoteDecision {
   action: TasteAction;
   shouldPlay: boolean;
   velocityMultiplier: number;
+  pitch?: string;
+  tags?: string[];
   reason: string;
 }
 

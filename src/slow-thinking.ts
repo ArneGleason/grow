@@ -32,6 +32,7 @@ export interface AcceptedSlowThought {
   id: string;
   playerId: string;
   requestId: string;
+  request: PlayerThoughtRequest;
   intent: PlayerThoughtIntent;
   acceptedAtBeat: number;
   intendedStartBeat: number;
@@ -231,6 +232,7 @@ export class SlowThinkingController {
       id: `accepted-${request.id}-${Math.round(state.committedStartBeat * 1000)}`,
       playerId: request.playerId,
       requestId: request.id,
+      request,
       intent: result.intent,
       acceptedAtBeat: state.resolvedAtBeat ?? request.generatedAtBeat,
       intendedStartBeat: state.intendedStartBeat,

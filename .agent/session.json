@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Clean Byte 11b accepted-intent handoff",
-  "status": "byte11b-clean-merged",
-  "updatedAt": "2026-06-01T00:30:30Z",
+  "lastTask": "Implement Byte 11c-a bounded melody register shift",
+  "status": "byte11c-a-pushed-for-review",
+  "updatedAt": "2026-06-01T11:40:20Z",
   "lastHandoff": "",
-  "branch": "main",
-  "commit": "main HEAD",
+  "branch": "codex/byte-11c-a",
+  "commit": "codex/byte-11c-a HEAD",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 11b is approved and merged to main, and the accepted-queue cleanup is merged too. `src/slow-thinking.ts` now exposes accepted thoughts only through `onAccepted`; there is no parallel `takeAcceptedIntent()` queue. Build, smoke, audit, and diff check were green for the cleanup. Next behavior byte remains Byte 11c: either bounded `shift_register` for melody or a second thinking player; any material-injecting action should move into the commit/lookahead path."
+    "summary": "Byte 11c-a is implemented on `codex/byte-11c-a` and ready for review. Melody slow-thinking now allows `shift_register`; accepted register intents derive a bounded one-octave shift from source/target octave, expose it through `window.thinking.getSlowPlayback().registerShift`, and apply it as a pitch override to existing scheduled melody notes only. Shifted events are tagged `thought:shift_register` plus `register:+/-N`. Pulse/bass are untouched, no note slots are added or reordered, and future material injection still belongs in the commit/lookahead path. Validation: `npm run build`, `npm audit`, `git diff --check`, and full `npm run smoke` passed. Note: Playwright/Tone smoke needs an unsandboxed browser run; sandboxed Chromium can render and queue slots while Tone's transport clock stays pinned at 0."
   }
 }

@@ -203,6 +203,7 @@ function emitNoteEvent(
   decision: TasteNoteDecision,
   expression: PlayerExpressionSnapshot,
   velocity: number,
+  pitch: string,
 ): void {
   if (status !== "playing") return;
   const { note, snapshot } = committed;
@@ -223,7 +224,7 @@ function emitNoteEvent(
     performedOffsetBeats: committed.performedTiming.performedOffsetBeats,
     performedOffsetSeconds: beatsToSeconds(committed.performedTiming.performedOffsetBeats),
     velocity,
-    pitch: decision.shouldPlay ? note.pitch : undefined,
+    pitch: decision.shouldPlay ? pitch : undefined,
     expression,
     performedTiming: committed.performedTiming,
     tags: [
@@ -234,6 +235,7 @@ function emitNoteEvent(
       "timing:offset-data",
       committed.timingFeelMode === "grid" ? "timing:grid" : "timing:audible-offset",
       ...(committed.timingFeelMode === "wide" ? ["timing:wide-audition"] : []),
+      ...(decision.tags ?? []),
     ],
     createdAtMs: performance.now(),
   };
@@ -356,6 +358,7 @@ function triggerScheduledNote(
     absoluteBeat: snapshot.absoluteBeat,
     velocity: note.velocity,
   }) ?? DEFAULT_NOTE_DECISION;
+  const performedPitch = decision.pitch ?? note.pitch;
   const expression = calculatePlayerExpression({
     player,
     absoluteBeat: snapshot.absoluteBeat,
@@ -371,14 +374,14 @@ function triggerScheduledNote(
   latestExpressionByPlayer.set(note.playerId, appliedExpression);
 
   if (decision.shouldPlay && note.playerId === "pulse") {
-    ensurePulseSynth(tone).triggerAttackRelease(note.pitch, note.duration, audioTime, velocity);
+    ensurePulseSynth(tone).triggerAttackRelease(performedPitch, note.duration, audioTime, velocity);
   } else if (decision.shouldPlay && note.playerId === "bass") {
-    ensureBassSynth(tone).triggerAttackRelease(note.pitch, note.duration, audioTime, velocity);
+    ensureBassSynth(tone).triggerAttackRelease(performedPitch, note.duration, audioTime, velocity);
   } else if (decision.shouldPlay && note.playerId === "melody") {
-    ensureMelodySynth(tone).triggerAttackRelease(note.pitch, note.duration, audioTime, velocity);
+    ensureMelodySynth(tone).triggerAttackRelease(performedPitch, note.duration, audioTime, velocity);
   }
 
-  emitNoteEvent(committed, decision, appliedExpression, velocity);
+  emitNoteEvent(committed, decision, appliedExpression, velocity, performedPitch);
 }
 
 function clampAudioFireTime(tone: typeof ToneNS, performedTime: ToneNS.Unit.Time): number {
