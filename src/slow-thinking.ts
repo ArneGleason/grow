@@ -37,7 +37,6 @@ export interface AcceptedSlowThought {
   intendedStartBeat: number;
   committedStartBeat: number;
   retargeted: boolean;
-  consumed: boolean;
 }
 
 export interface SlowThinkingControllerOptions {
@@ -58,7 +57,6 @@ export class SlowThinkingController {
   private state: SlowThinkingLoopState;
   private controller: AbortController | null = null;
   private runSerial = 0;
-  private acceptedQueue: AcceptedSlowThought[] = [];
 
   constructor(private readonly options: SlowThinkingControllerOptions) {
     this.state = this.createInitialState();
@@ -66,13 +64,6 @@ export class SlowThinkingController {
 
   getState(): SlowThinkingLoopState {
     return { ...this.state };
-  }
-
-  takeAcceptedIntent(): AcceptedSlowThought | undefined {
-    const accepted = this.acceptedQueue.find((candidate) => !candidate.consumed);
-    if (!accepted) return undefined;
-    accepted.consumed = true;
-    return { ...accepted, intent: accepted.intent };
   }
 
   evaluate(state: GrowTransportState = this.options.getTransportState()): void {
@@ -152,7 +143,6 @@ export class SlowThinkingController {
         this.state = this.createResolvedState(request, result, this.options.getTransportState());
         const accepted = this.createAcceptedHandoff(request, result, this.state);
         if (accepted) {
-          this.acceptedQueue.push(accepted);
           this.options.onAccepted?.(accepted);
         }
       })
@@ -246,7 +236,6 @@ export class SlowThinkingController {
       intendedStartBeat: state.intendedStartBeat,
       committedStartBeat: state.committedStartBeat,
       retargeted: state.retargeted ?? false,
-      consumed: false,
     };
   }
 

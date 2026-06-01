@@ -1031,6 +1031,7 @@ Implementation notes:
 
 - The smoke test now mocks a valid `rest` intent, verifies the slow-loop prompt only offers rest/thin-style actions, checks `window.thinking.getSlowPlayback()`, and waits for a melody `rest` event inside the compiled window.
 - The visible subtitle now reads `Slow thinking loop: melody can rest or thin ahead`.
+- Claude approved Byte 11b and the accepted-queue cleanup has been applied. `SlowThinkingController` now has a single accepted-intent handoff path: `onAccepted`.
 
 ### Coordination Principle: Personal Intents Versus Band Proposals
 

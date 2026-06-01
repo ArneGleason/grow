@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Merge Byte 11b bounded melody rest/thin compiler",
-  "status": "byte11b-merged",
-  "updatedAt": "2026-06-01T00:24:32Z",
+  "lastTask": "Clean Byte 11b accepted-intent handoff",
+  "status": "byte11b-clean-merged",
+  "updatedAt": "2026-06-01T00:30:30Z",
   "lastHandoff": "",
   "branch": "main",
   "commit": "main HEAD",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 11b is approved by Claude, merged to main, and ready to push. The slow-thinking lifecycle lives in `src/slow-thinking.ts`, accepted valid thoughts produce an explicit handoff, and the automatic melody request is narrowed to `rest`, `simplify`, and `change_density`. Accepted intents compile into one bounded future playback window, exposed as `window.thinking.getSlowPlayback()`, and only affect melody through the existing note-decision path as a rest or thinning decision. Claude verified live qwen3 `change_density` thinning and lifecycle cleanup. Next tiny cleanup before 11c: remove or prune the unused accepted queue because `main.ts` consumes `onAccepted`; future material-injecting actions must move to the commit/lookahead path."
+    "summary": "Byte 11b is approved and merged to main, and the accepted-queue cleanup is merged too. `src/slow-thinking.ts` now exposes accepted thoughts only through `onAccepted`; there is no parallel `takeAcceptedIntent()` queue. Build, smoke, audit, and diff check were green for the cleanup. Next behavior byte remains Byte 11c: either bounded `shift_register` for melody or a second thinking player; any material-injecting action should move into the commit/lookahead path."
   }
 }

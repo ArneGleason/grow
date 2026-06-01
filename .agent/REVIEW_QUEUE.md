@@ -59,7 +59,7 @@ Use this file for known risks, open questions, and review focus. Keep entries sh
 - Pre-Byte-11 invalid-200 smoke fixture is implemented. A mocked HTTP 200 with validator-failing JSON yields `invalid`, provider `ollama`, valid mock fallback, and stopped transport.
 - Byte 11a is approved. Claude verified no surprise calls before health check, playing+rehearsal+ready gating, one request at a time, thinking posture cleanup, non-blocking transport, clean discard on gate loss/stop, and real qwen3 pending-to-accepted cycles.
 - Byte 11b is approved and merged. Claude verified the first audible bridge is bounded, melody-only, bar-snapped, rest/thin only, validator/fallback-gated, lifecycle-clean, live-qwen3 compatible, and smoke-covered against accepted-but-inert output.
-- Byte 11c setup note: prune or remove the unused `acceptedQueue` in `src/slow-thinking.ts` because `main.ts` currently consumes the `onAccepted` callback path instead.
+- Byte 11b accepted-queue cleanup is implemented: `src/slow-thinking.ts` now has one accepted-intent handoff path, `onAccepted`.
 - Byte 11c direction: rest/thin can remain fire-time, but the first material-injecting action must move to the commit/lookahead path. Consider either bounded `shift_register` next, or a second thinking player with a per-player active-window map.
 - Future band-level changes such as key, mode, chord sequence, or song section changes should use a coordinated band proposal/song-sketch path, not private per-player intent.
 - Model picker is convenience, not a pre-Byte-11 blocker; env/input/`window.ollama.setConfig()` already cover model selection.
