@@ -1067,7 +1067,7 @@ Implementation notes:
 
 ### Byte 11c-b: Explicit Register Delta
 
-Status: implemented.
+Status: implemented and approved.
 
 Clean up the Byte 11c-a register gesture so the model states the intended register move directly.
 
@@ -1091,6 +1091,28 @@ Review focus:
 Implementation notes:
 
 - Smoke coverage now checks the prompt/schema mention `registerDelta`, validates missing/out-of-range/stray register deltas, accepts `registerDelta: 0`, and keeps the audible register-shift smoke passing with explicit `registerDelta: 1`.
+- Claude approved Byte 11c-b and verified build/audit/diff/smoke. This resolves the implicit inference note from 11c-a: missing `registerDelta` is invalid rather than guessed.
+- Live qwen finding: the model can choose `shift_register` but omit `registerDelta`, so the intent is rejected and the deterministic fallback remains safe. Do not restore inference/defaulting; improve model compliance instead.
+- Claude recommended pruning `AcceptedSlowThought.request` because it was only used by the removed register inference. That prune has been applied with the review merge.
+
+### Byte 11c-c: Register Delta Compliance
+
+Status: planned.
+
+Raise real-model land rate for `shift_register` without weakening the validator.
+
+Scope:
+
+- Try a projected JSON schema conditional so `registerDelta` is required when `action` is `shift_register`.
+- Verify whether Ollama/llama.cpp honors that conditional in structured output.
+- If conditional schema support is weak, add a compact concrete `shift_register` example to the primer/prompt.
+- Keep missing `registerDelta` invalid; use deterministic fallback rather than inferring/defaulting.
+
+Review focus:
+
+- whether conditional schema is actually enforced by the local model stack,
+- whether an example improves real qwen compliance without bloating every request,
+- whether the validator remains the canonical guard.
 
 ### Coordination Principle: Personal Intents Versus Band Proposals
 

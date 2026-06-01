@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Implement Byte 11c-b explicit register delta",
-  "status": "byte11c-b-ready-for-review",
-  "updatedAt": "2026-06-01T12:26:10Z",
+  "lastTask": "Merge Byte 11c-b explicit register delta",
+  "status": "byte11c-b-approved-merged",
+  "updatedAt": "2026-06-01T17:37:55Z",
   "lastHandoff": "",
-  "branch": "codex/byte-11c-b",
-  "commit": "codex/byte-11c-b HEAD",
+  "branch": "main",
+  "commit": "main HEAD",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 11c-b is implemented on `codex/byte-11c-b` and ready for review. `shift_register` no longer infers direction from average source/target octaves; `PlayerThoughtIntent.registerDelta` is now the explicit model-authored register move, required for `shift_register`, bounded to -1/0/1, and rejected on other actions. The Ollama primer/projected JSON prompt/schema, coercer, validator, deterministic mock path, slow playback compiler, and smoke tests all use that contract. Byte 11c-a playback behavior remains for `registerDelta: 1`: only existing melody slots shift, tagged `thought:shift_register` and `register:+1`; no slots are added or reordered. Validation: `npm run build`, `npm audit`, `git diff --check`, and full unsandboxed `npm run smoke` passed 15/15."
+    "summary": "Byte 11c-b is approved by Claude and merged to main. `shift_register` no longer infers direction from average source/target octaves; `PlayerThoughtIntent.registerDelta` is now the explicit model-authored register move, required for `shift_register`, bounded to -1/0/1, and rejected on other actions. The Ollama primer/projected JSON prompt/schema, coercer, validator, deterministic mock path, slow playback compiler, and smoke tests all use that contract. Byte 11c-a playback behavior remains for `registerDelta: 1`: only existing melody slots shift, tagged `thought:shift_register` and `register:+1`; no slots are added or reordered. Claude's live qwen finding: real `shift_register` intents currently omit `registerDelta` and safely reject to deterministic fallback. Next slice should improve compliance via conditional schema support and/or a concrete example, without restoring inference/defaulting. `AcceptedSlowThought.request` was pruned as dead state."
   }
 }
