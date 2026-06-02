@@ -150,7 +150,7 @@ export function createOllamaSessionPrimer(): string {
     SHORT_RESPONSE_RULE,
     "Do not schedule sound. Do not describe audio playback. Only propose a future intent.",
     "Allowed actions are provided in the request. Choose exactly one allowed action.",
-    "For shift_register, include registerDelta as -1, 0, or 1. Omit registerDelta for every other action.",
+    "For shift_register, the JSON object is invalid unless it includes top-level registerDelta as -1, 0, or 1. Do not only mention registerDelta in rationale. Required example fields: {\"action\":\"shift_register\",\"registerDelta\":1}. Omit registerDelta for every other action.",
     "MusicalExcerpt convention: steps[].positionBeats is phrase-relative and monotonic from 0.",
     "MusicalExcerpt convention: steps[].scaleDegree is a pitch-class index from 0 to scale.length - 1.",
     "MusicalExcerpt convention: note steps include separate steps[].octave. Do not use wrapping scale degrees.",

@@ -1097,15 +1097,16 @@ Implementation notes:
 
 ### Byte 11c-c: Register Delta Compliance
 
-Status: planned.
+Status: implemented.
 
 Raise real-model land rate for `shift_register` without weakening the validator.
 
 Scope:
 
-- Try a projected JSON schema conditional so `registerDelta` is required when `action` is `shift_register`.
+- Add a projected JSON schema conditional so `registerDelta` is required when `action` is `shift_register`.
 - Verify whether Ollama/llama.cpp honors that conditional in structured output.
-- If conditional schema support is weak, add a compact concrete `shift_register` example to the primer/prompt.
+- Add a compact concrete `shift_register` example to the primer/prompt.
+- Tell the model the field must be top-level and must not be mentioned only in rationale.
 - Keep missing `registerDelta` invalid; use deterministic fallback rather than inferring/defaulting.
 
 Review focus:
@@ -1113,6 +1114,13 @@ Review focus:
 - whether conditional schema is actually enforced by the local model stack,
 - whether an example improves real qwen compliance without bloating every request,
 - whether the validator remains the canonical guard.
+
+Implementation notes:
+
+- `ThoughtIntentJsonSchema` now supports an optional `allOf` array, and the projected JSON schema emits an `if action const shift_register then required registerDelta` condition when `shift_register` is an allowed action.
+- The `registerDelta` property now uses `enum: [-1, 0, 1]` and an explicit top-level-field description.
+- A minimal live qwen probe showed conditional schema plus a plain example still omitted `registerDelta` while mentioning it in the rationale. Strengthening the prompt to say "top-level registerDelta" and "Do not only mention registerDelta in rationale" made the same model emit `registerDelta: 1`.
+- Smoke coverage asserts the prompt/schema include the conditional and concrete top-level example.
 
 ### Coordination Principle: Personal Intents Versus Band Proposals
 

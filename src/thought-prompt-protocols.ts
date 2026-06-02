@@ -46,6 +46,7 @@ export interface ThoughtIntentJsonSchema {
   required: readonly string[];
   properties: Record<string, unknown>;
   additionalProperties: boolean;
+  allOf?: readonly unknown[];
 }
 
 export const DEFAULT_THOUGHT_PROMPT_PROTOCOL_ID: ThoughtPromptProtocolId = "projected-json";
@@ -70,7 +71,7 @@ const PROJECTED_JSON_PROTOCOL: ThoughtPromptProtocol = {
       "Use the request projection only; it is a compact view of the canonical internal request.",
       "Return one JSON object matching the provided schema. No markdown. No prose outside JSON.",
       "Copy request id/player exactly. Choose one allowed action.",
-      "For shift_register, include registerDelta as -1, 0, or 1. Omit registerDelta for every other action.",
+      "For shift_register, the JSON object is invalid unless it includes top-level registerDelta as -1, 0, or 1. Do not only mention registerDelta in rationale. Required example fields: {\"action\":\"shift_register\",\"registerDelta\":1}. Omit registerDelta for every other action.",
       "For note steps, use scaleDegree as 0..scale.length-1 plus separate octave. Do not include pitch; the system derives pitch.",
       "Omit sourceStartBeat; the system owns provenance and placement.",
       "Keep rationale under 160 characters.",
@@ -148,13 +149,20 @@ function createThoughtIntentJsonSchema(request: PlayerThoughtRequest): ThoughtIn
       "rationale",
     ],
     additionalProperties: false,
+    ...(request.allowedActions.includes("shift_register")
+      ? { allOf: [createRegisterDeltaConditionalSchema()] }
+      : {}),
     properties: {
       id: { type: "string" },
       requestId: { type: "string", enum: [request.id] },
       playerId: { type: "string", enum: [request.playerId] },
       responseLevel: { type: "string", enum: RESPONSE_LEVELS },
       action: { type: "string", enum: request.allowedActions },
-      registerDelta: { type: "integer", minimum: -1, maximum: 1 },
+      registerDelta: {
+        type: "integer",
+        enum: [-1, 0, 1],
+        description: "Top-level field required only when action is shift_register. -1 shifts down, 0 stays in register, 1 shifts up.",
+      },
       confidence: { type: "number", minimum: 0, maximum: 1 },
       target: {
         type: "object",
@@ -201,6 +209,20 @@ function createThoughtIntentJsonSchema(request: PlayerThoughtRequest): ThoughtIn
         },
       },
       rationale: { type: "string", maxLength: 180 },
+    },
+  };
+}
+
+function createRegisterDeltaConditionalSchema(): Record<string, unknown> {
+  return {
+    if: {
+      properties: {
+        action: { const: "shift_register" },
+      },
+      required: ["action"],
+    },
+    then: {
+      required: ["registerDelta"],
     },
   };
 }

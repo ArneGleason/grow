@@ -769,13 +769,27 @@ test("manual Ollama thought probe is inspectable with a mocked local endpoint", 
     properties: {
       requestId: { enum: [probe?.requestId] },
       playerId: { enum: [probe?.playerId] },
-      registerDelta: { type: "integer", minimum: -1, maximum: 1 },
+      registerDelta: { type: "integer", enum: [-1, 0, 1] },
     },
+    allOf: [{
+      if: {
+        properties: {
+          action: { const: "shift_register" },
+        },
+        required: ["action"],
+      },
+      then: {
+        required: ["registerDelta"],
+      },
+    }],
   });
   expect(userMessage).toContain("Request projection:");
   expect(userMessage).toContain('"v":"grow.thought/1"');
   expect(userMessage).toContain('"motif"');
   expect(userMessage).toContain("registerDelta");
+  expect(userMessage).toContain("top-level registerDelta");
+  expect(userMessage).toContain("Do not only mention registerDelta in rationale");
+  expect(userMessage).toContain('"action":"shift_register","registerDelta":1');
   expect(userMessage).toContain("Do not include pitch");
   expect(userMessage).not.toContain("Request JSON:");
   expect(userMessage).not.toContain('"seed"');
@@ -1261,7 +1275,9 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
     return appWindow.ollama?.getSessionPrimer();
   });
   expect(primer).toContain("scaleDegree is a pitch-class index");
-  expect(primer).toContain("registerDelta as -1, 0, or 1");
+  expect(primer).toContain("top-level registerDelta as -1, 0, or 1");
+  expect(primer).toContain("Do not only mention registerDelta in rationale");
+  expect(primer).toContain('"action":"shift_register","registerDelta":1');
   expect(primer).toContain("system owns sourceStartBeat");
   const influenceProbePrompt = await page.evaluate(() => {
     const appWindow = window as unknown as {
@@ -1296,6 +1312,8 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   expect(Array.isArray(projectedMelodyRequest.motif)).toBe(true);
   expect(JSON.stringify(projectedMelodyRequest)).not.toContain("sourceStartBeat");
   expect(projectedPrompt).toContain("Request projection:");
+  expect(projectedPrompt).toContain("top-level registerDelta");
+  expect(projectedPrompt).toContain('"action":"shift_register","registerDelta":1');
   expect(projectedPrompt).not.toContain("Request JSON:");
   expect(initialHookIntents.map((intent) => intent.playerId).sort()).toEqual(["bass", "melody", "pulse"]);
   expect(initialMockIntents.map((intent) => intent.playerId).sort()).toEqual(["bass", "melody", "pulse"]);
