@@ -4,7 +4,7 @@ import type { PatternNoteSource, PlayerPatternSource, SongMaterial } from "./son
 
 export type SongSketchStatus = "draft";
 export type SongSketchAssignmentStance = "anchor" | "support" | "lead" | "respond";
-export type SongSketchProposalStatus = "mock";
+export type SongSketchProposalStatus = "mock" | "model";
 export type SongSketchProposalKind = "preserve_space" | "tighten_roots" | "answer_motif";
 export type SongSketchResponseStance = "accept" | "modify" | "resist" | "defer";
 
@@ -73,6 +73,30 @@ export interface SongSketchProposal {
   rootDegrees: readonly number[];
   responses: readonly SongSketchProposalResponse[];
 }
+
+export interface SongSketchProposalTextResponse {
+  playerId: string;
+  reason: string;
+  requestedChange?: string;
+}
+
+export interface SongSketchProposalText {
+  summary: string;
+  requestedAction: string;
+  responses: readonly SongSketchProposalTextResponse[];
+}
+
+export interface SongSketchProposalTextValidation {
+  valid: boolean;
+  errors: string[];
+}
+
+export const SONG_SKETCH_PROPOSAL_TEXT_LIMITS = {
+  summary: 220,
+  requestedAction: 220,
+  reason: 220,
+  requestedChange: 220,
+} as const;
 
 export function createInspectOnlySongSketch(input: {
   song: SongMaterial;
@@ -152,6 +176,108 @@ export function createInspectOnlySongSketchProposal(sketch: SongSketch): SongSke
     responses: sketch.assignments.map((assignment) =>
       createProposalResponse(assignment, targetSection, kind)
     ),
+  };
+}
+
+export function createMockSongSketchProposalText(
+  proposal: SongSketchProposal,
+): SongSketchProposalText {
+  return {
+    summary: proposal.summary,
+    requestedAction: proposal.requestedAction,
+    responses: proposal.responses.map((response) => ({
+      playerId: response.playerId,
+      reason: response.reason,
+      requestedChange: response.requestedChange,
+    })),
+  };
+}
+
+export function validateSongSketchProposalText(
+  text: SongSketchProposalText,
+  proposal: SongSketchProposal,
+): SongSketchProposalTextValidation {
+  const errors: string[] = [];
+  validateRequiredTextField("summary", text.summary, SONG_SKETCH_PROPOSAL_TEXT_LIMITS.summary, errors);
+  validateRequiredTextField(
+    "requestedAction",
+    text.requestedAction,
+    SONG_SKETCH_PROPOSAL_TEXT_LIMITS.requestedAction,
+    errors,
+  );
+
+  const expectedPlayerIds = proposal.responses.map((response) => response.playerId);
+  const expectedPlayerIdSet = new Set(expectedPlayerIds);
+  const seenPlayerIds = new Set<string>();
+
+  if (!Array.isArray(text.responses)) {
+    errors.push("responses must be an array");
+  } else {
+    if (text.responses.length !== proposal.responses.length) {
+      errors.push(`responses must include exactly ${proposal.responses.length} player response(s)`);
+    }
+    for (const response of text.responses) {
+      if (!expectedPlayerIdSet.has(response.playerId)) {
+        errors.push(`responses contains unknown playerId ${response.playerId || "(blank)"}`);
+        continue;
+      }
+      if (seenPlayerIds.has(response.playerId)) {
+        errors.push(`responses contains duplicate playerId ${response.playerId}`);
+      }
+      seenPlayerIds.add(response.playerId);
+      validateRequiredTextField(
+        `responses.${response.playerId}.reason`,
+        response.reason,
+        SONG_SKETCH_PROPOSAL_TEXT_LIMITS.reason,
+        errors,
+      );
+      validateOptionalTextField(
+        `responses.${response.playerId}.requestedChange`,
+        response.requestedChange,
+        SONG_SKETCH_PROPOSAL_TEXT_LIMITS.requestedChange,
+        errors,
+      );
+    }
+  }
+
+  for (const playerId of expectedPlayerIds) {
+    if (!seenPlayerIds.has(playerId)) {
+      errors.push(`responses is missing playerId ${playerId}`);
+    }
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors,
+  };
+}
+
+export function applySongSketchProposalText(
+  proposal: SongSketchProposal,
+  text: SongSketchProposalText,
+  status: SongSketchProposalStatus,
+): SongSketchProposal {
+  const textResponsesByPlayer = new Map(text.responses.map((response) => [
+    response.playerId,
+    response,
+  ]));
+  return {
+    ...proposal,
+    status,
+    summary: text.summary.trim(),
+    requestedAction: text.requestedAction.trim(),
+    chordPlan: [...proposal.chordPlan],
+    rootDegrees: [...proposal.rootDegrees],
+    responses: proposal.responses.map((response) => {
+      const textResponse = textResponsesByPlayer.get(response.playerId);
+      return {
+        ...response,
+        reason: textResponse?.reason.trim() ?? response.reason,
+        requestedChange: textResponse
+          ? normalizeOptionalText(textResponse.requestedChange)
+          : response.requestedChange,
+      };
+    }),
   };
 }
 
@@ -539,6 +665,43 @@ function describeDensity(density: number): string {
 
 function createDensityConstraint(density: number): string {
   return `source density ${density.toFixed(2)}`;
+}
+
+function validateRequiredTextField(
+  field: string,
+  value: string,
+  maximumLength: number,
+  errors: string[],
+): void {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    errors.push(`${field} must be non-empty text`);
+    return;
+  }
+  if (value.trim().length > maximumLength) {
+    errors.push(`${field} must be ${maximumLength} characters or fewer`);
+  }
+}
+
+function validateOptionalTextField(
+  field: string,
+  value: string | undefined,
+  maximumLength: number,
+  errors: string[],
+): void {
+  if (value === undefined) return;
+  if (typeof value !== "string") {
+    errors.push(`${field} must be text when present`);
+    return;
+  }
+  if (value.trim().length > maximumLength) {
+    errors.push(`${field} must be ${maximumLength} characters or fewer`);
+  }
+}
+
+function normalizeOptionalText(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
 }
 
 function normalizeDegree(degree: number): number {

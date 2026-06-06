@@ -216,6 +216,26 @@ type OllamaThoughtProbe = {
   fallbackValidation?: { valid: boolean; errors: string[] };
 };
 
+type OllamaProposalTextProbe = {
+  status: string;
+  provider: string;
+  promptProtocol: string;
+  proposalId?: string;
+  sourceSongId?: string;
+  rawResponse: string;
+  validation: { valid: boolean; errors: string[] };
+  text?: {
+    summary: string;
+    requestedAction: string;
+    responses: Array<{
+      playerId: string;
+      reason: string;
+      requestedChange?: string;
+    }>;
+  };
+  fallbackValidation?: { valid: boolean; errors: string[] };
+};
+
 async function getTransportState(page: Page): Promise<TransportState> {
   const state = await page.evaluate(() => {
     const appWindow = window as unknown as {
@@ -981,6 +1001,175 @@ test("manual Ollama thought probe keeps mock fallback for invalid model JSON", a
   expect(probe?.validation.valid).toBe(false);
   expect(probe?.fallbackValidation?.valid).toBe(true);
   expect(probe?.intent?.musicalIdea.steps[0]?.pitch).toBeUndefined();
+  expect((await getTransportState(page)).status).toBe("stopped");
+});
+
+test("manual Ollama proposal text probe rewrites text without changing proposal structure", async ({ page }) => {
+  const proxyChatPayloads: Array<{
+    baseUrl?: string;
+    request?: {
+      model?: string;
+      messages?: Array<{ role?: string; content?: string }>;
+      stream?: boolean;
+      format?: unknown;
+      think?: boolean;
+      options?: { temperature?: number; num_predict?: number };
+    };
+  }> = [];
+
+  await page.route("**/api/ollama/chat**", async (route) => {
+    proxyChatPayloads.push(JSON.parse(route.request().postData() ?? "{}"));
+    await route.fulfill({
+      status: 200,
+      headers: {
+        "content-type": "application/json",
+        "x-grow-ollama-proxy": "smoke",
+      },
+      body: JSON.stringify({
+        model: "qwen3:4b-instruct-2507-q4_K_M",
+        message: {
+          role: "assistant",
+          content: JSON.stringify({
+            summary: "Model answer: make the back half feel like an intentional cue.",
+            requestedAction: "Model text: let Answer snap the bVII-V cue into focus.",
+            responses: [
+              {
+                playerId: "pulse",
+                reason: "Keep the floor steady so the cue lands without extra fill.",
+              },
+              {
+                playerId: "bass",
+                reason: "Name the roots plainly and let the motion speak.",
+              },
+              {
+                playerId: "melody",
+                reason: "Answer after the bass cue so the sparse turn feels chosen.",
+                requestedChange: "Leave one clean breath before the answering phrase.",
+              },
+            ],
+          }),
+        },
+        done: true,
+      }),
+    });
+  });
+
+  await page.goto("/");
+  await expect(page.getByTestId("song-sketch-proposal")).toContainText("mock/");
+  const beforeProposal = await getSongProposal(page);
+
+  await page.getByTestId("ollama-send-proposal").click();
+  await expect(page.getByTestId("ollama-proposal-text-status")).toContainText("model text valid");
+  await expect(page.getByTestId("ollama-proposal-raw-response")).toContainText("Model answer");
+  await expect(page.getByTestId("song-sketch-proposal")).toContainText("model/");
+  await expect(page.getByTestId("song-sketch-proposal")).toContainText("snap the bVII-V cue");
+  await expect(page.getByTestId("song-sketch-responses")).toContainText("Leave one clean breath");
+
+  const afterProposal = await getSongProposal(page);
+  expect(afterProposal.status).toBe("model");
+  expect(afterProposal.id).toBe(beforeProposal.id);
+  expect(afterProposal.kind).toBe(beforeProposal.kind);
+  expect(afterProposal.targetSectionId).toBe(beforeProposal.targetSectionId);
+  expect(afterProposal.proposedByPlayerId).toBe(beforeProposal.proposedByPlayerId);
+  expect(afterProposal.chordPlan).toEqual(beforeProposal.chordPlan);
+  expect(afterProposal.rootDegrees).toEqual(beforeProposal.rootDegrees);
+  expect(afterProposal.responses.map((response) => response.playerId)).toEqual(
+    beforeProposal.responses.map((response) => response.playerId),
+  );
+  expect(afterProposal.responses.map((response) => response.stance)).toEqual(
+    beforeProposal.responses.map((response) => response.stance),
+  );
+  expect(afterProposal.responses.find((response) => response.playerId === "melody")?.reason).toContain(
+    "sparse turn feels chosen",
+  );
+
+  const probe = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      ollama?: { getLastProposalTextTest(): OllamaProposalTextProbe };
+    };
+    return appWindow.ollama?.getLastProposalTextTest();
+  });
+
+  expect(probe?.status).toBe("valid");
+  expect(probe?.provider).toBe("ollama");
+  expect(probe?.promptProtocol).toBe("song-proposal-text");
+  expect(probe?.proposalId).toBe(beforeProposal.id);
+  expect(probe?.validation.valid).toBe(true);
+  expect(probe?.fallbackValidation?.valid).toBe(true);
+  expect((await getTransportState(page)).lookahead.pendingSlotCount).toBe(0);
+  expect((await getTransportState(page)).status).toBe("stopped");
+
+  expect(proxyChatPayloads).toHaveLength(1);
+  const chatPayload = proxyChatPayloads[0].request ?? {};
+  const formatText = JSON.stringify(chatPayload.format);
+  const userMessage = chatPayload.messages?.find((message) => message.role === "user")?.content ?? "";
+  expect(proxyChatPayloads[0].baseUrl).toBe("http://127.0.0.1:11434");
+  expect(chatPayload.model).toBe("qwen3:4b-instruct-2507-q4_K_M");
+  expect(chatPayload.stream).toBe(false);
+  expect(chatPayload.think).toBe(false);
+  expect(chatPayload.options?.num_predict).toBeLessThanOrEqual(384);
+  expect(formatText).not.toContain('"kind"');
+  expect(formatText).not.toContain('"stance"');
+  expect(formatText).not.toContain('"chordPlan"');
+  expect(formatText).not.toContain('"rootDegrees"');
+  expect(formatText).toContain('"playerId"');
+  expect(userMessage).toContain("Proposal projection:");
+  expect(userMessage).toContain('"kind":"tighten_roots"');
+  expect(userMessage).toContain('"chordPlan"');
+  expect(userMessage).toContain("Do not return kind, status, role, stance");
+});
+
+test("manual Ollama proposal text probe keeps mock fallback for invalid model text", async ({ page }) => {
+  await page.route("**/api/ollama/chat**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      headers: {
+        "content-type": "application/json",
+        "x-grow-ollama-proxy": "smoke",
+      },
+      body: JSON.stringify({
+        model: "qwen3:4b-instruct-2507-q4_K_M",
+        message: {
+          role: "assistant",
+          content: JSON.stringify({
+            summary: "Bad proposal text fixture",
+            requestedAction: "This omits one player and duplicates another.",
+            responses: [
+              { playerId: "pulse", reason: "First pulse response." },
+              { playerId: "pulse", reason: "Duplicate pulse response." },
+            ],
+          }),
+        },
+        done: true,
+      }),
+    });
+  });
+
+  await page.goto("/");
+  await expect(page.getByTestId("song-sketch-proposal")).toContainText("mock/");
+  const beforeProposal = await getSongProposal(page);
+  await page.getByTestId("ollama-send-proposal").click();
+  await expect(page.getByTestId("ollama-proposal-text-status")).toContainText("invalid");
+  await expect(page.getByTestId("song-sketch-proposal")).toContainText("mock/");
+
+  const afterProposal = await getSongProposal(page);
+  expect(afterProposal.status).toBe("mock");
+  expect(afterProposal.summary).toBe(beforeProposal.summary);
+  expect(afterProposal.requestedAction).toBe(beforeProposal.requestedAction);
+
+  const probe = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      ollama?: { getLastProposalTextTest(): OllamaProposalTextProbe };
+    };
+    return appWindow.ollama?.getLastProposalTextTest();
+  });
+
+  expect(probe?.status).toBe("invalid");
+  expect(probe?.provider).toBe("ollama");
+  expect(probe?.validation.valid).toBe(false);
+  expect(probe?.validation.errors.join(" | ")).toContain("duplicate playerId pulse");
+  expect(probe?.validation.errors.join(" | ")).toContain("missing playerId bass");
+  expect(probe?.fallbackValidation?.valid).toBe(true);
   expect((await getTransportState(page)).status).toBe("stopped");
 });
 

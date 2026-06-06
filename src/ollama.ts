@@ -19,6 +19,15 @@ import {
   isThoughtPromptProtocolId,
   type ThoughtPromptProtocolId,
 } from "./thought-prompt-protocols";
+import {
+  SONG_SKETCH_PROPOSAL_TEXT_LIMITS,
+  createMockSongSketchProposalText,
+  validateSongSketchProposalText,
+  type SongSketchProposal,
+  type SongSketchProposalText,
+  type SongSketchProposalTextResponse,
+  type SongSketchProposalTextValidation,
+} from "./song-sketch";
 
 export interface OllamaConfig {
   baseUrl: string;
@@ -68,6 +77,30 @@ export interface OllamaThoughtTestResult {
   message: string;
 }
 
+export interface OllamaProposalTextParseResult {
+  status: "idle" | "ok" | "error";
+  errors: string[];
+  text?: SongSketchProposalText;
+}
+
+export interface OllamaProposalTextTestResult {
+  status: "idle" | "running" | "valid" | "invalid" | "failed";
+  provider: "none" | "ollama" | "mock-fallback";
+  model: string;
+  baseUrl: string;
+  promptProtocol: "song-proposal-text";
+  proposalId?: string;
+  sourceSongId?: SongSketchProposal["sourceSongId"];
+  latencyMs?: number;
+  rawResponse: string;
+  parse: OllamaProposalTextParseResult;
+  validation: SongSketchProposalTextValidation;
+  text?: SongSketchProposalText;
+  fallbackText?: SongSketchProposalText;
+  fallbackValidation?: SongSketchProposalTextValidation;
+  message: string;
+}
+
 export interface OllamaThoughtRunOptions {
   signal?: AbortSignal;
 }
@@ -105,8 +138,11 @@ const DEFAULT_OLLAMA_BASE_URL = import.meta.env?.VITE_GROW_OLLAMA_BASE_URL ?? "h
 const DEFAULT_OLLAMA_MODEL = import.meta.env?.VITE_GROW_OLLAMA_MODEL ?? "qwen3:4b-instruct-2507-q4_K_M";
 const DEFAULT_PROMPT_PROTOCOL = import.meta.env?.VITE_GROW_THOUGHT_PROMPT_PROTOCOL ?? DEFAULT_THOUGHT_PROMPT_PROTOCOL_ID;
 const DEFAULT_OLLAMA_TIMEOUT_MS = 15_000;
+const COMPACT_JSON_RULE = "Return only one compact JSON object. No markdown. No prose outside JSON.";
 const SHORT_RESPONSE_RULE =
-  "Return only one compact JSON object. No markdown. No prose outside JSON. Keep rationale under 160 characters.";
+  `${COMPACT_JSON_RULE} Keep rationale under 160 characters.`;
+const PROPOSAL_TEXT_RULE =
+  `${COMPACT_JSON_RULE} Keep every text field short enough for an inspector row.`;
 
 export function createDefaultOllamaConfig(): OllamaConfig {
   return {
@@ -143,6 +179,22 @@ export function createInitialOllamaThoughtTest(config: OllamaConfig): OllamaThou
   };
 }
 
+export function createInitialOllamaProposalTextTest(
+  config: OllamaConfig,
+): OllamaProposalTextTestResult {
+  return {
+    status: "idle",
+    provider: "none",
+    model: config.model,
+    baseUrl: config.baseUrl,
+    promptProtocol: "song-proposal-text",
+    rawResponse: "",
+    parse: { status: "idle", errors: [] },
+    validation: { valid: false, errors: [] },
+    message: "No Ollama proposal text sent",
+  };
+}
+
 export function createOllamaSessionPrimer(options: {
   allowsRegisterShift?: boolean;
 } = {}): string {
@@ -164,6 +216,18 @@ export function createOllamaSessionPrimer(options: {
   ].join("\n");
 }
 
+export function createOllamaSongSketchProposalPrimer(): string {
+  return [
+    "You are Grow's local band-proposal copy editor.",
+    "You receive one deterministic SongSketchProposal projection and rewrite reader-facing text only.",
+    "The app validates your JSON. Invalid output is ignored and deterministic mock text stays active.",
+    PROPOSAL_TEXT_RULE,
+    "Do not add, remove, or change proposal kind, status, target section, proposer, chord plan, root degrees, response stances, player ids, timing, or scheduling.",
+    "Do not invent a key change, mode change, new section, new chord, or playback instruction.",
+    "Keep the wording grounded in the fixed chord/root plan and each player's existing stance.",
+  ].join("\n");
+}
+
 export function createOllamaThoughtPrompt(
   request: PlayerThoughtRequest,
   options: {
@@ -179,6 +243,44 @@ export function createOllamaInfluenceProbePrompt(
   influenceReference = "one remembered playing technique, not a copied song",
 ): string {
   return createOllamaThoughtPrompt(request, { influenceReference });
+}
+
+export function createOllamaSongSketchProposalPrompt(
+  proposal: SongSketchProposal,
+): string {
+  const projection = {
+    v: "grow.songProposalText/1",
+    proposalId: proposal.id,
+    sourceSongId: proposal.sourceSongId,
+    fixed: {
+      kind: proposal.kind,
+      targetSectionId: proposal.targetSectionId,
+      proposedByPlayerId: proposal.proposedByPlayerId,
+      chordPlan: proposal.chordPlan,
+      rootDegrees: proposal.rootDegrees,
+    },
+    textSlots: {
+      summary: proposal.summary,
+      requestedAction: proposal.requestedAction,
+      responses: proposal.responses.map((response) => ({
+        playerId: response.playerId,
+        role: response.role,
+        stance: response.stance,
+        reason: response.reason,
+        requestedChange: response.requestedChange,
+      })),
+    },
+  };
+
+  return [
+    "Rewrite only the text slots in this proposal.",
+    "Return this JSON shape exactly: {\"summary\":\"...\",\"requestedAction\":\"...\",\"responses\":[{\"playerId\":\"...\",\"reason\":\"...\",\"requestedChange\":\"...\"}]}",
+    "Each response must include exactly one entry for each listed playerId. Keep playerId unchanged.",
+    "requestedChange is optional; omit it when the stance does not need a concrete change.",
+    "Do not return kind, status, role, stance, chordPlan, rootDegrees, targetSectionId, or proposedByPlayerId.",
+    "Proposal projection:",
+    JSON.stringify(projection),
+  ].join("\n");
 }
 
 export async function checkOllamaHealth(config: OllamaConfig): Promise<OllamaHealthState> {
@@ -308,6 +410,93 @@ export async function runOllamaThoughtTest(
   }
 }
 
+export async function runOllamaProposalTextTest(
+  proposal: SongSketchProposal,
+  config: OllamaConfig,
+  options: OllamaThoughtRunOptions = {},
+): Promise<OllamaProposalTextTestResult> {
+  const startedAt = Date.now();
+  const fallbackText = createMockSongSketchProposalText(proposal);
+  const fallbackValidation = validateSongSketchProposalText(fallbackText, proposal);
+  const ollamaRequest: OllamaChatRequest = {
+    model: config.model,
+    messages: [
+      { role: "system", content: createOllamaSongSketchProposalPrimer() },
+      { role: "user", content: createOllamaSongSketchProposalPrompt(proposal) },
+    ],
+    stream: false,
+    format: createSongSketchProposalTextResponseFormat(proposal),
+    think: false,
+    options: {
+      temperature: 0.45,
+      num_predict: 384,
+    },
+  };
+
+  try {
+    const response = await fetchWithTimeout(
+      createOllamaProxyUrl("chat", config),
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          baseUrl: sanitizeBaseUrl(config.baseUrl),
+          request: ollamaRequest,
+        } satisfies OllamaProxyChatRequest),
+      },
+      config.timeoutMs,
+      options.signal,
+    );
+    const latencyMs = Date.now() - startedAt;
+    if (!response.ok) {
+      return createFailedProposalTextTest(
+        proposal,
+        config,
+        fallbackText,
+        fallbackValidation,
+        latencyMs,
+        `HTTP ${response.status}`,
+      );
+    }
+
+    const payload = await response.json() as OllamaChatResponse;
+    const rawResponse = getOllamaResponseText(payload);
+    const parse = parseOllamaProposalTextResponse(rawResponse);
+    const validation = parse.text
+      ? validateSongSketchProposalText(parse.text, proposal)
+      : { valid: false, errors: parse.errors };
+
+    return {
+      status: parse.text && validation.valid ? "valid" : "invalid",
+      provider: "ollama",
+      model: config.model,
+      baseUrl: config.baseUrl,
+      promptProtocol: "song-proposal-text",
+      proposalId: proposal.id,
+      sourceSongId: proposal.sourceSongId,
+      latencyMs,
+      rawResponse,
+      parse,
+      validation,
+      text: parse.text,
+      fallbackText,
+      fallbackValidation,
+      message: parse.text && validation.valid
+        ? "Ollama returned valid proposal text"
+        : "Ollama responded, but proposal text did not validate",
+    };
+  } catch (error) {
+    return createFailedProposalTextTest(
+      proposal,
+      config,
+      fallbackText,
+      fallbackValidation,
+      Date.now() - startedAt,
+      getErrorMessage(error),
+    );
+  }
+}
+
 function getOllamaResponseText(payload: OllamaChatResponse): string {
   const candidates = [
     payload.message?.content,
@@ -315,6 +504,40 @@ function getOllamaResponseText(payload: OllamaChatResponse): string {
     payload.message?.thinking,
   ];
   return candidates.find((candidate) => (candidate?.trim().length ?? 0) > 0) ?? "";
+}
+
+export function parseOllamaProposalTextResponse(
+  rawResponse: string,
+): OllamaProposalTextParseResult {
+  const jsonText = extractJsonObject(rawResponse);
+  if (!jsonText) {
+    return {
+      status: "error",
+      errors: ["response did not contain a JSON object"],
+    };
+  }
+
+  try {
+    const parsed = JSON.parse(jsonText) as unknown;
+    const object = unwrapProposalTextObject(parsed);
+    if (!object) {
+      return {
+        status: "error",
+        errors: ["response JSON was not an object"],
+      };
+    }
+
+    return {
+      status: "ok",
+      errors: [],
+      text: coerceSongSketchProposalText(object),
+    };
+  } catch (error) {
+    return {
+      status: "error",
+      errors: [`response JSON parse failed: ${getErrorMessage(error)}`],
+    };
+  }
 }
 
 export function parseOllamaThoughtResponse(
@@ -394,6 +617,75 @@ function createFailedThoughtTest(
   };
 }
 
+function createFailedProposalTextTest(
+  proposal: SongSketchProposal,
+  config: OllamaConfig,
+  fallbackText: SongSketchProposalText,
+  fallbackValidation: SongSketchProposalTextValidation,
+  latencyMs: number,
+  message: string,
+): OllamaProposalTextTestResult {
+  return {
+    status: "failed",
+    provider: "mock-fallback",
+    model: config.model,
+    baseUrl: config.baseUrl,
+    promptProtocol: "song-proposal-text",
+    proposalId: proposal.id,
+    sourceSongId: proposal.sourceSongId,
+    latencyMs,
+    rawResponse: "",
+    parse: { status: "error", errors: [message] },
+    validation: { valid: false, errors: [message] },
+    fallbackText,
+    fallbackValidation,
+    message: `Ollama unavailable; deterministic proposal text fallback is ${fallbackValidation.valid ? "valid" : "invalid"}`,
+  };
+}
+
+function createSongSketchProposalTextResponseFormat(proposal: SongSketchProposal): unknown {
+  const playerIds = proposal.responses.map((response) => response.playerId);
+  return {
+    type: "object",
+    additionalProperties: false,
+    required: ["summary", "requestedAction", "responses"],
+    properties: {
+      summary: {
+        type: "string",
+        minLength: 1,
+        maxLength: SONG_SKETCH_PROPOSAL_TEXT_LIMITS.summary,
+      },
+      requestedAction: {
+        type: "string",
+        minLength: 1,
+        maxLength: SONG_SKETCH_PROPOSAL_TEXT_LIMITS.requestedAction,
+      },
+      responses: {
+        type: "array",
+        minItems: playerIds.length,
+        maxItems: playerIds.length,
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["playerId", "reason"],
+          properties: {
+            playerId: { type: "string", enum: playerIds },
+            reason: {
+              type: "string",
+              minLength: 1,
+              maxLength: SONG_SKETCH_PROPOSAL_TEXT_LIMITS.reason,
+            },
+            requestedChange: {
+              type: "string",
+              maxLength: SONG_SKETCH_PROPOSAL_TEXT_LIMITS.requestedChange,
+            },
+          },
+        },
+      },
+    },
+  };
+}
+
 function coercePlayerThoughtIntent(
   value: Record<string, unknown>,
   request: PlayerThoughtRequest,
@@ -414,6 +706,29 @@ function coercePlayerThoughtIntent(
     },
     musicalIdea: coerceMusicalExcerpt(value.musicalIdea, request),
     rationale: getString(value.rationale),
+  };
+}
+
+function coerceSongSketchProposalText(value: Record<string, unknown>): SongSketchProposalText {
+  return {
+    summary: getString(value.summary),
+    requestedAction: getString(value.requestedAction),
+    responses: Array.isArray(value.responses)
+      ? value.responses.map(coerceSongSketchProposalTextResponse)
+      : [],
+  };
+}
+
+function coerceSongSketchProposalTextResponse(
+  value: unknown,
+): SongSketchProposalTextResponse {
+  const object = isRecord(value) ? value : {};
+  const playerId = getString(object.playerId);
+  const requestedChange = getString(object.requestedChange).trim();
+  return {
+    playerId,
+    reason: getString(object.reason),
+    requestedChange: requestedChange.length > 0 ? requestedChange : undefined,
   };
 }
 
@@ -512,6 +827,12 @@ function extractJsonObject(rawResponse: string): string | undefined {
 function unwrapIntentObject(value: unknown): Record<string, unknown> | undefined {
   if (!isRecord(value)) return undefined;
   if (isRecord(value.intent)) return value.intent;
+  return value;
+}
+
+function unwrapProposalTextObject(value: unknown): Record<string, unknown> | undefined {
+  if (!isRecord(value)) return undefined;
+  if (isRecord(value.proposalText)) return value.proposalText;
   return value;
 }
 

@@ -71,6 +71,7 @@ Use this file for known risks, open questions, and review focus. Keep entries sh
 - Byte 12b-a is approved and merged. Claude confirmed the roman-root `chordPlan` plus structured `rootDegrees` split, per-song density/root derivation, memoized content boundary, and inspect-only/no-playback line.
 - Byte 12b-b is approved and merged. Claude confirmed the deterministic proposal/response surface is the right first band-level coordination shape and remains strictly inspect-only.
 - Next proposal review focus: model-authored proposal text should use the existing validator + deterministic mock fallback, while kind/stance/provenance stay deterministic; do not fold persistence or proposal-to-playback into that small slice.
+- Byte 12b-c is ready for review. Focus on the model boundary: Ollama should only rewrite proposal summary/action/reason text, the JSON schema should omit deterministic fields such as kind/stance/chordPlan/rootDegrees, invalid text should keep the mock proposal active, and this manual probe should not touch playback, transport, slow-thinking, persistence, or scheduling.
 - Future material-injecting actions still need the commit/lookahead path; the current pitch override should not become a backdoor for adding notes or changing motif shape.
 - Future band-level changes such as key, mode, chord sequence, or song section changes should use a coordinated band proposal/song-sketch path, not private per-player intent.
 - Model picker is convenience, not a pre-Byte-11 blocker; env/input/`window.ollama.setConfig()` already cover model selection.

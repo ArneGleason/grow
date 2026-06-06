@@ -1308,6 +1308,37 @@ Implementation notes:
 - Forward note: memoize proposal construction if the richer sketch/proposal surfaces become heavier; it currently rebuilds on each render frame.
 - Next-slice steer: add model-authored proposal text behind the existing validator plus deterministic mock fallback, while keeping proposal kind, stance, chord/root provenance, and routing deterministic. Persistence prep should follow that, and proposal-to-playback should be a separate carefully gated byte.
 
+### Byte 12b-c: Model-Authored Proposal Text
+
+Status: implemented; awaiting review.
+
+Let Ollama rewrite the readable proposal wording without giving it authority over the band-level decision.
+
+Scope:
+
+- Add a bounded `SongSketchProposalText` overlay for `summary`, `requestedAction`, and per-player response `reason` / optional `requestedChange`.
+- Extend proposal status from `mock` to `mock | model`.
+- Keep `kind`, target section, proposer, chord plan, root degrees, response stances, player ids, timing, and routing deterministic.
+- Add a proposal-text prompt, primer, JSON-schema format, parser, validator, and deterministic mock fallback.
+- Add a manual `Send proposal` Ollama button and inspector/debug readouts.
+- Apply model text only when it validates against the active proposal id; keep mock text active on invalid/failed/stale output.
+- Expose the result through `window.ollama.getLastProposalTextTest()` and keep `window.song.getProposal()` returning the active inspect-only proposal.
+- Do not add automatic proposal calls, persistence, proposal-to-playback, transport changes, slow-thinking changes, or scheduling behavior.
+
+Acceptance criteria:
+
+- A mocked valid proposal-text response changes `window.song.getProposal().status` to `model` and updates only readable text fields.
+- Fixed fields stay unchanged: proposal id, kind, target section, proposer, chord plan, root degrees, player ids, and response stances.
+- A mocked invalid response keeps the visible proposal at `mock` and leaves a valid fallback in the Ollama result.
+- The model-facing schema omits structural proposal fields such as `kind`, `stance`, `chordPlan`, and `rootDegrees`.
+- `npm audit`, `npm run build`, `npm run smoke`, and `git diff --check` are green.
+
+Review focus:
+
+- Check that the model is only a copywriter for inspect-only proposal text.
+- Check that invalid model text cannot replace the deterministic proposal.
+- Check that the new manual Ollama path does not trigger surprise/background calls or touch playback state.
+
 ### Byte 13: Thought Memory And Persistence Prep
 
 Prepare to preserve player identity, backstory fragments, thoughts, and useful motifs.

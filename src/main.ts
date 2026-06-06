@@ -5,13 +5,16 @@ import {
   checkOllamaHealth,
   createDefaultOllamaConfig,
   createInitialOllamaHealth,
+  createInitialOllamaProposalTextTest,
   createInitialOllamaThoughtTest,
   createOllamaInfluenceProbePrompt,
   createOllamaSessionPrimer,
   parseOllamaThoughtResponse,
+  runOllamaProposalTextTest,
   runOllamaThoughtTest,
   type OllamaConfig,
   type OllamaHealthState,
+  type OllamaProposalTextTestResult,
   type OllamaThoughtParseResult,
   type OllamaThoughtTestResult,
 } from "./ollama";
@@ -38,6 +41,7 @@ import {
   type SongMaterial,
 } from "./song-material";
 import {
+  applySongSketchProposalText,
   createInspectOnlySongSketch,
   createInspectOnlySongSketchProposal,
   rootNoteFromScaleDegree,
@@ -97,6 +101,7 @@ const world = new GrowWorldState(PLAYER_REGISTRY);
 let ollamaConfig = createDefaultOllamaConfig();
 let ollamaHealth = createInitialOllamaHealth(ollamaConfig);
 let ollamaThoughtTest = createInitialOllamaThoughtTest(ollamaConfig);
+let ollamaProposalTextTest = createInitialOllamaProposalTextTest(ollamaConfig);
 let ollamaRequestInFlight = false;
 let songId: SongId = DEFAULT_SONG_ID;
 let timingFeelMode: TimingFeelMode = "feel";
@@ -182,7 +187,7 @@ const HELP_TOPICS = {
   },
   ollama: {
     title: "Ollama",
-    body: "Ollama is the local model boundary for slow player thoughts. Check verifies the local server and model, while Send thought runs one validated manual projected-JSON request without scheduling model output into the music. The model names scale degrees; Grow derives exact pitches.",
+    body: "Ollama is the local model boundary for slow player thoughts and band-proposal wording. Check verifies the local server and model, Send thought runs one validated player-thought request, and Send proposal rewrites inspect-only proposal text without letting the model change musical structure.",
   },
   players: {
     title: "Players",
@@ -374,6 +379,7 @@ ${renderHelpButton("ollama", "Ollama thought probe")}
             <div class="ollama-actions">
               <button class="mini-button" data-testid="ollama-health-check" type="button">Check</button>
               <button class="mini-button" data-testid="ollama-send-thought" type="button">Send thought</button>
+              <button class="mini-button" data-testid="ollama-send-proposal" type="button">Send proposal</button>
             </div>
           </div>
           <dl>
@@ -389,6 +395,8 @@ ${renderHelpButton("ollama", "Ollama thought probe")}
             <dd data-testid="ollama-parse-result">idle</dd>
             <dt>Valid</dt>
             <dd data-testid="ollama-validation-result">idle</dd>
+            <dt>Proposal text</dt>
+            <dd data-testid="ollama-proposal-text-status">idle</dd>
             <dt>Fallback</dt>
             <dd data-testid="ollama-fallback-status">mock ready</dd>
             <dt>Errors</dt>
@@ -397,6 +405,8 @@ ${renderHelpButton("ollama", "Ollama thought probe")}
             <dd data-testid="ollama-primer-summary">Projected JSON intent; scaleDegree 0..scale-1 plus octave; registerDelta for shifts; system derives pitch/sourceStartBeat.</dd>
             <dt>Raw</dt>
             <dd><pre class="raw-response" data-testid="ollama-raw-response">none</pre></dd>
+            <dt>Proposal raw</dt>
+            <dd><pre class="raw-response" data-testid="ollama-proposal-raw-response">none</pre></dd>
           </dl>
         </section>
 
@@ -502,15 +512,18 @@ const ollamaBaseUrlInput = requireElement<HTMLInputElement>("[data-testid='ollam
 const ollamaModelInput = requireElement<HTMLInputElement>("[data-testid='ollama-model-input']");
 const ollamaHealthButton = requireElement<HTMLButtonElement>("[data-testid='ollama-health-check']");
 const ollamaSendThoughtButton = requireElement<HTMLButtonElement>("[data-testid='ollama-send-thought']");
+const ollamaSendProposalButton = requireElement<HTMLButtonElement>("[data-testid='ollama-send-proposal']");
 const ollamaHealthStatus = requireElement<HTMLElement>("[data-testid='ollama-health-status']");
 const ollamaModelStatus = requireElement<HTMLElement>("[data-testid='ollama-model-status']");
 const ollamaProtocolStatus = requireElement<HTMLElement>("[data-testid='ollama-protocol-status']");
 const ollamaLatency = requireElement<HTMLElement>("[data-testid='ollama-latency']");
 const ollamaParseResult = requireElement<HTMLElement>("[data-testid='ollama-parse-result']");
 const ollamaValidationResult = requireElement<HTMLElement>("[data-testid='ollama-validation-result']");
+const ollamaProposalTextStatus = requireElement<HTMLElement>("[data-testid='ollama-proposal-text-status']");
 const ollamaFallbackStatus = requireElement<HTMLElement>("[data-testid='ollama-fallback-status']");
 const ollamaErrors = requireElement<HTMLElement>("[data-testid='ollama-errors']");
 const ollamaRawResponse = requireElement<HTMLElement>("[data-testid='ollama-raw-response']");
+const ollamaProposalRawResponse = requireElement<HTMLElement>("[data-testid='ollama-proposal-raw-response']");
 const listeningEventCount = requireElement<HTMLElement>("[data-testid='listening-event-count']");
 const listeningWindow = requireElement<HTMLElement>("[data-testid='listening-window']");
 const listeningLatestEvent = requireElement<HTMLElement>("[data-testid='listening-latest-event']");
@@ -939,7 +952,7 @@ function formatSlowThoughtPlayback(playback: SlowThoughtPlayback): string {
 }
 
 function renderSongSketch(sketch: SongSketch): void {
-  const proposal = createInspectOnlySongSketchProposal(sketch);
+  const proposal = getSongSketchProposalForSketch(sketch);
   songSketchTitle.textContent = `${sketch.title} (${sketch.status})`;
   songSketchProposer.textContent = `${sketch.proposerPlayerId} -> ${sketch.affectedPlayerIds.join(", ")}`;
   songSketchSections.textContent = sketch.sections.map((section) =>
@@ -997,7 +1010,23 @@ function formatSongSketchSection(section: SongSketchSection, sketch: SongSketch)
 }
 
 function getCurrentSongSketchProposal(state: GrowTransportState = getState()): SongSketchProposal {
+  return getSongSketchProposalForSketch(getCurrentSongSketch(state));
+}
+
+function getCurrentBaseSongSketchProposal(state: GrowTransportState = getState()): SongSketchProposal {
   return createInspectOnlySongSketchProposal(getCurrentSongSketch(state));
+}
+
+function getSongSketchProposalForSketch(sketch: SongSketch): SongSketchProposal {
+  const baseProposal = createInspectOnlySongSketchProposal(sketch);
+  if (
+    ollamaProposalTextTest.status === "valid" &&
+    ollamaProposalTextTest.proposalId === baseProposal.id &&
+    ollamaProposalTextTest.text
+  ) {
+    return applySongSketchProposalText(baseProposal, ollamaProposalTextTest.text, "model");
+  }
+  return baseProposal;
 }
 
 function cloneSongSketch(sketch: SongSketch, createdAtBeat: number): SongSketch {
@@ -1092,15 +1121,18 @@ function renderLookahead(lookahead: GrowLookaheadState): void {
 function renderOllama(): void {
   ollamaHealthButton.disabled = ollamaRequestInFlight;
   ollamaSendThoughtButton.disabled = ollamaRequestInFlight;
+  ollamaSendProposalButton.disabled = ollamaRequestInFlight;
   ollamaHealthStatus.textContent = `${ollamaHealth.status}: ${ollamaHealth.message}`;
   ollamaModelStatus.textContent = `${ollamaConfig.model} @ ${ollamaConfig.baseUrl}`;
   ollamaProtocolStatus.textContent = `${ollamaConfig.promptProtocol} (${getThoughtPromptProtocol(ollamaConfig.promptProtocol).label})`;
   ollamaLatency.textContent = formatOllamaLatency(ollamaThoughtTest, ollamaHealth);
   ollamaParseResult.textContent = formatOllamaParse(ollamaThoughtTest.parse);
   ollamaValidationResult.textContent = formatOllamaValidation(ollamaThoughtTest);
+  ollamaProposalTextStatus.textContent = formatOllamaProposalTextStatus(ollamaProposalTextTest);
   ollamaFallbackStatus.textContent = formatOllamaFallback(ollamaThoughtTest);
   ollamaErrors.textContent = formatOllamaErrors(ollamaThoughtTest);
   ollamaRawResponse.textContent = formatRawResponse(ollamaThoughtTest.rawResponse);
+  ollamaProposalRawResponse.textContent = formatRawResponse(ollamaProposalTextTest.rawResponse);
 }
 
 function renderSessionMode(): void {
@@ -1401,6 +1433,7 @@ function setOllamaConfig(nextConfig: Partial<OllamaConfig>): OllamaConfig {
     ...createInitialOllamaHealth(ollamaConfig),
     message: "Config changed; health not checked",
   };
+  ollamaProposalTextTest = createInitialOllamaProposalTextTest(ollamaConfig);
   renderOllama();
   return ollamaConfig;
 }
@@ -1446,6 +1479,28 @@ async function runManualOllamaThoughtTest(playerId = "melody"): Promise<OllamaTh
   }
 }
 
+async function runManualOllamaProposalTextTest(): Promise<OllamaProposalTextTestResult> {
+  const config = readOllamaConfigFromInputs();
+  const proposal = getCurrentBaseSongSketchProposal();
+  ollamaRequestInFlight = true;
+  ollamaProposalTextTest = {
+    ...createInitialOllamaProposalTextTest(config),
+    status: "running",
+    provider: "ollama",
+    proposalId: proposal.id,
+    sourceSongId: proposal.sourceSongId,
+    message: "Sending one proposal text request to local Ollama",
+  };
+  renderOllama();
+  try {
+    ollamaProposalTextTest = await runOllamaProposalTextTest(proposal, config);
+    return ollamaProposalTextTest;
+  } finally {
+    ollamaRequestInFlight = false;
+    renderWorld();
+  }
+}
+
 function getInfluenceProbePrompt(playerId = "melody"): string {
   const request = getCurrentThoughtRequest(playerId, "influence_probe");
   return createOllamaInfluenceProbePrompt(
@@ -1481,6 +1536,18 @@ function formatOllamaValidation(thoughtTest: OllamaThoughtTestResult): string {
   return thoughtTest.validation.valid
     ? "valid"
     : `invalid (${thoughtTest.validation.errors.length})`;
+}
+
+function formatOllamaProposalTextStatus(result: OllamaProposalTextTestResult): string {
+  if (result.status === "idle") return "idle";
+  if (result.status === "running") return `running ${result.proposalId ?? "proposal"}`;
+  if (result.status === "valid") {
+    return `model text valid (${result.sourceSongId ?? "song"})`;
+  }
+  if (result.status === "invalid") {
+    return `invalid (${result.validation.errors.length}); mock text active`;
+  }
+  return `failed; mock text active (${result.message})`;
 }
 
 function formatOllamaFallback(thoughtTest: OllamaThoughtTestResult): string {
@@ -1593,6 +1660,7 @@ function applySessionMode(mode: SessionMode): SessionMode {
 
 function applySongId(nextSongId: SongId): SongId {
   songId = nextSongId;
+  ollamaProposalTextTest = createInitialOllamaProposalTextTest(ollamaConfig);
   cancelSlowThinkingControllers("song changed before the thought could land");
   clearSlowThoughtPlayback();
   world.clearMusicalEvents();
@@ -1680,6 +1748,10 @@ ollamaHealthButton.addEventListener("click", () => {
 
 ollamaSendThoughtButton.addEventListener("click", () => {
   void runManualOllamaThoughtTest();
+});
+
+ollamaSendProposalButton.addEventListener("click", () => {
+  void runManualOllamaProposalTextTest();
 });
 
 for (const button of helpButtons) {
@@ -1785,6 +1857,8 @@ declare global {
       setConfig(config: Partial<OllamaConfig>): OllamaConfig;
       getHealth(): OllamaHealthState;
       checkHealth(): Promise<OllamaHealthState>;
+      getLastProposalTextTest(): OllamaProposalTextTestResult;
+      runManualProposalTextTest(): Promise<OllamaProposalTextTestResult>;
       getLastThoughtTest(): OllamaThoughtTestResult;
       runManualThoughtTest(playerId?: string): Promise<OllamaThoughtTestResult>;
       getSessionPrimer(): string;
@@ -1902,6 +1976,8 @@ window.ollama = {
     availableModels: [...ollamaHealth.availableModels],
   }),
   checkHealth: () => runOllamaHealthCheck(),
+  getLastProposalTextTest: () => ollamaProposalTextTest,
+  runManualProposalTextTest: () => runManualOllamaProposalTextTest(),
   getLastThoughtTest: () => ollamaThoughtTest,
   runManualThoughtTest: (playerId) => runManualOllamaThoughtTest(playerId),
   getSessionPrimer: () => createOllamaSessionPrimer(),

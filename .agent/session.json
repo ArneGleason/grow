@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Merge Byte 12b-b inspect-only proposal and responses",
-  "status": "byte12b-b-merged",
-  "updatedAt": "2026-06-06T16:28:50Z",
+  "lastTask": "Implement Byte 12b-c model-authored proposal text",
+  "status": "byte12b-c-ready-for-review",
+  "updatedAt": "2026-06-06T17:15:00Z",
   "lastHandoff": "",
-  "branch": "main",
-  "commit": "main HEAD",
+  "branch": "codex/byte-12b-c",
+  "commit": "pending",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 12b-b is approved, merged to main, and pushed. It adds deterministic inspect-only `SongSketchProposal`/responses, renders Proposal and Responses in the Song Sketch inspector, exposes `window.song.getProposal()`, uses bass role lookup for harmonic source selection, and returns cloned nested sketch arrays from `window.song.getSketch()`. Claude confirmed it is band-level, song-reactive, inspect-only, and playback-neutral. Next recommended slice is model-authored proposal text behind validator/mock fallback while keeping kind/stance/provenance deterministic; persistence prep comes after that, and proposal-to-playback should be a later carefully gated byte."
+    "summary": "Byte 12b-c is implemented on `codex/byte-12b-c` and awaiting review. It adds a manual Ollama proposal-text probe that may rewrite only the readable `SongSketchProposal` text slots: summary, requested action, and per-player response reasons/requested changes. Proposal kind, target section, proposer, chord/root provenance, player ids, response stances, routing, playback, transport, slow-thinking, persistence, and scheduling stay deterministic. Invalid or failed model text keeps the mock proposal active with a valid fallback. `npm audit`, `npm run build`, `npm run smoke`, `git diff --check`, and in-app browser UI sanity are green."
   }
 }
