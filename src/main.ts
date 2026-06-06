@@ -89,17 +89,16 @@ let ollamaThoughtTest = createInitialOllamaThoughtTest(ollamaConfig);
 let ollamaRequestInFlight = false;
 let songId: SongId = DEFAULT_SONG_ID;
 let timingFeelMode: TimingFeelMode = "feel";
-const SLOW_THINKING_PLAYER_ID = "melody";
+const SLOW_THINKING_PLAYER_IDS = ["melody", "bass"] as const;
 const SLOW_THINKING_INTERVAL_BEATS = 8;
+const SLOW_THINKING_SECONDARY_INITIAL_DELAY_BEATS = 6;
 const SLOW_THINKING_LATE_MARGIN_BEATS = 0.5;
 const SLOW_THINKING_BOUNDARY_BEATS = 4;
 const SLOW_THINKING_MAX_COMPILED_DURATION_BEATS = 4;
-const SLOW_THINKING_COMPILABLE_ACTIONS = [
-  "rest",
-  "simplify",
-  "shift_register",
-  "change_density",
-] as const satisfies readonly ThoughtAction[];
+const SLOW_THINKING_COMPILABLE_ACTIONS_BY_PLAYER = {
+  melody: ["rest", "simplify", "shift_register", "change_density"],
+  bass: ["rest", "simplify", "change_density"],
+} as const satisfies Record<(typeof SLOW_THINKING_PLAYER_IDS)[number], readonly ThoughtAction[]>;
 
 type SlowThoughtPlaybackMode = "rest" | "thin" | "shift-register";
 
@@ -178,7 +177,7 @@ const HELP_TOPICS = {
   },
   thoughts: {
     title: "Thoughts",
-    body: "Thoughts show the compact request ingredients each player would send to the slow creative planner: focus, motif, request level, mock intent, selected memory fragments, and the one-player slow-thinking loop.",
+    body: "Thoughts show the compact request ingredients each player would send to the slow creative planner: focus, motif, request level, mock intent, selected memory fragments, and each active slow-thinking loop.",
   },
   listening: {
     title: "Listening",
@@ -235,7 +234,7 @@ app.innerHTML = `
     <header class="topbar">
       <div class="brand">
         <h1 class="brand__title">Grow</h1>
-        <p class="brand__subtitle">Slow thinking loop: melody can rest, thin, or shift register</p>
+        <p class="brand__subtitle">Slow thinking loops: melody and bass can take bounded future turns</p>
       </div>
       <div class="transport-controls">
         <fieldset class="mode-control">
@@ -501,20 +500,26 @@ const thoughtRequestNodes = new Map<string, HTMLElement>();
 const thoughtIntentNodes = new Map<string, HTMLElement>();
 const thoughtSlowNodes = new Map<string, HTMLElement>();
 const pendingPlayerFlashes = new Set<string>();
-let activeSlowThoughtPlayback: SlowThoughtPlayback | null = null;
-const slowThinking = new SlowThinkingController({
-  playerId: SLOW_THINKING_PLAYER_ID,
-  intervalBeats: SLOW_THINKING_INTERVAL_BEATS,
-  lateMarginBeats: SLOW_THINKING_LATE_MARGIN_BEATS,
-  boundaryBeats: SLOW_THINKING_BOUNDARY_BEATS,
-  getConfig: readOllamaConfigFromInputs,
-  getHealth: () => ollamaHealth,
-  getRequest: getCurrentSlowThinkingRequest,
-  getTransportState: getState,
-  setPlayerThinking: (playerId, thinking) => world.setPlayerThinking(playerId, thinking),
-  onAccepted: handleAcceptedSlowThought,
-  onStateChange: queueRender,
-});
+const activeSlowThoughtPlaybacks = new Map<string, SlowThoughtPlayback>();
+const slowThinkingControllers = SLOW_THINKING_PLAYER_IDS.map((playerId, index) =>
+  new SlowThinkingController({
+    playerId,
+    intervalBeats: SLOW_THINKING_INTERVAL_BEATS,
+    initialDelayBeats: index * SLOW_THINKING_SECONDARY_INITIAL_DELAY_BEATS,
+    lateMarginBeats: SLOW_THINKING_LATE_MARGIN_BEATS,
+    boundaryBeats: SLOW_THINKING_BOUNDARY_BEATS,
+    getConfig: readOllamaConfigFromInputs,
+    getHealth: () => ollamaHealth,
+    getRequest: getCurrentSlowThinkingRequest,
+    getTransportState: getState,
+    setPlayerThinking: (nextPlayerId, thinking) => world.setPlayerThinking(nextPlayerId, thinking),
+    onAccepted: handleAcceptedSlowThought,
+    onStateChange: queueRender,
+  })
+);
+const slowThinkingControllersByPlayer = new Map(
+  slowThinkingControllers.map((controller) => [controller.getState().playerId, controller])
+);
 
 ollamaBaseUrlInput.value = ollamaConfig.baseUrl;
 ollamaModelInput.value = ollamaConfig.model;
@@ -865,8 +870,8 @@ function formatThoughtFragments(seed: PlayerThoughtSeed): string {
 }
 
 function formatSlowThinkingForPlayer(playerId: string): string {
-  const slowThinkingState = slowThinking.getState();
-  if (playerId !== slowThinkingState.playerId) return "not in loop";
+  const slowThinkingState = getSlowThinkingLoopState(playerId);
+  if (!slowThinkingState) return "not in loop";
   const playback = getSlowThoughtPlaybackForPlayer(playerId);
   const beat = slowThinkingState.committedStartBeat ?? slowThinkingState.intendedStartBeat;
   const timing = beat === undefined ? "" : ` @ beat ${beat.toFixed(1)}`;
@@ -990,8 +995,9 @@ function getCurrentThoughtRequest(
 
 function getCurrentSlowThinkingRequest(playerId: string): PlayerThoughtRequest {
   const request = getCurrentThoughtRequest(playerId);
+  const compilableActions = getSlowThinkingCompilableActions(playerId);
   const allowedActions = request.allowedActions.filter((action) =>
-    (SLOW_THINKING_COMPILABLE_ACTIONS as readonly ThoughtAction[]).includes(action)
+    compilableActions.includes(action)
   );
 
   return {
@@ -1003,7 +1009,7 @@ function getCurrentSlowThinkingRequest(playerId: string): PlayerThoughtRequest {
 function handleAcceptedSlowThought(accepted: AcceptedSlowThought): void {
   const playback = compileAcceptedSlowThought(accepted);
   if (playback) {
-    activeSlowThoughtPlayback = playback;
+    activeSlowThoughtPlaybacks.set(playback.playerId, playback);
   }
   queueRender();
 }
@@ -1014,7 +1020,8 @@ function compileAcceptedSlowThought(accepted: AcceptedSlowThought): SlowThoughtP
 
   const state = getState();
   clearExpiredSlowThoughtPlayback(state.currentBeat);
-  if (activeSlowThoughtPlayback && activeSlowThoughtPlayback.endBeat > state.currentBeat) {
+  const existingPlayback = activeSlowThoughtPlaybacks.get(accepted.playerId);
+  if (existingPlayback && existingPlayback.endBeat > state.currentBeat) {
     return undefined;
   }
 
@@ -1063,32 +1070,81 @@ function getNextSlowThoughtBoundaryBeat(beat: number): number {
   return Math.ceil(beat / SLOW_THINKING_BOUNDARY_BEATS) * SLOW_THINKING_BOUNDARY_BEATS;
 }
 
+function getSlowThinkingCompilableActions(playerId: string): readonly ThoughtAction[] {
+  if (isSlowThinkingPlayerId(playerId)) {
+    return SLOW_THINKING_COMPILABLE_ACTIONS_BY_PLAYER[playerId];
+  }
+  return ["change_density"];
+}
+
+function isSlowThinkingPlayerId(playerId: string): playerId is (typeof SLOW_THINKING_PLAYER_IDS)[number] {
+  return (SLOW_THINKING_PLAYER_IDS as readonly string[]).includes(playerId);
+}
+
+function getSlowThinkingLoopState(playerId: string): SlowThinkingLoopState | undefined {
+  return slowThinkingControllersByPlayer.get(playerId)?.getState();
+}
+
+function getSlowThinkingLoopStates(): SlowThinkingLoopState[] {
+  return slowThinkingControllers.map((controller) => controller.getState());
+}
+
+function hasPendingSlowThinkingController(exceptPlayerId?: string): boolean {
+  return slowThinkingControllers.some((controller) => {
+    const state = controller.getState();
+    return state.status === "pending" && state.playerId !== exceptPlayerId;
+  });
+}
+
+function evaluateSlowThinkingControllers(): void {
+  for (const controller of slowThinkingControllers) {
+    const state = controller.getState();
+    if (state.status !== "pending" && hasPendingSlowThinkingController(state.playerId)) {
+      continue;
+    }
+    controller.evaluate();
+  }
+}
+
+function cancelSlowThinkingControllers(message: string): void {
+  for (const controller of slowThinkingControllers) {
+    controller.cancel(message);
+  }
+}
+
 function getSlowThoughtPlaybackForPlayer(playerId: string): SlowThoughtPlayback | undefined {
-  const playback = getActiveSlowThoughtPlayback();
-  return playback?.playerId === playerId ? playback : undefined;
+  clearExpiredSlowThoughtPlayback();
+  const playback = activeSlowThoughtPlaybacks.get(playerId);
+  return playback ? { ...playback } : undefined;
 }
 
 function getActiveSlowThoughtPlayback(): SlowThoughtPlayback | undefined {
+  return getActiveSlowThoughtPlaybacks()[0];
+}
+
+function getActiveSlowThoughtPlaybacks(): SlowThoughtPlayback[] {
   clearExpiredSlowThoughtPlayback();
-  return activeSlowThoughtPlayback ? { ...activeSlowThoughtPlayback } : undefined;
+  return [...activeSlowThoughtPlaybacks.values()].map((playback) => ({ ...playback }));
 }
 
 function clearExpiredSlowThoughtPlayback(currentBeat = getState().currentBeat): void {
-  if (activeSlowThoughtPlayback && activeSlowThoughtPlayback.endBeat <= currentBeat) {
-    activeSlowThoughtPlayback = null;
+  for (const [playerId, playback] of activeSlowThoughtPlaybacks.entries()) {
+    if (playback.endBeat <= currentBeat) {
+      activeSlowThoughtPlaybacks.delete(playerId);
+    }
   }
 }
 
 function clearSlowThoughtPlayback(): void {
-  activeSlowThoughtPlayback = null;
+  activeSlowThoughtPlaybacks.clear();
 }
 
 function applySlowThoughtDecision(
   input: TasteNoteDecisionInput,
   baseDecision: TasteNoteDecision,
 ): TasteNoteDecision {
-  const playback = activeSlowThoughtPlayback;
-  if (!playback || playback.playerId !== input.playerId) return baseDecision;
+  const playback = activeSlowThoughtPlaybacks.get(input.playerId);
+  if (!playback) return baseDecision;
   if (input.absoluteBeat < playback.startBeat || input.absoluteBeat >= playback.endBeat) return baseDecision;
 
   if (playback.mode === "rest") {
@@ -1207,7 +1263,7 @@ async function runOllamaHealthCheck(): Promise<OllamaHealthState> {
   renderOllama();
   try {
     ollamaHealth = await checkOllamaHealth(config);
-    slowThinking.evaluate();
+    evaluateSlowThinkingControllers();
     return ollamaHealth;
   } finally {
     ollamaRequestInFlight = false;
@@ -1338,7 +1394,7 @@ function syncWorldFromTransport(state: GrowTransportState): void {
   world.syncPlayerStates(state.status, state.currentBeat);
 
   if (state.status === "stopped" && previousTransportStatus === "playing") {
-    slowThinking.cancel("transport stopped");
+    cancelSlowThinkingControllers("transport stopped");
     clearSlowThoughtPlayback();
     world.clearMusicalEvents();
     world.resetTasteEvaluations();
@@ -1351,7 +1407,7 @@ function syncWorldFromTransport(state: GrowTransportState): void {
 
 function handleTransportState(): void {
   clearExpiredSlowThoughtPlayback();
-  slowThinking.evaluate();
+  evaluateSlowThinkingControllers();
   queueRender();
 }
 
@@ -1376,14 +1432,14 @@ function applySessionMode(mode: SessionMode): SessionMode {
   if (mode !== "rehearsal") {
     clearSlowThoughtPlayback();
   }
-  slowThinking.evaluate();
+  evaluateSlowThinkingControllers();
   renderWorld();
   return world.getSessionMode();
 }
 
 function applySongId(nextSongId: SongId): SongId {
   songId = nextSongId;
-  slowThinking.cancel("song changed before the thought could land");
+  cancelSlowThinkingControllers("song changed before the thought could land");
   clearSlowThoughtPlayback();
   world.clearMusicalEvents();
   world.resetTasteEvaluations();
@@ -1394,7 +1450,7 @@ function applySongId(nextSongId: SongId): SongId {
 
 function applyTimingFeelMode(mode: TimingFeelMode): TimingFeelMode {
   timingFeelMode = mode;
-  slowThinking.cancel("timing feel changed before the thought could land");
+  cancelSlowThinkingControllers("timing feel changed before the thought could land");
   clearSlowThoughtPlayback();
   refreshLookaheadSchedule();
   renderWorld();
@@ -1548,9 +1604,11 @@ declare global {
       getSeeds(): readonly PlayerThoughtSeed[];
       getRequests(): readonly PlayerThoughtRequest[];
       getMockIntents(): readonly PlayerThoughtIntent[];
-      getSlowLoop(): SlowThinkingLoopState;
-      getSlowPlayback(): SlowThoughtPlayback | undefined;
-      triggerSlowLoop(): void;
+      getSlowLoop(playerId?: string): SlowThinkingLoopState | undefined;
+      getSlowLoops(): readonly SlowThinkingLoopState[];
+      getSlowPlayback(playerId?: string): SlowThoughtPlayback | undefined;
+      getSlowPlaybacks(): readonly SlowThoughtPlayback[];
+      triggerSlowLoop(playerId?: string): void;
     };
     session?: {
       getMode(): SessionMode;
@@ -1631,9 +1689,19 @@ window.thinking = {
     });
     return world.getMockThoughtIntents(frame);
   },
-  getSlowLoop: () => slowThinking.getState(),
-  getSlowPlayback: () => getActiveSlowThoughtPlayback(),
-  triggerSlowLoop: () => slowThinking.evaluate(),
+  getSlowLoop: (playerId = "melody") => getSlowThinkingLoopState(playerId),
+  getSlowLoops: () => getSlowThinkingLoopStates(),
+  getSlowPlayback: (playerId) => playerId
+    ? getSlowThoughtPlaybackForPlayer(playerId)
+    : getActiveSlowThoughtPlayback(),
+  getSlowPlaybacks: () => getActiveSlowThoughtPlaybacks(),
+  triggerSlowLoop: (playerId) => {
+    if (playerId) {
+      slowThinkingControllersByPlayer.get(playerId)?.evaluate();
+      return;
+    }
+    evaluateSlowThinkingControllers();
+  },
 };
 
 window.session = {
@@ -1689,7 +1757,7 @@ window.terrarium = {
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
-    slowThinking.cancel("hot module replacement");
+    cancelSlowThinkingControllers("hot module replacement");
     if (renderFrameId !== null) {
       cancelAnimationFrame(renderFrameId);
     }

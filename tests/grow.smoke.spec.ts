@@ -333,7 +333,7 @@ async function getMockThoughtIntents(page: Page): Promise<readonly PlayerThought
 async function getSlowThinkingLoop(page: Page): Promise<SlowThinkingLoopState> {
   const state = await page.evaluate(() => {
     const appWindow = window as unknown as {
-      thinking?: { getSlowLoop(): SlowThinkingLoopState };
+      thinking?: { getSlowLoop(playerId?: string): SlowThinkingLoopState | undefined };
     };
     return appWindow.thinking?.getSlowLoop();
   });
@@ -345,12 +345,48 @@ async function getSlowThinkingLoop(page: Page): Promise<SlowThinkingLoopState> {
   return state;
 }
 
-async function getSlowThinkingPlayback(page: Page): Promise<SlowThoughtPlayback | undefined> {
+async function getSlowThinkingLoopForPlayer(page: Page, playerId: string): Promise<SlowThinkingLoopState> {
+  const state = await page.evaluate((nextPlayerId) => {
+    const appWindow = window as unknown as {
+      thinking?: { getSlowLoop(playerId?: string): SlowThinkingLoopState | undefined };
+    };
+    return appWindow.thinking?.getSlowLoop(nextPlayerId);
+  }, playerId);
+
+  if (!state) {
+    throw new Error(`window.thinking.getSlowLoop(${playerId}) was not available`);
+  }
+
+  return state;
+}
+
+async function getSlowThinkingLoops(page: Page): Promise<SlowThinkingLoopState[]> {
   return page.evaluate(() => {
     const appWindow = window as unknown as {
-      thinking?: { getSlowPlayback(): SlowThoughtPlayback | undefined };
+      thinking?: { getSlowLoops(): SlowThinkingLoopState[] };
     };
-    return appWindow.thinking?.getSlowPlayback();
+    return appWindow.thinking?.getSlowLoops() ?? [];
+  });
+}
+
+async function getSlowThinkingPlayback(
+  page: Page,
+  playerId?: string,
+): Promise<SlowThoughtPlayback | undefined> {
+  return page.evaluate((nextPlayerId) => {
+    const appWindow = window as unknown as {
+      thinking?: { getSlowPlayback(playerId?: string): SlowThoughtPlayback | undefined };
+    };
+    return appWindow.thinking?.getSlowPlayback(nextPlayerId);
+  }, playerId);
+}
+
+async function getSlowThinkingPlaybacks(page: Page): Promise<SlowThoughtPlayback[]> {
+  return page.evaluate(() => {
+    const appWindow = window as unknown as {
+      thinking?: { getSlowPlaybacks(): SlowThoughtPlayback[] };
+    };
+    return appWindow.thinking?.getSlowPlaybacks() ?? [];
   });
 }
 
@@ -1095,6 +1131,126 @@ test("slow thinking loop compiles a bounded register shift for existing melody n
   await expect(button).toHaveText("Start");
 });
 
+test("slow thinking loops keep independent melody and bass playback windows", async ({ page }) => {
+  const requestedPlayers: string[] = [];
+
+  await page.route("**/api/ollama/tags**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      headers: {
+        "content-type": "application/json",
+        "x-grow-ollama-proxy": "smoke",
+      },
+      body: JSON.stringify({ models: [{ name: "qwen3:4b-instruct-2507-q4_K_M" }] }),
+    });
+  });
+
+  await page.route("**/api/ollama/chat**", async (route) => {
+    const payload = JSON.parse(route.request().postData() ?? "{}") as {
+      request?: { messages?: Array<{ role?: string; content?: string }> };
+    };
+    const userMessage = payload.request?.messages?.find((message) => message.role === "user")?.content ?? "";
+    const playerId = userMessage.includes('"player":"bass"') ? "bass" : "melody";
+    requestedPlayers.push(playerId);
+    if (playerId === "bass") {
+      expect(userMessage).toContain('"allowedActions":["rest","simplify","change_density"]');
+    }
+
+    const isBass = playerId === "bass";
+    await route.fulfill({
+      status: 200,
+      headers: {
+        "content-type": "application/json",
+        "x-grow-ollama-proxy": "smoke",
+      },
+      body: JSON.stringify({
+        model: "qwen3:4b-instruct-2507-q4_K_M",
+        message: {
+          role: "assistant",
+          content: JSON.stringify({
+            id: `slow-loop-${playerId}-intent`,
+            responseLevel: "play_intent",
+            action: isBass ? "change_density" : "rest",
+            confidence: isBass ? 0.68 : 0.72,
+            target: { startAfterBeats: isBass ? 4 : 8, durationBeats: 4 },
+            musicalIdea: {
+              label: isBass ? "bass anchored thinning" : "melody long breath",
+              origin: "imagined",
+              durationBeats: 4,
+              steps: [{
+                kind: "rest",
+                positionBeats: 0,
+                durationBeats: 1,
+                tags: ["slow-loop", playerId],
+              }],
+              tags: ["slow-loop-intent", playerId],
+            },
+            rationale: isBass
+              ? "Leave the floor on the downbeats and thin the turning notes."
+              : "Hold a longer breath so the bass can answer.",
+          }),
+        },
+        done: true,
+      }),
+    });
+  });
+
+  await page.goto("/");
+  await page.getByTestId("ollama-health-check").click();
+  await expect(page.getByTestId("ollama-health-status")).toContainText("ready");
+
+  const button = page.getByTestId("transport-toggle");
+  await button.click();
+  await expect(button).toHaveText("Stop");
+
+  await expect.poll(async () => (await getSlowThinkingLoopForPlayer(page, "melody")).status).toBe("accepted");
+  await expect.poll(async () => (await getSlowThinkingLoopForPlayer(page, "bass")).status, {
+    timeout: 12_000,
+  }).toBe("accepted");
+
+  expect(requestedPlayers.slice(0, 2)).toEqual(["melody", "bass"]);
+  const loops = await getSlowThinkingLoops(page);
+  expect(loops.map((loop) => loop.playerId).sort()).toEqual(["bass", "melody"]);
+  expect(loops.every((loop) => loop.validation?.valid)).toBe(true);
+
+  const melodyPlayback = await getSlowThinkingPlayback(page, "melody");
+  const bassPlayback = await getSlowThinkingPlayback(page, "bass");
+  expect(melodyPlayback?.mode).toBe("rest");
+  expect(bassPlayback?.mode).toBe("thin");
+  const playbacks = await getSlowThinkingPlaybacks(page);
+  expect(playbacks.map((playback) => playback.playerId).sort()).toEqual(["bass", "melody"]);
+  expect(playbacks.find((playback) => playback.playerId === "melody")?.id).toBe(melodyPlayback?.id);
+  expect(playbacks.find((playback) => playback.playerId === "bass")?.id).toBe(bassPlayback?.id);
+
+  await expect(page.getByTestId("thought-slow-melody-status")).toContainText("rest");
+  await expect(page.getByTestId("thought-slow-bass-status")).toContainText("thin");
+
+  await expect.poll(async () => {
+    const frame = await getListeningFrame(page);
+    return frame.recentEvents.some((event) =>
+      event.playerId === "melody" &&
+      event.kind === "rest" &&
+      event.absoluteBeat >= (melodyPlayback?.startBeat ?? Infinity) &&
+      event.absoluteBeat < (melodyPlayback?.endBeat ?? -Infinity) &&
+      event.tags.includes("thought:rest")
+    );
+  }, { timeout: 12_000 }).toBe(true);
+
+  await expect.poll(async () => {
+    const frame = await getListeningFrame(page);
+    return frame.recentEvents.some((event) =>
+      event.playerId === "bass" &&
+      event.kind === "rest" &&
+      event.absoluteBeat >= (bassPlayback?.startBeat ?? Infinity) &&
+      event.absoluteBeat < (bassPlayback?.endBeat ?? -Infinity) &&
+      event.tags.includes("thought:change_density")
+    );
+  }, { timeout: 12_000 }).toBe(true);
+
+  await button.click();
+  await expect(button).toHaveText("Start");
+});
+
 test("local Ollama proxy rejects non-local targets", async ({ request }) => {
   const response = await request.get("/api/ollama/tags?baseUrl=http://example.com:11434");
 
@@ -1186,7 +1342,9 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   const canvasFrame = page.getByTestId("terrarium-container");
   const canvas = page.getByTestId("terrarium-canvas");
 
-  await expect(page.locator(".brand__subtitle")).toHaveText("Slow thinking loop: melody can rest, thin, or shift register");
+  await expect(page.locator(".brand__subtitle")).toHaveText(
+    "Slow thinking loops: melody and bass can take bounded future turns",
+  );
   await expect(button).toHaveText("Start");
   await expect(status).toContainText(
     "mode rehearsal | song Lantern | stopped | 90 BPM | bar 1 | beat 0.0 | lookahead stopped 0.0/8 | pending slots 0",

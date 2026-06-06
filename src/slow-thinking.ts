@@ -42,6 +42,7 @@ export interface AcceptedSlowThought {
 export interface SlowThinkingControllerOptions {
   playerId: string;
   intervalBeats: number;
+  initialDelayBeats?: number;
   lateMarginBeats: number;
   boundaryBeats: number;
   getConfig(): OllamaConfig;
@@ -105,7 +106,7 @@ export class SlowThinkingController {
       enabled: true,
       playerId: this.options.playerId,
       status: "idle",
-      nextEligibleBeat: 0,
+      nextEligibleBeat: this.options.initialDelayBeats ?? 0,
       provider: "none",
       message: "waiting for playback and ready Ollama",
     };

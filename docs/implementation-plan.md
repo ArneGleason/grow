@@ -1030,7 +1030,7 @@ Review focus:
 Implementation notes:
 
 - The smoke test now mocks a valid `rest` intent, verifies the slow-loop prompt only offers rest/thin-style actions, checks `window.thinking.getSlowPlayback()`, and waits for a melody `rest` event inside the compiled window.
-- The visible subtitle now reads `Slow thinking loop: melody can rest or thin ahead`.
+- The visible subtitle was updated during this arc and is revised again as additional thinking players join.
 - Claude approved Byte 11b and the accepted-queue cleanup has been applied. `SlowThinkingController` now has a single accepted-intent handoff path: `onAccepted`.
 
 ### Byte 11c-a: Bounded Melody Register Shift
@@ -1097,7 +1097,7 @@ Implementation notes:
 
 ### Byte 11c-c: Register Delta Compliance
 
-Status: implemented.
+Status: implemented and approved.
 
 Raise real-model land rate for `shift_register` without weakening the validator.
 
@@ -1121,6 +1121,37 @@ Implementation notes:
 - The `registerDelta` property now uses `enum: [-1, 0, 1]` and an explicit top-level-field description.
 - A minimal live qwen probe showed conditional schema plus a plain example still omitted `registerDelta` while mentioning it in the rationale. Strengthening the prompt to say "top-level registerDelta" and "Do not only mention registerDelta in rationale" made the same model emit `registerDelta: 1`.
 - Smoke coverage asserts the prompt/schema include the conditional and concrete top-level example.
+- Claude approved Byte 11c-c and verified live qwen3 compliance improved from rejected missing-delta output to 3/3 accepted `shift_register` intents with valid `registerDelta`. The schema conditional is useful self-documentation and future-proofing, but the prompt wording plus validator/fallback remain the durable guards because llama.cpp-style grammar support generally ignores `if`/`then`.
+
+### Byte 11d: Second Thinking Player
+
+Status: implemented.
+
+Let bass join the slow-thinking loop while keeping the audible compiler conservative.
+
+Scope:
+
+- Instantiate slow-thinking controllers for `melody` and `bass`.
+- Keep one local model request in flight globally, while allowing each thinking player to keep its own loop state.
+- Stagger bass's first thinking opportunity so it gets a clean first turn before melody's second cycle.
+- Replace the singleton active slow-thought playback window with a per-player playback map.
+- Keep melody's existing `rest`/`simplify`/`change_density`/`shift_register` lane.
+- Restrict bass to `rest`/`simplify`/`change_density` for now; no bass register shift or pitch-changing behavior in this byte.
+- Keep the same validator/fallback, bar-boundary, max-duration, no-overwrite-per-player, and lifecycle cleanup guardrails.
+- Expose plural debug surfaces: all slow loops and all active slow playbacks, while preserving no-argument melody/default helpers.
+
+Review focus:
+
+- whether the shared one-request-at-a-time evaluator is enough protection before automatic real-model work has more players,
+- whether bass should stay density/rest-only until a future bass-specific pitch/register design,
+- whether the per-player playback map correctly allows independent future windows without one player clobbering another,
+- whether the singleton `SlowThoughtPlayback` debug helper should remain for compatibility or be removed once reviewers switch to the plural API.
+
+Implementation notes:
+
+- `SlowThinkingController` now supports `initialDelayBeats`, used by `main.ts` to stagger bass's first request.
+- `window.thinking.getSlowLoop(playerId?)`, `getSlowLoops()`, `getSlowPlayback(playerId?)`, and `getSlowPlaybacks()` expose the widened state for smoke tests and review.
+- Smoke coverage now verifies melody and bass can both accept mocked Ollama thoughts, that bass's projected request excludes `shift_register` from `allowedActions`, that both active playback windows are retained at the same time, and that each player's audible future window lands on that player only.
 
 ### Coordination Principle: Personal Intents Versus Band Proposals
 
