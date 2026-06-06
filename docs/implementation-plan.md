@@ -1274,7 +1274,7 @@ Implementation notes:
 
 ### Byte 12b-b: Inspect-Only Proposal And Responses
 
-Status: implemented; awaiting Claude review.
+Status: implemented and approved.
 
 Add the first band-level negotiation surface on top of the per-song sketch without letting it drive playback.
 
@@ -1304,6 +1304,9 @@ Implementation notes:
 - The proposal is intentionally labeled `mock`; it is deterministic scaffolding for band-level coordination, not model-authored songcraft.
 - Smoke checks proposal shape and clone behavior structurally, avoiding dependence on exact response prose.
 - In-app browser sanity check verified the Song Sketch inspector renders `mock/tighten_roots` and per-player responses on Lantern.
+- Claude approved Byte 12b-b and verified the proposal/response surface is band-level, song-reactive, inspect-only, and playback-neutral.
+- Forward note: memoize proposal construction if the richer sketch/proposal surfaces become heavier; it currently rebuilds on each render frame.
+- Next-slice steer: add model-authored proposal text behind the existing validator plus deterministic mock fallback, while keeping proposal kind, stance, chord/root provenance, and routing deterministic. Persistence prep should follow that, and proposal-to-playback should be a separate carefully gated byte.
 
 ### Byte 13: Thought Memory And Persistence Prep
 
