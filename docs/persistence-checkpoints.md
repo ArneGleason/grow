@@ -31,6 +31,8 @@ Problems with one mutable blob:
 
 Use an append-only event log plus periodic snapshots.
 
+`docs/persistence-records.md` defines the current Byte 13a durable record boundaries for thoughts, song sketches, proposals, proposal text, playback windows, and checkpoint generator state. Treat that document as the more detailed companion to this strategy.
+
 Events describe what happened:
 
 - Player moved.

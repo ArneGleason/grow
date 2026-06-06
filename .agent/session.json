@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Merge Byte 12b-c model-authored proposal text",
-  "status": "byte12b-c-merged",
-  "updatedAt": "2026-06-06T17:33:33Z",
+  "lastTask": "Implement Byte 13a persistence record boundaries",
+  "status": "byte13a-ready-for-review",
+  "updatedAt": "2026-06-06T17:41:31Z",
   "lastHandoff": "",
-  "branch": "main",
-  "commit": "main HEAD",
+  "branch": "codex/byte-13a",
+  "commit": "b7c9895",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 12b-c is approved, merged to main, and ready to push. It adds a manual Ollama proposal-text probe that may rewrite only the readable `SongSketchProposal` text slots: summary, requested action, and per-player response reasons/requested changes. Proposal kind, target section, proposer, chord/root provenance, player ids, response stances, routing, playback, transport, slow-thinking, persistence, and scheduling stay deterministic. Invalid or failed model text keeps the mock proposal active with a valid fallback. Claude verified the live qwen3 path, preserved the review artifact, and recommended banking the principle that model prose is data, not instruction. `LOCAL_DEV_NOTES.md` now records that unrelated playback smoke tests with `eventCount: 0` can indicate a parked/wedged browser AudioContext; use `caffeinate -dimsu npm run smoke` for long unattended laptop runs."
+    "summary": "Byte 13a is implemented on `codex/byte-13a` and awaiting review. It adds `docs/persistence-records.md` as a docs-only persistence prep companion to `docs/persistence-checkpoints.md`, defining durable record families for sessions, musical events, player thought request/response/acceptance, slow-thought playback windows, song sketches, deterministic proposals, model proposal text, checkpoints, and moments. It separates replay payloads from seek-and-continue generator state, records the future grid-vs-performed pitch gap, and banks the rule that model prose is data rather than executable instruction. No SQLite files, persistence writes, runtime behavior, playback, transport, or scheduling changes were added."
   }
 }

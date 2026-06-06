@@ -1310,7 +1310,7 @@ Implementation notes:
 
 ### Byte 12b-c: Model-Authored Proposal Text
 
-Status: implemented; awaiting review.
+Status: implemented and approved.
 
 Let Ollama rewrite the readable proposal wording without giving it authority over the band-level decision.
 
@@ -1339,6 +1339,11 @@ Review focus:
 - Check that invalid model text cannot replace the deterministic proposal.
 - Check that the new manual Ollama path does not trigger surprise/background calls or touch playback state.
 
+Implementation notes:
+
+- Claude approved Byte 12b-c and verified live qwen3 proposal text preserves every structural proposal field while moving `mock -> model`.
+- Carry-forward principle: model prose is data, not instruction. Future proposal-to-playback behavior must act only on deterministic structured fields or newly validated structured fields, never by parsing summary/action/reason prose.
+
 ### Byte 13: Thought Memory And Persistence Prep
 
 Prepare to preserve player identity, backstory fragments, thoughts, and useful motifs.
@@ -1355,6 +1360,35 @@ Review focus:
 - whether preserved memory will improve future prompts,
 - whether persistence stays small and queryable,
 - whether it supports replay/debugging without archiving everything.
+
+### Byte 13a: Persistence Record Boundaries
+
+Status: implemented; awaiting review.
+
+Define durable record families before adding any database or write path.
+
+Scope:
+
+- Add `docs/persistence-records.md` as the Byte 13a companion to `docs/persistence-checkpoints.md`.
+- Define logical durable records for sessions, musical events, player thought request/response/acceptance, slow-thought playback windows, song sketches, deterministic proposals, model proposal text, checkpoints, and moments.
+- Separate replay payload requirements from seek-and-continue generator state.
+- Bank the Byte 12b-c rule that model-authored prose is stored as data and must not become an executable instruction source.
+- Capture the future grid-vs-performed pitch gap before event-log replay becomes load-bearing.
+- Keep SQLite schema changes, database files, persistence writes, fork UI, replay, media export, and proposal-to-playback behavior out of scope.
+
+Acceptance criteria:
+
+- The persistence docs identify which new Byte 11-12 surfaces should persist and which should stay ephemeral.
+- Checkpoint payload guidance includes `eventSerial`, `nextScheduleBeat`, `scheduledThroughBeat`, per-player committed event indexes, and latest committed grid pitch.
+- Proposal persistence guidance distinguishes deterministic proposal structure from model-authored proposal text.
+- Future behavior guidance says to act on structured fields, not model prose.
+- `npm audit`, `npm run build`, and `git diff --check` are green. Smoke can be run if code changes are added; Byte 13a is docs-only.
+
+Review focus:
+
+- Whether the proposed durable records are enough for the next SQLite byte without over-normalizing.
+- Whether the replay versus seek-and-continue distinction is clear.
+- Whether the model-prose boundary is strong enough before proposal-to-playback work.
 
 ### Byte 14: Producer Marker, No LLM
 
