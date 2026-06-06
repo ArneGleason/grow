@@ -68,8 +68,8 @@ Use this file for known risks, open questions, and review focus. Keep entries sh
 - Byte 11d is approved and merged. Claude verified two controllers, per-player playback windows, global one-pending serialization, lifecycle cleanup across both lanes, and smoke 16/16.
 - Byte 11e is approved and merged. Claude confirmed bass/non-shift formats omit `registerDelta`/`shift_register`, melody shift formats still include the property and conditional, validator behavior is unchanged, and no playback/scheduling behavior moved.
 - Byte 12a is approved and merged. Claude verified the inspect-only `SongSketch` is pure, band-level, playback-neutral, and that the folded prompt cleanup removes `registerDelta` from non-shift system/user/schema while preserving melody shift guidance.
-- Byte 12b should first settle song-material depth: current sketches vary by song id/label only, while the section/chord/assignment skeleton is identical across Lantern, Switchback, and Glass.
-- Chord-plan forward note from Byte 12a review: pick one chord vocabulary (note roots or roman numerals), and avoid hardcoding scale[6] as flat-seven if future modes make it a leading tone.
+- Byte 12b-a is ready for Claude review. It should resolve the Byte 12a song-material-depth note by deriving root plans and player densities from `SongMaterial.patterns` while staying inspect-only and playback-neutral.
+- Byte 12b-a review focus: confirm roman-root `chordPlan` plus structured `rootDegrees` is the right vocabulary/provenance split, and confirm the pattern scan/cache boundary is small enough before mock proposal/response work.
 - Future material-injecting actions still need the commit/lookahead path; the current pitch override should not become a backdoor for adding notes or changing motif shape.
 - Future band-level changes such as key, mode, chord sequence, or song section changes should use a coordinated band proposal/song-sketch path, not private per-player intent.
 - Model picker is convenience, not a pre-Byte-11 blocker; env/input/`window.ollama.setConfig()` already cover model selection.

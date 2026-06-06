@@ -1238,6 +1238,38 @@ Implementation notes:
 - Forward note: the sketch is currently song-label-deep, not song-material-deep. Lantern, Switchback, and Glass get identical section/chord/assignment skeletons except for id/title. Settle this before Byte 12b builds proposal/response on top.
 - Forward note: choose one chord vocabulary for the sketch. Current chord plans use note roots, while the empty-scale fallback uses roman numerals; also avoid treating `scale[6]` as always flat-seven if future modes add a natural leading tone.
 
+### Byte 12b-a: Song-Material-Deep Sketch
+
+Status: implemented; awaiting Claude review.
+
+Make the inspect-only `SongSketch` reflect the selected song's actual material before adding any proposal/response behavior.
+
+Scope:
+
+- Derive section root plans from the bass pattern's scale-degree onsets rather than fixed tonal-context indices.
+- Store chord plans as roman-root numerals, with root degrees retained as structured provenance.
+- Resolve root degrees to current note names only in the inspector display.
+- Derive per-player assignment density from source pattern slots.
+- Keep musical content deterministic and independent of `currentBeat`; use current beat only for `createdAtBeat` metadata.
+- Memoize the current sketch by song, tonal context, and roster so pattern scans do not run every render frame.
+- Keep the sketch read-only over `SONG_MATERIALS`.
+- Do not touch playback, transport, slow-thinking, validators, Ollama, persistence, or scheduling.
+
+Acceptance criteria:
+
+- Lantern, Switchback, and Glass sketches differ structurally beyond id/title.
+- Glass melody assignment density is lower than Lantern's.
+- Sketch root degrees are a subset of the selected song's bass pattern degrees.
+- Chord plans use one canonical stored vocabulary.
+- `npm run build`, `npm run smoke`, `npm audit`, and `git diff --check` are green.
+
+Implementation notes:
+
+- `SongSketchSection.chordPlan` now stores roman roots such as `I`, `V`, and `bVII`.
+- `SongSketchSection.rootDegrees` records the source scale-degree roots so tests and future tools can verify provenance without parsing display text.
+- `SongSketchAssignment.density` records pattern-derived player density; assignment prose can mention sparse/moderate/active without tests depending on that wording.
+- The inspector renders roman roots with note-name translations, for example `I(C)-V(G)`, while keeping the canonical sketch data key-independent.
+
 ### Byte 13: Thought Memory And Persistence Prep
 
 Prepare to preserve player identity, backstory fragments, thoughts, and useful motifs.

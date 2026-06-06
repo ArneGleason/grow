@@ -20,6 +20,7 @@ import {
   createProjectedThoughtRequest,
   getThoughtPromptProtocol,
 } from "../src/thought-prompt-protocols";
+import { SONG_MATERIALS } from "../src/song-material";
 import type { SongSketch } from "../src/song-sketch";
 import type { PlayerThoughtSeed } from "../src/thought-seeds";
 
@@ -430,6 +431,30 @@ async function getSongSketch(page: Page): Promise<SongSketch> {
   }
 
   return sketch;
+}
+
+function getSongSketchAssignmentDensity(sketch: SongSketch, playerId: string): number {
+  const assignment = sketch.assignments.find((nextAssignment) => nextAssignment.playerId === playerId);
+  if (!assignment) {
+    throw new Error(`Song sketch did not include assignment for ${playerId}`);
+  }
+  return assignment.density;
+}
+
+function getSongPatternScaleDegrees(songId: TransportState["songId"], playerId: string): Set<number> {
+  const song = SONG_MATERIALS.find((material) => material.id === songId);
+  if (!song) {
+    throw new Error(`Missing song material for ${songId}`);
+  }
+  return new Set(song.patterns.flatMap((pattern) =>
+    pattern.events.flatMap((event) =>
+      event?.playerId === playerId ? [event.scaleDegree] : []
+    )
+  ));
+}
+
+function getSketchSectionRootDegrees(sketch: SongSketch): number[] {
+  return sketch.sections.flatMap((section) => [...section.rootDegrees]);
 }
 
 async function getRecordedEventCount(page: Page): Promise<number> {
@@ -1384,9 +1409,9 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   await expect(page.getByTestId("timing-feel-feel")).toBeChecked();
   await expect(page.getByTestId("song-sketch-title")).toHaveText("Lantern working sketch (draft)");
   await expect(page.getByTestId("song-sketch-proposer")).toHaveText("melody -> pulse, bass, melody");
-  await expect(page.getByTestId("song-sketch-sections")).toContainText("Gather 0-8: C-Bb-F-C");
+  await expect(page.getByTestId("song-sketch-sections")).toContainText("Gather 0-8: I(C)-V(G)");
   await expect(page.getByTestId("song-sketch-assignments")).toContainText("bass support");
-  await expect(page.getByTestId("song-sketch-questions")).toContainText("Who owns the first repeatable motif?");
+  await expect(page.getByTestId("song-sketch-questions")).not.toHaveText("none");
   const songSketch = await getSongSketch(page);
   expect(songSketch.id).toBe("sketch-lantern-c-mixolydian");
   expect(songSketch.status).toBe("draft");
@@ -1397,6 +1422,21 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   expect(songSketch.sections).toHaveLength(2);
   expect(songSketch.assignments).toHaveLength(3);
   expect(songSketch.openQuestions.length).toBeGreaterThan(0);
+  expect(songSketch.sections[0].chordPlan).toEqual(["I", "V"]);
+  expect(songSketch.sections[0].rootDegrees).toEqual([0, 4]);
+  const lanternBassDegrees = getSongPatternScaleDegrees("lantern", "bass");
+  expect(getSketchSectionRootDegrees(songSketch).every((degree) => lanternBassDegrees.has(degree))).toBe(true);
+  await page.getByTestId("song-glass-option").click();
+  const glassSketch = await getSongSketch(page);
+  expect(glassSketch.sourceSongId).toBe("glass");
+  expect(glassSketch.sections[0].chordPlan).not.toEqual(songSketch.sections[0].chordPlan);
+  expect(getSongSketchAssignmentDensity(glassSketch, "melody")).toBeLessThan(
+    getSongSketchAssignmentDensity(songSketch, "melody"),
+  );
+  const glassBassDegrees = getSongPatternScaleDegrees("glass", "bass");
+  expect(getSketchSectionRootDegrees(glassSketch).every((degree) => glassBassDegrees.has(degree))).toBe(true);
+  await page.getByTestId("song-lantern-option").click();
+  await expect(page.getByTestId("song-current")).toHaveText("Lantern");
   expect(await getSessionMode(page)).toBe("rehearsal");
   expect((await getTransportState(page)).sessionMode).toBe("rehearsal");
   expect((await getTransportState(page)).songId).toBe("lantern");

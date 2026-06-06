@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Merge Byte 12a inspect-only song sketch stub",
-  "status": "byte12a-merged",
-  "updatedAt": "2026-06-06T15:03:29Z",
+  "lastTask": "Implement Byte 12b-a song-material-deep sketch",
+  "status": "byte12b-a-ready-for-review",
+  "updatedAt": "2026-06-06T15:28:58Z",
   "lastHandoff": "",
-  "branch": "main",
-  "commit": "main HEAD",
+  "branch": "codex/byte-12b-a",
+  "commit": "pending commit",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 12a is approved, merged to main, and pushed. It added an inspect-only band-level `SongSketch` model and inspector/debug surface, generated from selected song material, tonal context, and player roster. It also folded in the Byte 11e prompt cleanup: the `registerDelta` rule is shared and included only when `allowedActions` includes `shift_register`, so bass slow-thinking calls omit the instruction from system prompt, user prompt, and schema. Claude verified the sketch is pure, band-level, playback-neutral, and validated with smoke 16/16. Before 12b's mock proposal/response, settle song-material depth: current sketches vary only by song id/label and should use actual song material to vary section/chord/assignment shape."
+    "summary": "Byte 12b-a is implemented on `codex/byte-12b-a` and ready for Claude review. `SongSketch` now derives roman-root chord plans, structured root degrees, and per-player density from `SongMaterial.patterns`, memoizes sketch content by song/tonal/roster key, and keeps playback/transport/slow-thinking/validators untouched. Validation is green: `npm audit`, `npm run build`, `npm run smoke` 16/16, and `git diff --check`."
   }
 }

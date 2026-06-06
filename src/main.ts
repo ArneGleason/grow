@@ -39,7 +39,10 @@ import {
 } from "./song-material";
 import {
   createInspectOnlySongSketch,
+  rootNoteFromScaleDegree,
   type SongSketch,
+  type SongSketchPlayerRef,
+  type SongSketchSection,
 } from "./song-sketch";
 import {
   createTerrariumView,
@@ -93,6 +96,8 @@ let ollamaThoughtTest = createInitialOllamaThoughtTest(ollamaConfig);
 let ollamaRequestInFlight = false;
 let songId: SongId = DEFAULT_SONG_ID;
 let timingFeelMode: TimingFeelMode = "feel";
+let cachedSongSketchKey = "";
+let cachedSongSketchBase: SongSketch | undefined;
 const SLOW_THINKING_PLAYER_IDS = ["melody", "bass"] as const;
 const SLOW_THINKING_INTERVAL_BEATS = 8;
 const SLOW_THINKING_SECONDARY_INITIAL_DELAY_BEATS = 6;
@@ -927,24 +932,62 @@ function renderSongSketch(sketch: SongSketch): void {
   songSketchTitle.textContent = `${sketch.title} (${sketch.status})`;
   songSketchProposer.textContent = `${sketch.proposerPlayerId} -> ${sketch.affectedPlayerIds.join(", ")}`;
   songSketchSections.textContent = sketch.sections.map((section) =>
-    `${section.label} ${section.startBeat}-${section.startBeat + section.durationBeats}: ${section.chordPlan.join("-")}`
+    `${section.label} ${section.startBeat}-${section.startBeat + section.durationBeats}: ${formatSongSketchSection(section, sketch)}`
   ).join(" | ");
   songSketchAssignments.textContent = sketch.assignments.map((assignment) =>
-    `${assignment.playerId} ${assignment.stance}: ${assignment.brief}`
+    `${assignment.playerId} ${assignment.stance} ${assignment.density.toFixed(2)}: ${assignment.brief}`
   ).join(" | ");
   songSketchQuestions.textContent = sketch.openQuestions.join(" | ");
 }
 
 function getCurrentSongSketch(state: GrowTransportState = getState()): SongSketch {
-  return createInspectOnlySongSketch({
-    song: getSongMaterial(state.songId),
-    tonalContext: world.getTonalContext(),
-    currentBeat: state.currentBeat,
-    players: world.getPlayers().map(({ player }) => ({
-      playerId: player.id,
-      role: player.role,
-    })),
-  });
+  const song = getSongMaterial(state.songId);
+  const tonalContext = world.getTonalContext();
+  const players = world.getPlayers().map(({ player }) => ({
+    playerId: player.id,
+    role: player.role,
+  }));
+  const cacheKey = createSongSketchCacheKey(song, tonalContext, players);
+  if (!cachedSongSketchBase || cachedSongSketchKey !== cacheKey) {
+    cachedSongSketchKey = cacheKey;
+    cachedSongSketchBase = createInspectOnlySongSketch({
+      song,
+      tonalContext,
+      currentBeat: 0,
+      players,
+    });
+  }
+
+  return {
+    ...cachedSongSketchBase,
+    createdAtBeat: roundDisplayBeat(state.currentBeat),
+  };
+}
+
+function createSongSketchCacheKey(
+  song: SongMaterial,
+  tonalContext: SongSketch["tonalContext"],
+  players: readonly SongSketchPlayerRef[],
+): string {
+  return [
+    song.id,
+    tonalContext.tonic,
+    tonalContext.mode,
+    tonalContext.scale.join(","),
+    players.map((player) => `${player.playerId}:${player.role}`).join(","),
+  ].join("|");
+}
+
+function formatSongSketchSection(section: SongSketchSection, sketch: SongSketch): string {
+  return section.chordPlan.map((chord, index) => {
+    const rootDegree = section.rootDegrees[index];
+    if (rootDegree === undefined) return chord;
+    return `${chord}(${rootNoteFromScaleDegree(sketch.tonalContext, rootDegree)})`;
+  }).join("-");
+}
+
+function roundDisplayBeat(value: number): number {
+  return Math.round(value * 100) / 100;
 }
 
 function formatPlayerContagion(framePlayer: ListeningFramePlayer | undefined): string {
