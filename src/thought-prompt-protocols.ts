@@ -135,6 +135,7 @@ function compactMotifStep(step: MusicalExcerptStep): CompactMotifStep {
 }
 
 function createThoughtIntentJsonSchema(request: PlayerThoughtRequest): ThoughtIntentJsonSchema {
+  const allowsRegisterShift = request.allowedActions.includes("shift_register");
   return {
     type: "object",
     required: [
@@ -149,7 +150,7 @@ function createThoughtIntentJsonSchema(request: PlayerThoughtRequest): ThoughtIn
       "rationale",
     ],
     additionalProperties: false,
-    ...(request.allowedActions.includes("shift_register")
+    ...(allowsRegisterShift
       ? { allOf: [createRegisterDeltaConditionalSchema()] }
       : {}),
     properties: {
@@ -158,11 +159,15 @@ function createThoughtIntentJsonSchema(request: PlayerThoughtRequest): ThoughtIn
       playerId: { type: "string", enum: [request.playerId] },
       responseLevel: { type: "string", enum: RESPONSE_LEVELS },
       action: { type: "string", enum: request.allowedActions },
-      registerDelta: {
-        type: "integer",
-        enum: [-1, 0, 1],
-        description: "Top-level field required only when action is shift_register. -1 shifts down, 0 stays in register, 1 shifts up.",
-      },
+      ...(allowsRegisterShift
+        ? {
+          registerDelta: {
+            type: "integer",
+            enum: [-1, 0, 1],
+            description: "Top-level field required only when action is shift_register. -1 shifts down, 0 stays in register, 1 shifts up.",
+          },
+        }
+        : {}),
       confidence: { type: "number", minimum: 0, maximum: 1 },
       target: {
         type: "object",

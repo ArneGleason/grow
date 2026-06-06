@@ -1147,13 +1147,18 @@ test("slow thinking loops keep independent melody and bass playback windows", as
 
   await page.route("**/api/ollama/chat**", async (route) => {
     const payload = JSON.parse(route.request().postData() ?? "{}") as {
-      request?: { messages?: Array<{ role?: string; content?: string }> };
+      request?: {
+        format?: unknown;
+        messages?: Array<{ role?: string; content?: string }>;
+      };
     };
     const userMessage = payload.request?.messages?.find((message) => message.role === "user")?.content ?? "";
     const playerId = userMessage.includes('"player":"bass"') ? "bass" : "melody";
     requestedPlayers.push(playerId);
     if (playerId === "bass") {
       expect(userMessage).toContain('"allowedActions":["rest","simplify","change_density"]');
+      expect(JSON.stringify(payload.request?.format)).not.toContain("registerDelta");
+      expect(JSON.stringify(payload.request?.format)).not.toContain("shift_register");
     }
 
     const isBass = playerId === "bass";

@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Implement Byte 11d second thinking player",
-  "status": "byte11d-ready-for-review",
-  "updatedAt": "2026-06-06T14:00:19Z",
+  "lastTask": "Implement Byte 11e registerDelta schema gating",
+  "status": "byte11e-ready-for-review",
+  "updatedAt": "2026-06-06T14:24:55Z",
   "lastHandoff": "",
-  "branch": "codex/byte-11d",
-  "commit": "codex/byte-11d HEAD",
+  "branch": "codex/byte-11e",
+  "commit": "codex/byte-11e HEAD",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 11c-c has been approved, merged to main, and pushed. Byte 11d is implemented on `codex/byte-11d` and ready for review: melody and bass now each have a slow-thinking controller, the evaluator keeps only one slow-thinking request pending globally, bass's first opportunity is staggered, active slow-thought playback uses a per-player map, and bass is restricted to rest/thin-style actions. Debug APIs now expose `getSlowLoop(playerId?)`, `getSlowLoops()`, `getSlowPlayback(playerId?)`, and `getSlowPlaybacks()`. Validation: `npm audit`, `npm run build`, targeted smoke `npm run smoke -- -g \"independent melody and bass\"`, full `npm run smoke` 16/16, and `git diff --check` pass."
+    "summary": "Byte 11d has been approved, merged to main, and pushed. Byte 11e is implemented on `codex/byte-11e` and ready for review: projected JSON now omits the `registerDelta` schema property entirely when `request.allowedActions` does not include `shift_register`, while preserving the validator and melody shift-register behavior. This addresses Claude's live qwen finding that the heavy registerDelta prompt/schema surface can leak the field into bass simplify/change_density responses. Validation: `npm audit`, `npm run build`, targeted smoke `npm run smoke -- -g \"independent melody and bass\"`, full `npm run smoke` 16/16, and `git diff --check` pass."
   }
 }

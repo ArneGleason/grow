@@ -1125,7 +1125,7 @@ Implementation notes:
 
 ### Byte 11d: Second Thinking Player
 
-Status: implemented.
+Status: implemented and approved.
 
 Let bass join the slow-thinking loop while keeping the audible compiler conservative.
 
@@ -1152,6 +1152,33 @@ Implementation notes:
 - `SlowThinkingController` now supports `initialDelayBeats`, used by `main.ts` to stagger bass's first request.
 - `window.thinking.getSlowLoop(playerId?)`, `getSlowLoops()`, `getSlowPlayback(playerId?)`, and `getSlowPlaybacks()` expose the widened state for smoke tests and review.
 - Smoke coverage now verifies melody and bass can both accept mocked Ollama thoughts, that bass's projected request excludes `shift_register` from `allowedActions`, that both active playback windows are retained at the same time, and that each player's audible future window lands on that player only.
+- Claude approved Byte 11d and verified live qwen3 kept one pending slow-thinking lane globally, produced independent melody/bass windows, and cleared both lanes through lifecycle transitions.
+- Forward live finding: qwen3 can leak `registerDelta` onto non-shift bass actions because the projected schema still listed the optional property even when `shift_register` was not allowed. This is safe because the validator rejects it, but it lowers bass's real-model valid rate.
+
+### Byte 11e: Register Delta Schema Gating
+
+Status: implemented.
+
+Prevent `registerDelta` prompt/schema emphasis from bleeding into non-shift player lanes.
+
+Scope:
+
+- Keep the strict validator unchanged: `registerDelta` is still required for `shift_register`, bounded to `-1 | 0 | 1`, and rejected on every other action.
+- Keep the existing `if action is shift_register then require registerDelta` conditional for shift-capable requests.
+- Omit the `registerDelta` schema property entirely when `request.allowedActions` does not include `shift_register`.
+- Preserve `additionalProperties: false`, so non-shift lanes such as bass cannot emit `registerDelta` through the structured-output format.
+- Do not change melody behavior, slow-thinking scheduling, playback compilation, or the musical validator.
+
+Review focus:
+
+- whether removing the schema property for non-shift lanes is enough to stop qwen from leaking `registerDelta` into bass `simplify`/`change_density`,
+- whether melody's shift-register response format still includes the property and conditional,
+- whether the prompt wording should also become action-set-aware later, or whether schema gating is sufficient for this byte.
+
+Implementation notes:
+
+- The independent melody/bass smoke now asserts the proxied bass Ollama `format` contains neither `registerDelta` nor `shift_register`.
+- Focused validation so far: `npm run build` and `npm run smoke -- -g "independent melody and bass"` pass.
 
 ### Coordination Principle: Personal Intents Versus Band Proposals
 
