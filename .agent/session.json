@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Implement Byte 11e registerDelta schema gating",
-  "status": "byte11e-ready-for-review",
-  "updatedAt": "2026-06-06T14:24:55Z",
+  "lastTask": "Merge Byte 11e registerDelta schema gating",
+  "status": "byte11e-merged",
+  "updatedAt": "2026-06-06T14:33:18Z",
   "lastHandoff": "",
-  "branch": "codex/byte-11e",
-  "commit": "codex/byte-11e HEAD",
+  "branch": "main",
+  "commit": "main HEAD",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 11d has been approved, merged to main, and pushed. Byte 11e is implemented on `codex/byte-11e` and ready for review: projected JSON now omits the `registerDelta` schema property entirely when `request.allowedActions` does not include `shift_register`, while preserving the validator and melody shift-register behavior. This addresses Claude's live qwen finding that the heavy registerDelta prompt/schema surface can leak the field into bass simplify/change_density responses. Validation: `npm audit`, `npm run build`, targeted smoke `npm run smoke -- -g \"independent melody and bass\"`, full `npm run smoke` 16/16, and `git diff --check` pass."
+    "summary": "Byte 11e is approved, merged to main, and pushed. Projected JSON now omits the `registerDelta` schema property entirely when `request.allowedActions` does not include `shift_register`, while preserving validator behavior and melody shift-register behavior. Claude's sanity check confirmed non-shift bass formats omit `registerDelta`/`shift_register`, melody shift formats still include the property and conditional, and playback/scheduling did not move. Validation on the code commit: `npm audit`, `npm run build`, targeted smoke `npm run smoke -- -g \"independent melody and bass\"`, full `npm run smoke` 16/16, and `git diff --check` pass. Optional next cleanup before Byte 12: gate the static `registerDelta` prompt sentence on the same `allowsRegisterShift` condition."
   }
 }

@@ -1157,7 +1157,7 @@ Implementation notes:
 
 ### Byte 11e: Register Delta Schema Gating
 
-Status: implemented.
+Status: implemented and approved.
 
 Prevent `registerDelta` prompt/schema emphasis from bleeding into non-shift player lanes.
 
@@ -1179,6 +1179,8 @@ Implementation notes:
 
 - The independent melody/bass smoke now asserts the proxied bass Ollama `format` contains neither `registerDelta` nor `shift_register`.
 - Focused validation so far: `npm run build` and `npm run smoke -- -g "independent melody and bass"` pass.
+- Claude approved Byte 11e and confirmed the change mirrors the earlier pitch-drop pattern: non-shift lanes now structurally cannot emit `registerDelta` through the schema, while the validator still rejects any stray field.
+- Forward note: the `registerDelta` prompt sentence is still emitted unconditionally in the primer/projected protocol. Gate that sentence on the same `allowsRegisterShift` condition so bass no longer sees a prompt for a contract its schema does not expose.
 
 ### Coordination Principle: Personal Intents Versus Band Proposals
 
