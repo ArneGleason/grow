@@ -21,7 +21,7 @@ import {
   getThoughtPromptProtocol,
 } from "../src/thought-prompt-protocols";
 import { SONG_MATERIALS } from "../src/song-material";
-import type { SongSketch } from "../src/song-sketch";
+import type { SongSketch, SongSketchProposal } from "../src/song-sketch";
 import type { PlayerThoughtSeed } from "../src/thought-seeds";
 
 type TransportState = {
@@ -431,6 +431,21 @@ async function getSongSketch(page: Page): Promise<SongSketch> {
   }
 
   return sketch;
+}
+
+async function getSongProposal(page: Page): Promise<SongSketchProposal> {
+  const proposal = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      song?: { getProposal(): SongSketchProposal };
+    };
+    return appWindow.song?.getProposal();
+  });
+
+  if (!proposal) {
+    throw new Error("window.song.getProposal() was not available");
+  }
+
+  return proposal;
 }
 
 function getSongSketchAssignmentDensity(sketch: SongSketch, playerId: string): number {
@@ -1411,6 +1426,8 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   await expect(page.getByTestId("song-sketch-proposer")).toHaveText("melody -> pulse, bass, melody");
   await expect(page.getByTestId("song-sketch-sections")).toContainText("Gather 0-8: I(C)-V(G)");
   await expect(page.getByTestId("song-sketch-assignments")).toContainText("bass support");
+  await expect(page.getByTestId("song-sketch-proposal")).toContainText("mock/");
+  await expect(page.getByTestId("song-sketch-responses")).toContainText("bass");
   await expect(page.getByTestId("song-sketch-questions")).not.toHaveText("none");
   const songSketch = await getSongSketch(page);
   expect(songSketch.id).toBe("sketch-lantern-c-mixolydian");
@@ -1426,6 +1443,29 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   expect(songSketch.sections[0].rootDegrees).toEqual([0, 4]);
   const lanternBassDegrees = getSongPatternScaleDegrees("lantern", "bass");
   expect(getSketchSectionRootDegrees(songSketch).every((degree) => lanternBassDegrees.has(degree))).toBe(true);
+  const lanternProposal = await getSongProposal(page);
+  const lanternAnswer = songSketch.sections.find((section) => section.id === lanternProposal.targetSectionId);
+  expect(lanternProposal.status).toBe("mock");
+  expect(lanternProposal.sketchId).toBe(songSketch.id);
+  expect(lanternProposal.sourceSongId).toBe("lantern");
+  expect(lanternProposal.proposedByPlayerId).toBe(songSketch.proposerPlayerId);
+  expect(lanternProposal.kind).toBe("tighten_roots");
+  expect(lanternProposal.rootDegrees).toEqual(lanternAnswer?.rootDegrees);
+  expect(lanternProposal.chordPlan).toEqual(lanternAnswer?.chordPlan);
+  expect(lanternProposal.responses.map((response) => response.playerId).sort()).toEqual(["bass", "melody", "pulse"]);
+  expect(lanternProposal.responses.every((response) => (
+    songSketch.affectedPlayerIds.includes(response.playerId)
+  ))).toBe(true);
+  const clonedChord = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      song?: { getSketch(): SongSketch };
+    };
+    const sketch = appWindow.song?.getSketch();
+    if (!sketch) return "missing";
+    (sketch.sections[0] as unknown as { chordPlan: string[] }).chordPlan[0] = "MUTATED";
+    return appWindow.song?.getSketch().sections[0].chordPlan[0] ?? "missing";
+  });
+  expect(clonedChord).toBe("I");
   await page.getByTestId("song-glass-option").click();
   const glassSketch = await getSongSketch(page);
   expect(glassSketch.sourceSongId).toBe("glass");
@@ -1435,6 +1475,10 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   );
   const glassBassDegrees = getSongPatternScaleDegrees("glass", "bass");
   expect(getSketchSectionRootDegrees(glassSketch).every((degree) => glassBassDegrees.has(degree))).toBe(true);
+  const glassProposal = await getSongProposal(page);
+  expect(glassProposal.sourceSongId).toBe("glass");
+  expect(glassProposal.kind).toBe("preserve_space");
+  expect(glassProposal.responses).toHaveLength(3);
   await page.getByTestId("song-lantern-option").click();
   await expect(page.getByTestId("song-current")).toHaveText("Lantern");
   expect(await getSessionMode(page)).toBe("rehearsal");

@@ -39,9 +39,13 @@ import {
 } from "./song-material";
 import {
   createInspectOnlySongSketch,
+  createInspectOnlySongSketchProposal,
   rootNoteFromScaleDegree,
   type SongSketch,
+  type SongSketchAssignment,
   type SongSketchPlayerRef,
+  type SongSketchProposal,
+  type SongSketchProposalResponse,
   type SongSketchSection,
 } from "./song-sketch";
 import {
@@ -426,6 +430,10 @@ ${renderHelpButton("song-sketch", "song sketch")}
             <dd data-testid="song-sketch-sections">none</dd>
             <dt>Assignments</dt>
             <dd data-testid="song-sketch-assignments">none</dd>
+            <dt>Proposal</dt>
+            <dd data-testid="song-sketch-proposal">none</dd>
+            <dt>Responses</dt>
+            <dd data-testid="song-sketch-responses">none</dd>
             <dt>Questions</dt>
             <dd data-testid="song-sketch-questions">none</dd>
           </dl>
@@ -516,6 +524,8 @@ const songSketchTitle = requireElement<HTMLElement>("[data-testid='song-sketch-t
 const songSketchProposer = requireElement<HTMLElement>("[data-testid='song-sketch-proposer']");
 const songSketchSections = requireElement<HTMLElement>("[data-testid='song-sketch-sections']");
 const songSketchAssignments = requireElement<HTMLElement>("[data-testid='song-sketch-assignments']");
+const songSketchProposal = requireElement<HTMLElement>("[data-testid='song-sketch-proposal']");
+const songSketchResponses = requireElement<HTMLElement>("[data-testid='song-sketch-responses']");
 const songSketchQuestions = requireElement<HTMLElement>("[data-testid='song-sketch-questions']");
 
 let terrarium: TerrariumView | null = null;
@@ -929,6 +939,7 @@ function formatSlowThoughtPlayback(playback: SlowThoughtPlayback): string {
 }
 
 function renderSongSketch(sketch: SongSketch): void {
+  const proposal = createInspectOnlySongSketchProposal(sketch);
   songSketchTitle.textContent = `${sketch.title} (${sketch.status})`;
   songSketchProposer.textContent = `${sketch.proposerPlayerId} -> ${sketch.affectedPlayerIds.join(", ")}`;
   songSketchSections.textContent = sketch.sections.map((section) =>
@@ -937,6 +948,8 @@ function renderSongSketch(sketch: SongSketch): void {
   songSketchAssignments.textContent = sketch.assignments.map((assignment) =>
     `${assignment.playerId} ${assignment.stance} ${assignment.density.toFixed(2)}: ${assignment.brief}`
   ).join(" | ");
+  songSketchProposal.textContent = formatSongSketchProposal(proposal);
+  songSketchResponses.textContent = proposal.responses.map(formatSongSketchProposalResponse).join(" | ");
   songSketchQuestions.textContent = sketch.openQuestions.join(" | ");
 }
 
@@ -958,10 +971,7 @@ function getCurrentSongSketch(state: GrowTransportState = getState()): SongSketc
     });
   }
 
-  return {
-    ...cachedSongSketchBase,
-    createdAtBeat: roundDisplayBeat(state.currentBeat),
-  };
+  return cloneSongSketch(cachedSongSketchBase, roundDisplayBeat(state.currentBeat));
 }
 
 function createSongSketchCacheKey(
@@ -984,6 +994,50 @@ function formatSongSketchSection(section: SongSketchSection, sketch: SongSketch)
     if (rootDegree === undefined) return chord;
     return `${chord}(${rootNoteFromScaleDegree(sketch.tonalContext, rootDegree)})`;
   }).join("-");
+}
+
+function getCurrentSongSketchProposal(state: GrowTransportState = getState()): SongSketchProposal {
+  return createInspectOnlySongSketchProposal(getCurrentSongSketch(state));
+}
+
+function cloneSongSketch(sketch: SongSketch, createdAtBeat: number): SongSketch {
+  return {
+    ...sketch,
+    createdAtBeat,
+    meter: [sketch.meter[0], sketch.meter[1]],
+    tonalContext: {
+      ...sketch.tonalContext,
+      scale: [...sketch.tonalContext.scale],
+    },
+    affectedPlayerIds: [...sketch.affectedPlayerIds],
+    sections: sketch.sections.map(cloneSongSketchSection),
+    assignments: sketch.assignments.map(cloneSongSketchAssignment),
+    openQuestions: [...sketch.openQuestions],
+  };
+}
+
+function cloneSongSketchSection(section: SongSketchSection): SongSketchSection {
+  return {
+    ...section,
+    chordPlan: [...section.chordPlan],
+    rootDegrees: [...section.rootDegrees],
+  };
+}
+
+function cloneSongSketchAssignment(assignment: SongSketchAssignment): SongSketchAssignment {
+  return {
+    ...assignment,
+    constraints: [...assignment.constraints],
+  };
+}
+
+function formatSongSketchProposal(proposal: SongSketchProposal): string {
+  return `${proposal.status}/${proposal.kind} ${proposal.targetSectionId}: ${proposal.requestedAction}`;
+}
+
+function formatSongSketchProposalResponse(response: SongSketchProposalResponse): string {
+  const change = response.requestedChange ? ` (${response.requestedChange})` : "";
+  return `${response.playerId} ${response.stance}: ${response.reason}${change}`;
 }
 
 function roundDisplayBeat(value: number): number {
@@ -1718,6 +1772,7 @@ declare global {
     song?: {
       getId(): SongId;
       getSongs(): readonly SongMaterial[];
+      getProposal(): SongSketchProposal;
       getSketch(): SongSketch;
       setId(nextSongId: string): SongId;
     };
@@ -1819,6 +1874,7 @@ window.session = {
 window.song = {
   getId: () => songId,
   getSongs: () => SONG_MATERIALS,
+  getProposal: () => getCurrentSongSketchProposal(),
   getSketch: () => getCurrentSongSketch(),
   setId: (nextSongId) => {
     if (isSongId(nextSongId)) {

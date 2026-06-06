@@ -4,6 +4,9 @@ import type { PatternNoteSource, PlayerPatternSource, SongMaterial } from "./son
 
 export type SongSketchStatus = "draft";
 export type SongSketchAssignmentStance = "anchor" | "support" | "lead" | "respond";
+export type SongSketchProposalStatus = "mock";
+export type SongSketchProposalKind = "preserve_space" | "tighten_roots" | "answer_motif";
+export type SongSketchResponseStance = "accept" | "modify" | "resist" | "defer";
 
 export interface SongSketchPlayerRef {
   playerId: string;
@@ -48,6 +51,29 @@ export interface SongSketch {
   openQuestions: readonly string[];
 }
 
+export interface SongSketchProposalResponse {
+  playerId: string;
+  role: PlayerRole;
+  stance: SongSketchResponseStance;
+  reason: string;
+  requestedChange?: string;
+}
+
+export interface SongSketchProposal {
+  id: string;
+  status: SongSketchProposalStatus;
+  sketchId: string;
+  sourceSongId: SongMaterial["id"];
+  proposedByPlayerId: string;
+  targetSectionId: string;
+  kind: SongSketchProposalKind;
+  summary: string;
+  requestedAction: string;
+  chordPlan: readonly string[];
+  rootDegrees: readonly number[];
+  responses: readonly SongSketchProposalResponse[];
+}
+
 export function createInspectOnlySongSketch(input: {
   song: SongMaterial;
   players: readonly SongSketchPlayerRef[];
@@ -57,7 +83,8 @@ export function createInspectOnlySongSketch(input: {
 }): SongSketch {
   const proposer = input.players.find((player) => player.role === "melody") ?? input.players[0];
   const analysis = analyzeSongMaterial(input.song.patterns);
-  const sectionRoots = createSectionRootPlans(analysis);
+  const sectionRoots = createSectionRootPlans(analysis, input.players);
+  const sectionDurationBeats = analysis.loopLengthBeats;
   const gatherChordPlan = sectionRoots.gather.map((degree) =>
     romanNumeralFromRootDegree(input.tonalContext, degree)
   );
@@ -84,7 +111,7 @@ export function createInspectOnlySongSketch(input: {
         id: "gather",
         label: "Gather",
         startBeat: 0,
-        durationBeats: analysis.loopLengthBeats,
+        durationBeats: sectionDurationBeats,
         chordPlan: gatherChordPlan,
         rootDegrees: sectionRoots.gather,
         cue: createGatherCue(analysis),
@@ -92,8 +119,8 @@ export function createInspectOnlySongSketch(input: {
       {
         id: "answer",
         label: "Answer",
-        startBeat: analysis.loopLengthBeats,
-        durationBeats: analysis.loopLengthBeats,
+        startBeat: sectionDurationBeats,
+        durationBeats: sectionDurationBeats,
         chordPlan: answerChordPlan,
         rootDegrees: sectionRoots.answer,
         cue: createAnswerCue(analysis),
@@ -101,6 +128,30 @@ export function createInspectOnlySongSketch(input: {
     ],
     assignments: input.players.map((player) => createAssignment(player, analysis)),
     openQuestions: createOpenQuestions(analysis),
+  };
+}
+
+export function createInspectOnlySongSketchProposal(sketch: SongSketch): SongSketchProposal {
+  const targetSection = chooseProposalSection(sketch);
+  const melodyAssignment = sketch.assignments.find((assignment) => assignment.role === "melody");
+  const bassAssignment = sketch.assignments.find((assignment) => assignment.role === "bass");
+  const kind = chooseProposalKind(targetSection, melodyAssignment, bassAssignment);
+
+  return {
+    id: `proposal-${sketch.id}-${targetSection.id}-${kind}`,
+    status: "mock",
+    sketchId: sketch.id,
+    sourceSongId: sketch.sourceSongId,
+    proposedByPlayerId: sketch.proposerPlayerId,
+    targetSectionId: targetSection.id,
+    kind,
+    summary: createProposalSummary(kind, targetSection),
+    requestedAction: createProposalAction(kind, targetSection),
+    chordPlan: [...targetSection.chordPlan],
+    rootDegrees: [...targetSection.rootDegrees],
+    responses: sketch.assignments.map((assignment) =>
+      createProposalResponse(assignment, targetSection, kind)
+    ),
   };
 }
 
@@ -261,15 +312,18 @@ function getMutableSummary(
   return nextSummary;
 }
 
-function createSectionRootPlans(analysis: SongMaterialAnalysis): {
+function createSectionRootPlans(
+  analysis: SongMaterialAnalysis,
+  players: readonly SongSketchPlayerRef[],
+): {
   gather: readonly number[];
   answer: readonly number[];
 } {
-  const bassSummary = analysis.byPlayer.get("bass");
+  const bassPlayerId = players.find((player) => player.role === "bass")?.playerId;
+  const bassSummary = bassPlayerId ? analysis.byPlayer.get(bassPlayerId) : undefined;
   const bassOnsets = bassSummary?.onsets ?? [];
-  const splitBeat = bassSummary && bassSummary.loopLengthBeats > 0
-    ? bassSummary.loopLengthBeats / 2
-    : 0;
+  const sectionLengthBeats = bassSummary?.loopLengthBeats ?? analysis.loopLengthBeats;
+  const splitBeat = sectionLengthBeats > 0 ? sectionLengthBeats / 2 : 0;
   const gather = uniqueDegreesInOrder(
     bassOnsets.filter((onset) => onset.positionBeat < splitBeat).map((onset) => onset.degree),
   );
@@ -358,6 +412,119 @@ function createOpenQuestions(analysis: SongMaterialAnalysis): readonly string[] 
       : "Should the bass roots stay spacious or pull the loop forward?",
     "What cue tells the group this draft is ready to practice?",
   ];
+}
+
+function chooseProposalSection(sketch: SongSketch): SongSketchSection {
+  return sketch.sections.find((section) => section.id === "answer") ??
+    sketch.sections[0] ??
+    createEmptySection();
+}
+
+function chooseProposalKind(
+  section: SongSketchSection,
+  melodyAssignment: SongSketchAssignment | undefined,
+  bassAssignment: SongSketchAssignment | undefined,
+): SongSketchProposalKind {
+  if ((melodyAssignment?.density ?? 0) < 0.4) return "preserve_space";
+  if ((bassAssignment?.density ?? 0) > 0.45 || section.rootDegrees.length > 2) {
+    return "tighten_roots";
+  }
+  return "answer_motif";
+}
+
+function createProposalSummary(
+  kind: SongSketchProposalKind,
+  section: SongSketchSection,
+): string {
+  if (kind === "preserve_space") {
+    return `Try ${section.label} as a spacious answer instead of filling the gaps.`;
+  }
+  if (kind === "tighten_roots") {
+    return `Try ${section.label} with the root changes treated as explicit cues.`;
+  }
+  return `Try ${section.label} as a motif answer over the current root plan.`;
+}
+
+function createProposalAction(
+  kind: SongSketchProposalKind,
+  section: SongSketchSection,
+): string {
+  const plan = section.chordPlan.join("-");
+  if (kind === "preserve_space") {
+    return `Keep ${section.label} sparse over ${plan}.`;
+  }
+  if (kind === "tighten_roots") {
+    return `Practice ${section.label} root cues over ${plan}.`;
+  }
+  return `Trade a short motif across ${section.label} over ${plan}.`;
+}
+
+function createProposalResponse(
+  assignment: SongSketchAssignment,
+  section: SongSketchSection,
+  kind: SongSketchProposalKind,
+): SongSketchProposalResponse {
+  if (assignment.role === "pulse") {
+    return {
+      playerId: assignment.playerId,
+      role: assignment.role,
+      stance: section.rootDegrees.length > 2 ? "modify" : "accept",
+      reason: section.rootDegrees.length > 2
+        ? "Too many root cues can blur the shared floor."
+        : "The section cue is simple enough to mark cleanly.",
+      requestedChange: section.rootDegrees.length > 2
+        ? "Limit the first pass to the clearest two roots."
+        : undefined,
+    };
+  }
+
+  if (assignment.role === "bass") {
+    return {
+      playerId: assignment.playerId,
+      role: assignment.role,
+      stance: kind === "tighten_roots" ? "accept" : "modify",
+      reason: kind === "tighten_roots"
+        ? "The proposal gives the bass root plan a clear job."
+        : "The bass wants the root motion stated before the answer loosens.",
+      requestedChange: kind === "tighten_roots"
+        ? undefined
+        : "Name the bass cue before the melody answers it.",
+    };
+  }
+
+  if (assignment.role === "melody") {
+    const sparseMelody = assignment.density < 0.4;
+    return {
+      playerId: assignment.playerId,
+      role: assignment.role,
+      stance: sparseMelody && kind !== "preserve_space" ? "resist" : "accept",
+      reason: sparseMelody
+        ? "The melody's source material depends on silence staying audible."
+        : "The melody can turn the section into a repeatable answer.",
+      requestedChange: sparseMelody && kind !== "preserve_space"
+        ? "Let the answer keep at least one empty beat between phrases."
+        : undefined,
+    };
+  }
+
+  return {
+    playerId: assignment.playerId,
+    role: assignment.role,
+    stance: "defer",
+    reason: "This player has no section-specific rule yet.",
+  };
+}
+
+function createEmptySection(): SongSketchSection {
+  return {
+    id: "empty",
+    label: "Empty",
+    startBeat: 0,
+    durationBeats: 0,
+    chordPlan: ["I"],
+    rootDegrees: [0],
+    cue: "No section is available yet.",
+  };
 }
 
 function getPlayerDensity(analysis: SongMaterialAnalysis, playerId: string): number {

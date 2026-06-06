@@ -1272,6 +1272,39 @@ Implementation notes:
 - Claude approved Byte 12b-a and verified live sketches differ by song: Lantern, Switchback, and Glass now have distinct harmonic plans and pattern-derived densities while staying inspect-only.
 - Forward notes: resolve the harmonic source by player role instead of literal `"bass"` if the roster changes; keep split length and section duration aligned if future patterns diverge in loop length; deep-clone, freeze, or document cached nested arrays before later proposal/response code can mutate returned sketches.
 
+### Byte 12b-b: Inspect-Only Proposal And Responses
+
+Status: implemented; awaiting Claude review.
+
+Add the first band-level negotiation surface on top of the per-song sketch without letting it drive playback.
+
+Scope:
+
+- Add a deterministic `SongSketchProposal` derived from the current `SongSketch`.
+- Include proposal status, kind, target section, requested action, chord/root provenance, and the proposing player.
+- Add one deterministic mock response per assigned player with stance `accept`, `modify`, `resist`, or `defer`.
+- Render Proposal and Responses rows in the Song Sketch inspector.
+- Expose `window.song.getProposal()` for browser review.
+- Resolve Byte 12b-a's harmonic-source cleanup by looking up the bass role instead of literal player id.
+- Return cloned nested sketch arrays from `window.song.getSketch()` so the memoized base sketch cannot be mutated by inspectors/tests/future proposal code.
+- Keep section durations as full-loop proposed overlays; root-plan splitting still uses the harmonic source's own loop.
+- Do not touch playback, transport, slow-thinking, validators, Ollama, persistence, or scheduling.
+
+Acceptance criteria:
+
+- `window.song.getProposal()` exists and points back to the active sketch id and source song.
+- Proposal chord/root provenance matches the target section.
+- Every affected player has one response.
+- Glass's sparse material produces a different proposal kind than Lantern.
+- Mutating a returned `window.song.getSketch()` section does not mutate the cached sketch returned by the next call.
+- `npm audit`, `npm run build`, `npm run smoke`, and `git diff --check` are green.
+
+Implementation notes:
+
+- The proposal is intentionally labeled `mock`; it is deterministic scaffolding for band-level coordination, not model-authored songcraft.
+- Smoke checks proposal shape and clone behavior structurally, avoiding dependence on exact response prose.
+- In-app browser sanity check verified the Song Sketch inspector renders `mock/tighten_roots` and per-player responses on Lantern.
+
 ### Byte 13: Thought Memory And Persistence Prep
 
 Prepare to preserve player identity, backstory fragments, thoughts, and useful motifs.
