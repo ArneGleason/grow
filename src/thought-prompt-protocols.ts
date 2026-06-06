@@ -60,23 +60,25 @@ const RESPONSE_LEVELS = [
 ] as const;
 const MUSICAL_IDEA_ORIGINS = ["self", "heard", "imagined", "group"] as const;
 const STEP_KINDS = ["note", "rest", "accent", "gesture"] as const;
+export const REGISTER_DELTA_PROMPT_RULE = "For shift_register, the JSON object is invalid unless it includes top-level registerDelta as -1, 0, or 1. Do not only mention registerDelta in rationale. Required example fields: {\"action\":\"shift_register\",\"registerDelta\":1}. Omit registerDelta for every other action.";
 
 const PROJECTED_JSON_PROTOCOL: ThoughtPromptProtocol = {
   id: "projected-json",
   label: "Projected JSON",
   createUserPrompt(request, options = {}) {
     const projection = createProjectedThoughtRequest(request, options);
-    return [
+    const lines = [
       "Task: produce one PlayerThoughtIntent that can be validated and optionally scheduled later.",
       "Use the request projection only; it is a compact view of the canonical internal request.",
       "Return one JSON object matching the provided schema. No markdown. No prose outside JSON.",
       "Copy request id/player exactly. Choose one allowed action.",
-      "For shift_register, the JSON object is invalid unless it includes top-level registerDelta as -1, 0, or 1. Do not only mention registerDelta in rationale. Required example fields: {\"action\":\"shift_register\",\"registerDelta\":1}. Omit registerDelta for every other action.",
+      ...getRegisterDeltaPromptLines(request),
       "For note steps, use scaleDegree as 0..scale.length-1 plus separate octave. Do not include pitch; the system derives pitch.",
       "Omit sourceStartBeat; the system owns provenance and placement.",
       "Keep rationale under 160 characters.",
       `Request projection: ${JSON.stringify(projection)}`,
-    ].join("\n\n");
+    ];
+    return lines.join("\n\n");
   },
   createResponseFormat: createThoughtIntentJsonSchema,
 };
@@ -115,6 +117,14 @@ export function createProjectedThoughtRequest(
     motif: (request.excerpts[0]?.steps ?? []).map(compactMotifStep),
     ...(options.influenceReference ? { influenceReference: options.influenceReference } : {}),
   };
+}
+
+export function getRegisterDeltaPromptLines(
+  request: Pick<PlayerThoughtRequest, "allowedActions">,
+): readonly string[] {
+  return request.allowedActions.includes("shift_register")
+    ? [REGISTER_DELTA_PROMPT_RULE]
+    : [];
 }
 
 function compactMotifStep(step: MusicalExcerptStep): CompactMotifStep {

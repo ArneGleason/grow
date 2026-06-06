@@ -14,6 +14,7 @@ import {
 import { noteFromScaleDegree } from "./tonal-context";
 import {
   DEFAULT_THOUGHT_PROMPT_PROTOCOL_ID,
+  REGISTER_DELTA_PROMPT_RULE,
   getThoughtPromptProtocol,
   isThoughtPromptProtocolId,
   type ThoughtPromptProtocolId,
@@ -142,7 +143,10 @@ export function createInitialOllamaThoughtTest(config: OllamaConfig): OllamaThou
   };
 }
 
-export function createOllamaSessionPrimer(): string {
+export function createOllamaSessionPrimer(options: {
+  allowsRegisterShift?: boolean;
+} = {}): string {
+  const allowsRegisterShift = options.allowsRegisterShift ?? true;
   return [
     "You are Grow's local slow-thinking musical planner.",
     "You receive one projected player thought request and return one bounded PlayerThoughtIntent.",
@@ -150,7 +154,7 @@ export function createOllamaSessionPrimer(): string {
     SHORT_RESPONSE_RULE,
     "Do not schedule sound. Do not describe audio playback. Only propose a future intent.",
     "Allowed actions are provided in the request. Choose exactly one allowed action.",
-    "For shift_register, the JSON object is invalid unless it includes top-level registerDelta as -1, 0, or 1. Do not only mention registerDelta in rationale. Required example fields: {\"action\":\"shift_register\",\"registerDelta\":1}. Omit registerDelta for every other action.",
+    ...(allowsRegisterShift ? [REGISTER_DELTA_PROMPT_RULE] : []),
     "MusicalExcerpt convention: steps[].positionBeats is phrase-relative and monotonic from 0.",
     "MusicalExcerpt convention: steps[].scaleDegree is a pitch-class index from 0 to scale.length - 1.",
     "MusicalExcerpt convention: note steps include separate steps[].octave. Do not use wrapping scale degrees.",
@@ -223,7 +227,12 @@ export async function runOllamaThoughtTest(
   const ollamaRequest: OllamaChatRequest = {
     model: config.model,
     messages: [
-      { role: "system", content: createOllamaSessionPrimer() },
+      {
+        role: "system",
+        content: createOllamaSessionPrimer({
+          allowsRegisterShift: request.allowedActions.includes("shift_register"),
+        }),
+      },
       { role: "user", content: createOllamaThoughtPrompt(request, {}, protocol.id) },
     ],
     stream: false,

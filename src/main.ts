@@ -38,6 +38,10 @@ import {
   type SongMaterial,
 } from "./song-material";
 import {
+  createInspectOnlySongSketch,
+  type SongSketch,
+} from "./song-sketch";
+import {
   createTerrariumView,
   type TerrariumHeatState,
   type TerrariumView,
@@ -178,6 +182,10 @@ const HELP_TOPICS = {
   thoughts: {
     title: "Thoughts",
     body: "Thoughts show the compact request ingredients each player would send to the slow creative planner: focus, motif, request level, mock intent, selected memory fragments, and each active slow-thinking loop.",
+  },
+  "song-sketch": {
+    title: "Song Sketch",
+    body: "Song Sketch is an inspect-only band-level draft. It records sections, shared tonal plans, player assignments, and open questions before any songwriting idea is allowed to drive playback.",
   },
   listening: {
     title: "Listening",
@@ -399,6 +407,25 @@ ${renderHelpButton("thoughts", "thoughts")}
           <div id="thought-seed-list" data-testid="thought-seed-list"></div>
         </section>
 
+        <section class="inspector-section" aria-label="Song sketch">
+          <div class="section-heading">
+            <h2>Song Sketch</h2>
+${renderHelpButton("song-sketch", "song sketch")}
+          </div>
+          <dl>
+            <dt>Draft</dt>
+            <dd data-testid="song-sketch-title">none</dd>
+            <dt>Proposer</dt>
+            <dd data-testid="song-sketch-proposer">none</dd>
+            <dt>Sections</dt>
+            <dd data-testid="song-sketch-sections">none</dd>
+            <dt>Assignments</dt>
+            <dd data-testid="song-sketch-assignments">none</dd>
+            <dt>Questions</dt>
+            <dd data-testid="song-sketch-questions">none</dd>
+          </dl>
+        </section>
+
         <section class="inspector-section" aria-label="Listening frame">
           <div class="section-heading">
             <h2>Listening</h2>
@@ -480,6 +507,11 @@ const lookaheadHealth = requireElement<HTMLElement>("[data-testid='lookahead-hea
 const lookaheadLead = requireElement<HTMLElement>("[data-testid='lookahead-lead']");
 const lookaheadThrough = requireElement<HTMLElement>("[data-testid='lookahead-through']");
 const lookaheadPendingSlots = requireElement<HTMLElement>("[data-testid='lookahead-pending-slots']");
+const songSketchTitle = requireElement<HTMLElement>("[data-testid='song-sketch-title']");
+const songSketchProposer = requireElement<HTMLElement>("[data-testid='song-sketch-proposer']");
+const songSketchSections = requireElement<HTMLElement>("[data-testid='song-sketch-sections']");
+const songSketchAssignments = requireElement<HTMLElement>("[data-testid='song-sketch-assignments']");
+const songSketchQuestions = requireElement<HTMLElement>("[data-testid='song-sketch-questions']");
 
 let terrarium: TerrariumView | null = null;
 let activeResizePointerId: number | null = null;
@@ -889,6 +921,30 @@ function formatSlowThoughtPlayback(playback: SlowThoughtPlayback): string {
     return `shift ${formatSignedInteger(playback.registerShift ?? 0)} ${window}`;
   }
   return `${playback.mode} ${window}`;
+}
+
+function renderSongSketch(sketch: SongSketch): void {
+  songSketchTitle.textContent = `${sketch.title} (${sketch.status})`;
+  songSketchProposer.textContent = `${sketch.proposerPlayerId} -> ${sketch.affectedPlayerIds.join(", ")}`;
+  songSketchSections.textContent = sketch.sections.map((section) =>
+    `${section.label} ${section.startBeat}-${section.startBeat + section.durationBeats}: ${section.chordPlan.join("-")}`
+  ).join(" | ");
+  songSketchAssignments.textContent = sketch.assignments.map((assignment) =>
+    `${assignment.playerId} ${assignment.stance}: ${assignment.brief}`
+  ).join(" | ");
+  songSketchQuestions.textContent = sketch.openQuestions.join(" | ");
+}
+
+function getCurrentSongSketch(state: GrowTransportState = getState()): SongSketch {
+  return createInspectOnlySongSketch({
+    song: getSongMaterial(state.songId),
+    tonalContext: world.getTonalContext(),
+    currentBeat: state.currentBeat,
+    players: world.getPlayers().map(({ player }) => ({
+      playerId: player.id,
+      role: player.role,
+    })),
+  });
 }
 
 function formatPlayerContagion(framePlayer: ListeningFramePlayer | undefined): string {
@@ -1373,6 +1429,7 @@ function renderWorld(state: GrowTransportState = getState()): void {
     frame.players,
   );
   renderThoughts(thoughtRequests, thoughtIntents);
+  renderSongSketch(getCurrentSongSketch(state));
   renderListening(frame);
   renderOllama();
   terrarium?.setHeat(createTerrariumHeatState(frame));
@@ -1618,6 +1675,7 @@ declare global {
     song?: {
       getId(): SongId;
       getSongs(): readonly SongMaterial[];
+      getSketch(): SongSketch;
       setId(nextSongId: string): SongId;
     };
     timing?: {
@@ -1718,6 +1776,7 @@ window.session = {
 window.song = {
   getId: () => songId,
   getSongs: () => SONG_MATERIALS,
+  getSketch: () => getCurrentSongSketch(),
   setId: (nextSongId) => {
     if (isSongId(nextSongId)) {
       return applySongId(nextSongId);

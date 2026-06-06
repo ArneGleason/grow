@@ -20,6 +20,7 @@ import {
   createProjectedThoughtRequest,
   getThoughtPromptProtocol,
 } from "../src/thought-prompt-protocols";
+import type { SongSketch } from "../src/song-sketch";
 import type { PlayerThoughtSeed } from "../src/thought-seeds";
 
 type TransportState = {
@@ -414,6 +415,21 @@ async function setSessionMode(page: Page, mode: SessionMode): Promise<void> {
   }, mode);
 
   expect(appliedMode).toBe(mode);
+}
+
+async function getSongSketch(page: Page): Promise<SongSketch> {
+  const sketch = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      song?: { getSketch(): SongSketch };
+    };
+    return appWindow.song?.getSketch();
+  });
+
+  if (!sketch) {
+    throw new Error("window.song.getSketch() was not available");
+  }
+
+  return sketch;
 }
 
 async function getRecordedEventCount(page: Page): Promise<number> {
@@ -1152,13 +1168,19 @@ test("slow thinking loops keep independent melody and bass playback windows", as
         messages?: Array<{ role?: string; content?: string }>;
       };
     };
+    const systemMessage = payload.request?.messages?.find((message) => message.role === "system")?.content ?? "";
     const userMessage = payload.request?.messages?.find((message) => message.role === "user")?.content ?? "";
     const playerId = userMessage.includes('"player":"bass"') ? "bass" : "melody";
     requestedPlayers.push(playerId);
     if (playerId === "bass") {
       expect(userMessage).toContain('"allowedActions":["rest","simplify","change_density"]');
+      expect(systemMessage).not.toContain("registerDelta");
+      expect(userMessage).not.toContain("registerDelta");
       expect(JSON.stringify(payload.request?.format)).not.toContain("registerDelta");
       expect(JSON.stringify(payload.request?.format)).not.toContain("shift_register");
+    } else {
+      expect(systemMessage).toContain("top-level registerDelta");
+      expect(userMessage).toContain("top-level registerDelta");
     }
 
     const isBass = playerId === "bass";
@@ -1360,6 +1382,21 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   await expect(page.getByTestId("song-lantern")).toBeChecked();
   await expect(page.getByTestId("timing-feel-current")).toHaveText("Feel");
   await expect(page.getByTestId("timing-feel-feel")).toBeChecked();
+  await expect(page.getByTestId("song-sketch-title")).toHaveText("Lantern working sketch (draft)");
+  await expect(page.getByTestId("song-sketch-proposer")).toHaveText("melody -> pulse, bass, melody");
+  await expect(page.getByTestId("song-sketch-sections")).toContainText("Gather 0-8: C-Bb-F-C");
+  await expect(page.getByTestId("song-sketch-assignments")).toContainText("bass support");
+  await expect(page.getByTestId("song-sketch-questions")).toContainText("Who owns the first repeatable motif?");
+  const songSketch = await getSongSketch(page);
+  expect(songSketch.id).toBe("sketch-lantern-c-mixolydian");
+  expect(songSketch.status).toBe("draft");
+  expect(songSketch.sourceSongId).toBe("lantern");
+  expect(songSketch.proposerPlayerId).toBe("melody");
+  expect([...songSketch.affectedPlayerIds].sort()).toEqual(["bass", "melody", "pulse"]);
+  expect(songSketch.tonalContext.mode).toBe("mixolydian");
+  expect(songSketch.sections).toHaveLength(2);
+  expect(songSketch.assignments).toHaveLength(3);
+  expect(songSketch.openQuestions.length).toBeGreaterThan(0);
   expect(await getSessionMode(page)).toBe("rehearsal");
   expect((await getTransportState(page)).sessionMode).toBe("rehearsal");
   expect((await getTransportState(page)).songId).toBe("lantern");
@@ -1465,6 +1502,14 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   const projectedPrompt = getThoughtPromptProtocol("projected-json").createUserPrompt(
     initialThoughtRequests.find((request) => request.playerId === "melody") ?? initialThoughtRequests[0],
   );
+  const initialBassRequest = initialThoughtRequests.find((request) => request.playerId === "bass") ??
+    initialThoughtRequests[0];
+  const projectedBassPrompt = getThoughtPromptProtocol("projected-json").createUserPrompt(
+    {
+      ...initialBassRequest,
+      allowedActions: ["rest", "simplify", "change_density"],
+    },
+  );
   expect(initialThoughtRequests.map((request) => request.playerId).sort()).toEqual(["bass", "melody", "pulse"]);
   expect(initialThoughtRequests.every((request) => request.requestLevel === "in_song_short")).toBe(true);
   expect(initialThoughtRequests.every((request) => request.seed.playerId === request.playerId)).toBe(true);
@@ -1478,6 +1523,8 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   expect(projectedPrompt).toContain("top-level registerDelta");
   expect(projectedPrompt).toContain('"action":"shift_register","registerDelta":1');
   expect(projectedPrompt).not.toContain("Request JSON:");
+  expect(projectedBassPrompt).not.toContain("registerDelta");
+  expect(projectedBassPrompt).not.toContain("shift_register");
   expect(initialHookIntents.map((intent) => intent.playerId).sort()).toEqual(["bass", "melody", "pulse"]);
   expect(initialMockIntents.map((intent) => intent.playerId).sort()).toEqual(["bass", "melody", "pulse"]);
   expect(initialMockIntents.every((intent) => {

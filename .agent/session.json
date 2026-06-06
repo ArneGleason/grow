@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Merge Byte 11e registerDelta schema gating",
-  "status": "byte11e-merged",
-  "updatedAt": "2026-06-06T14:33:18Z",
+  "lastTask": "Implement Byte 12a inspect-only song sketch stub",
+  "status": "byte12a-ready-for-review",
+  "updatedAt": "2026-06-06T14:45:47Z",
   "lastHandoff": "",
-  "branch": "main",
-  "commit": "main HEAD",
+  "branch": "codex/byte-12a",
+  "commit": "codex/byte-12a HEAD",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 11e is approved, merged to main, and pushed. Projected JSON now omits the `registerDelta` schema property entirely when `request.allowedActions` does not include `shift_register`, while preserving validator behavior and melody shift-register behavior. Claude's sanity check confirmed non-shift bass formats omit `registerDelta`/`shift_register`, melody shift formats still include the property and conditional, and playback/scheduling did not move. Validation on the code commit: `npm audit`, `npm run build`, targeted smoke `npm run smoke -- -g \"independent melody and bass\"`, full `npm run smoke` 16/16, and `git diff --check` pass. Optional next cleanup before Byte 12: gate the static `registerDelta` prompt sentence on the same `allowsRegisterShift` condition."
+    "summary": "Byte 11e is approved, merged to main, and pushed. Byte 12a is implemented on `codex/byte-12a` and ready for review: added an inspect-only band-level `SongSketch` model and inspector/debug surface, generated from selected song material, tonal context, and player roster. Also folded in the Byte 11e prompt cleanup: the `registerDelta` rule is shared and included only when `allowedActions` includes `shift_register`, so bass slow-thinking calls omit the instruction from system prompt, user prompt, and schema. Validation: `npm audit`, `npm run build`, focused smoke `npm run smoke -- -g \"independent melody and bass|Grow exposes session modes\"`, full `npm run smoke` 16/16, and `git diff --check` pass."
   }
 }

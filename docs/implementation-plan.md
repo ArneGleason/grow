@@ -1180,7 +1180,7 @@ Implementation notes:
 - The independent melody/bass smoke now asserts the proxied bass Ollama `format` contains neither `registerDelta` nor `shift_register`.
 - Focused validation so far: `npm run build` and `npm run smoke -- -g "independent melody and bass"` pass.
 - Claude approved Byte 11e and confirmed the change mirrors the earlier pitch-drop pattern: non-shift lanes now structurally cannot emit `registerDelta` through the schema, while the validator still rejects any stray field.
-- Forward note: the `registerDelta` prompt sentence is still emitted unconditionally in the primer/projected protocol. Gate that sentence on the same `allowsRegisterShift` condition so bass no longer sees a prompt for a contract its schema does not expose.
+- Forward note resolved in Byte 12a: the `registerDelta` prompt sentence should be gated on the same `allowsRegisterShift` condition so bass no longer sees a prompt for a contract its schema does not expose.
 
 ### Coordination Principle: Personal Intents Versus Band Proposals
 
@@ -1207,6 +1207,33 @@ Review focus:
 - whether this feels like songwriting rather than another short variation,
 - whether piece data can later be practiced, referenced, and iterated,
 - whether the structure stays small enough to persist later.
+
+### Byte 12a: Inspect-Only Song Sketch Stub
+
+Status: implemented.
+
+Start the song-sketch arc with a visible band-level draft, not a private player intent and not a playback driver.
+
+Scope:
+
+- Gate the `registerDelta` prompt sentence in both the projected user prompt and Ollama system primer so it appears only for shift-capable requests.
+- Add an inspect-only `SongSketch` model with draft status, proposer, affected players, tonal context, sections, chord plan, per-player assignments, and open questions.
+- Generate a deterministic sketch from the selected song material, current tonal context, and current player roster.
+- Render the sketch in a new Song Sketch inspector section.
+- Expose the sketch through `window.song.getSketch()` for browser review.
+- Do not change transport, lookahead, slow-thinking scheduling, validators, or audible playback.
+
+Review focus:
+
+- whether the sketch is clearly band-level and not another private melody intent,
+- whether the fields are enough to support later practice/reference/iteration without becoming persistence-heavy,
+- whether the modal chord plan and player assignments are useful as a first songwriting surface,
+- whether the prompt cleanup fully removes `registerDelta` instruction text from non-shift model calls while preserving melody shift-register guidance.
+
+Implementation notes:
+
+- Focused smoke now verifies bass slow-thinking calls omit `registerDelta` from system prompt, user prompt, and response schema, while melody shift-capable calls still include the rule.
+- General app smoke verifies the new inspector section and `window.song.getSketch()` expose the draft title, proposer, sections, assignments, questions, source song, affected players, and tonal context.
 
 ### Byte 13: Thought Memory And Persistence Prep
 
