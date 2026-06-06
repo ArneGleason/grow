@@ -88,8 +88,10 @@ See `docs/github-setup.md` before adding tokens, OAuth credentials, webhook secr
 For software projects, record the testing conventions that future agents should preserve:
 
 - Stable selectors or test IDs: Byte 10c exposes `transport-toggle`, `transport-status`, `session-mode-control`, `session-mode-current`, `session-mode-break`, `session-mode-solo-practice`, `session-mode-rehearsal`, `session-mode-performance`, `terrarium-container`, `terrarium-canvas`, `player-list`, `player-pulse-*`, `player-bass-*`, `player-melody-*`, including `player-*-expression` and `player-*-offset`, `thought-seed-list`, `thought-seed-pulse-*`, `thought-seed-bass-*`, `thought-seed-melody-*`, `thought-request-pulse-*`, `thought-request-bass-*`, `thought-request-melody-*`, `thought-intent-pulse-*`, `thought-intent-bass-*`, `thought-intent-melody-*`, `ollama-base-url-input`, `ollama-model-input`, `ollama-health-check`, `ollama-send-thought`, `ollama-health-status`, `ollama-model-status`, `ollama-protocol-status`, `ollama-latency`, `ollama-parse-result`, `ollama-validation-result`, `ollama-fallback-status`, `ollama-errors`, `ollama-primer-summary`, `ollama-raw-response`, `listening-event-count`, `listening-window`, `listening-latest-event`, `lookahead-health`, `lookahead-lead`, `lookahead-through`, and `lookahead-pending-slots`.
+- Byte 12b-c adds proposal-text probe selectors: `ollama-send-proposal`, `ollama-proposal-text-status`, and `ollama-proposal-raw-response`.
 - E2E state setup and teardown: TBD.
 - E2E smoke command: `npm run smoke`; Playwright starts or reuses Vite at `http://127.0.0.1:5173/`.
+- Long smoke runs on a laptop are sensitive to display sleep / system idle. Prefer `caffeinate -dimsu npm run smoke` when stepping away from the machine.
 - Page readiness and realtime waits: wait for `window.transport.getState()` before transport assertions and `window.listening.getFrame()` before listening-frame assertions.
 - Shared fixtures/helpers: TBD.
 - Visual regression entry points: capture the Vite root page at `http://127.0.0.1:5173/`; the terrarium canvas should show three gently drifting players: `pulse`, `bass`, and `melody`.
@@ -138,6 +140,7 @@ Resume work:
 - Tone.js audio must start from a user gesture in normal browsers.
 - For Tone.js scheduled callbacks, the callback `time` argument is the intended audio fire time. `Tone.now()` includes Tone's lookahead; use `Tone.immediate()` when testing whether a callback is truly late. Comparing scheduled times to `Tone.now()` can add audible jitter even when grid offsets are zero.
 - Playwright smoke tests pass Chromium `--autoplay-policy=no-user-gesture-required` so the test can focus on lifecycle cleanup rather than browser audio policy.
+- If several unrelated playback smoke tests all report `eventCount: 0` while lookahead is healthy and pending slots exist, suspect the browser AudioContext/transport clock is parked or wedged rather than a musical regression. Stop any manual dev server, rerun the focused playback smoke from a clean Playwright-managed server, and use `caffeinate` for long runs if the laptop may blank/sleep.
 - Vite dev HMR can leave audio objects alive if cleanup regresses; preserve transport disposal hooks.
 - Byte 1 validation passed with `npm run build`, `npm audit`, and a Playwright smoke check for repeated start/stop cleanup.
 - Byte 3 validation historically checked that repeated start/stop cycles kept the three Tone sequences at 3 while playing and 0 while stopped. Current Byte 5+ validation should use `lookahead.pendingSlotCount` instead.

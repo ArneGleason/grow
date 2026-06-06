@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Implement Byte 12b-c model-authored proposal text",
-  "status": "byte12b-c-ready-for-review",
-  "updatedAt": "2026-06-06T17:15:00Z",
+  "lastTask": "Merge Byte 12b-c model-authored proposal text",
+  "status": "byte12b-c-merged",
+  "updatedAt": "2026-06-06T17:33:33Z",
   "lastHandoff": "",
-  "branch": "codex/byte-12b-c",
-  "commit": "pending",
+  "branch": "main",
+  "commit": "main HEAD",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 12b-c is implemented on `codex/byte-12b-c` and awaiting review. It adds a manual Ollama proposal-text probe that may rewrite only the readable `SongSketchProposal` text slots: summary, requested action, and per-player response reasons/requested changes. Proposal kind, target section, proposer, chord/root provenance, player ids, response stances, routing, playback, transport, slow-thinking, persistence, and scheduling stay deterministic. Invalid or failed model text keeps the mock proposal active with a valid fallback. `npm audit`, `npm run build`, `npm run smoke`, `git diff --check`, and in-app browser UI sanity are green."
+    "summary": "Byte 12b-c is approved, merged to main, and ready to push. It adds a manual Ollama proposal-text probe that may rewrite only the readable `SongSketchProposal` text slots: summary, requested action, and per-player response reasons/requested changes. Proposal kind, target section, proposer, chord/root provenance, player ids, response stances, routing, playback, transport, slow-thinking, persistence, and scheduling stay deterministic. Invalid or failed model text keeps the mock proposal active with a valid fallback. Claude verified the live qwen3 path, preserved the review artifact, and recommended banking the principle that model prose is data, not instruction. `LOCAL_DEV_NOTES.md` now records that unrelated playback smoke tests with `eventCount: 0` can indicate a parked/wedged browser AudioContext; use `caffeinate -dimsu npm run smoke` for long unattended laptop runs."
   }
 }
