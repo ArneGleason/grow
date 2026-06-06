@@ -1363,7 +1363,7 @@ Review focus:
 
 ### Byte 13a: Persistence Record Boundaries
 
-Status: implemented; awaiting review.
+Status: implemented; approved and merged.
 
 Define durable record families before adding any database or write path.
 
@@ -1389,6 +1389,36 @@ Review focus:
 - Whether the proposed durable records are enough for the next SQLite byte without over-normalizing.
 - Whether the replay versus seek-and-continue distinction is clear.
 - Whether the model-prose boundary is strong enough before proposal-to-playback work.
+
+Review outcome:
+
+- Claude approved Byte 13a as a docs-only persistence design.
+- Carry forward into Byte 13b: add `song.changed` and `timing.feel_changed` record types, consider transport start/stop records, add taste action-dwell state to the seek-and-continue generator layer, and explicitly mark listening frame, agitation, contagion, and current taste display evaluations as ephemeral derived state.
+- Keep `checkpoint.created` and `moment.marked` as type-tagged event rows unless a future storage need proves otherwise.
+
+### Byte 13b: First SQLite Event Log
+
+Add the smallest local persistence writer without replay or fork UI.
+
+Scope:
+
+- Introduce a local SQLite store owned by the local backend/server layer, with database files ignored by Git.
+- Add append-only records for a very small set of safe types, starting with `session.started`, `session.mode_changed`, and `musical.event_recorded`.
+- Fold in the Byte 13a review additions before writing schema: `song.changed`, `timing.feel_changed`, taste action-dwell checkpoint state, and derived listening/agitation/contagion/taste display ephemeral guidance.
+- Buffer writes off the audio scheduler path; never write to SQLite directly from a Tone scheduler callback.
+- Add a tiny dump or inspect command so the log can be checked without a UI.
+
+Out of scope:
+
+- Fork UI, replay engine, media export, compaction, checkpoint restore, and proposal-to-playback behavior.
+- Persisting model prose as executable instruction.
+- Re-hosting the full Ollama proxy unless needed for the local server shape.
+
+Review focus:
+
+- Whether the event log stays append-only and off the audio path.
+- Whether the schema remains under-normalized but queryable.
+- Whether the first records are useful for debugging without turning Grow into an archive.
 
 ### Byte 14: Producer Marker, No LLM
 
