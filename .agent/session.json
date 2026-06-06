@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Implement Byte 12b-a song-material-deep sketch",
-  "status": "byte12b-a-ready-for-review",
-  "updatedAt": "2026-06-06T15:28:58Z",
+  "lastTask": "Merge Byte 12b-a song-material-deep sketch",
+  "status": "byte12b-a-merged",
+  "updatedAt": "2026-06-06T16:09:41Z",
   "lastHandoff": "",
-  "branch": "codex/byte-12b-a",
-  "commit": "pending commit",
+  "branch": "main",
+  "commit": "main HEAD",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 12b-a is implemented on `codex/byte-12b-a` and ready for Claude review. `SongSketch` now derives roman-root chord plans, structured root degrees, and per-player density from `SongMaterial.patterns`, memoizes sketch content by song/tonal/roster key, and keeps playback/transport/slow-thinking/validators untouched. Validation is green: `npm audit`, `npm run build`, `npm run smoke` 16/16, and `git diff --check`."
+    "summary": "Byte 12b-a is approved, merged to main, and pushed. `SongSketch` now derives roman-root chord plans, structured root degrees, and per-player density from `SongMaterial.patterns`, memoizes sketch content by song/tonal/roster key, and keeps playback/transport/slow-thinking/validators untouched. Claude verified all focus points, live cross-song differences, and validation. Next song-sketch work can build mock proposal/response, carrying forward small notes about role-based bass lookup, loop-length consistency, and cached nested sketch immutability before mutation exists."
   }
 }

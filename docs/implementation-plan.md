@@ -1240,7 +1240,7 @@ Implementation notes:
 
 ### Byte 12b-a: Song-Material-Deep Sketch
 
-Status: implemented; awaiting Claude review.
+Status: implemented and approved.
 
 Make the inspect-only `SongSketch` reflect the selected song's actual material before adding any proposal/response behavior.
 
@@ -1269,6 +1269,8 @@ Implementation notes:
 - `SongSketchSection.rootDegrees` records the source scale-degree roots so tests and future tools can verify provenance without parsing display text.
 - `SongSketchAssignment.density` records pattern-derived player density; assignment prose can mention sparse/moderate/active without tests depending on that wording.
 - The inspector renders roman roots with note-name translations, for example `I(C)-V(G)`, while keeping the canonical sketch data key-independent.
+- Claude approved Byte 12b-a and verified live sketches differ by song: Lantern, Switchback, and Glass now have distinct harmonic plans and pattern-derived densities while staying inspect-only.
+- Forward notes: resolve the harmonic source by player role instead of literal `"bass"` if the roster changes; keep split length and section duration aligned if future patterns diverge in loop length; deep-clone, freeze, or document cached nested arrays before later proposal/response code can mutate returned sketches.
 
 ### Byte 13: Thought Memory And Persistence Prep
 
