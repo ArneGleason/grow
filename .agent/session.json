@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Implement Byte 12a inspect-only song sketch stub",
-  "status": "byte12a-ready-for-review",
-  "updatedAt": "2026-06-06T14:45:47Z",
+  "lastTask": "Merge Byte 12a inspect-only song sketch stub",
+  "status": "byte12a-merged",
+  "updatedAt": "2026-06-06T15:03:29Z",
   "lastHandoff": "",
-  "branch": "codex/byte-12a",
-  "commit": "codex/byte-12a HEAD",
+  "branch": "main",
+  "commit": "main HEAD",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 11e is approved, merged to main, and pushed. Byte 12a is implemented on `codex/byte-12a` and ready for review: added an inspect-only band-level `SongSketch` model and inspector/debug surface, generated from selected song material, tonal context, and player roster. Also folded in the Byte 11e prompt cleanup: the `registerDelta` rule is shared and included only when `allowedActions` includes `shift_register`, so bass slow-thinking calls omit the instruction from system prompt, user prompt, and schema. Validation: `npm audit`, `npm run build`, focused smoke `npm run smoke -- -g \"independent melody and bass|Grow exposes session modes\"`, full `npm run smoke` 16/16, and `git diff --check` pass."
+    "summary": "Byte 12a is approved, merged to main, and pushed. It added an inspect-only band-level `SongSketch` model and inspector/debug surface, generated from selected song material, tonal context, and player roster. It also folded in the Byte 11e prompt cleanup: the `registerDelta` rule is shared and included only when `allowedActions` includes `shift_register`, so bass slow-thinking calls omit the instruction from system prompt, user prompt, and schema. Claude verified the sketch is pure, band-level, playback-neutral, and validated with smoke 16/16. Before 12b's mock proposal/response, settle song-material depth: current sketches vary only by song id/label and should use actual song material to vary section/chord/assignment shape."
   }
 }

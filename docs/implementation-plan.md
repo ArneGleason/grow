@@ -1210,7 +1210,7 @@ Review focus:
 
 ### Byte 12a: Inspect-Only Song Sketch Stub
 
-Status: implemented.
+Status: implemented and approved.
 
 Start the song-sketch arc with a visible band-level draft, not a private player intent and not a playback driver.
 
@@ -1234,6 +1234,9 @@ Implementation notes:
 
 - Focused smoke now verifies bass slow-thinking calls omit `registerDelta` from system prompt, user prompt, and response schema, while melody shift-capable calls still include the rule.
 - General app smoke verifies the new inspector section and `window.song.getSketch()` expose the draft title, proposer, sections, assignments, questions, source song, affected players, and tonal context.
+- Claude approved Byte 12a and verified the sketch is pure, inspect-only, band-level, and playback-neutral.
+- Forward note: the sketch is currently song-label-deep, not song-material-deep. Lantern, Switchback, and Glass get identical section/chord/assignment skeletons except for id/title. Settle this before Byte 12b builds proposal/response on top.
+- Forward note: choose one chord vocabulary for the sketch. Current chord plans use note roots, while the empty-scale fallback uses roman numerals; also avoid treating `scale[6]` as always flat-seven if future modes add a natural leading tone.
 
 ### Byte 13: Thought Memory And Persistence Prep
 
