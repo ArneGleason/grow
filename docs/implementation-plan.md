@@ -1661,6 +1661,14 @@ Review focus:
 - Whether the validator/fallback path prevents wrong notes or unbounded edits.
 - Whether model critique improves the compositional loop without hiding the deterministic ground truth.
 
+Status:
+
+- Byte 15b-a implemented the first manual model critic.
+- `MelodyRepairTake` now exposes a bounded candidate menu: raw transform, deterministic heuristic repair, and top local alternates. Each candidate carries app-owned phrase/events, scores, phrase key, changed-note count, and critique summary.
+- Ollama receives only a projection of scored candidate IDs and critique context, then returns `selectedCandidateId` plus short prose fields. The response schema does not allow notes, pitches, scale degrees, octaves, scores, timing, or instructions.
+- Valid model selections refresh the chorus lookahead to use the chosen local candidate. Invalid, failed, or stale model output falls back to the deterministic candidate.
+- Human Up/Down feedback now records the active candidate id/source and whether it was selected by the model critic or deterministic scorer.
+
 Deferred producer work:
 
 - Producer marker, rule-based text input, and safe producer prompt interpretation remain useful, but they are no longer Byte 14/15. Bring them back after the band is audibly composing.

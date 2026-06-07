@@ -66,11 +66,42 @@ export interface MelodyPhraseScore {
   critiques: readonly MelodyCritique[];
 }
 
+export type MelodyRepairCandidateSource = "raw-transform" | "heuristic-repair" | "repair-alternate";
+
+export interface MelodyRepairCandidate {
+  id: string;
+  label: string;
+  source: MelodyRepairCandidateSource;
+  rank: number;
+  phraseKey: string;
+  phrase: readonly MelodyPhraseNote[];
+  events: readonly (PatternNoteSource | null)[];
+  scores: readonly MelodyPhraseScore[];
+  primaryScore: MelodyPhraseScore;
+  changedNotes: number;
+  critiqueCount: number;
+  summary: string;
+}
+
+export interface MelodyCriticSelection {
+  selectedCandidateId: string;
+  rationale: string;
+  strengths: string;
+  concerns: string;
+}
+
+export interface MelodyCriticValidation {
+  valid: boolean;
+  errors: string[];
+}
+
 export interface MelodyRepairTake {
   id: string;
   songId: SongMaterial["id"];
   perspectiveId: string;
   mode: MelodyDevelopmentMode;
+  deterministicCandidateId: string;
+  candidates: readonly MelodyRepairCandidate[];
   rawPhrase: readonly MelodyPhraseNote[];
   repairedPhrase: readonly MelodyPhraseNote[];
   rawEvents: readonly (PatternNoteSource | null)[];
@@ -103,6 +134,13 @@ const LEAP_INTERVAL_THRESHOLD = 3;
 const REPAIR_PASSES = 2;
 const SCORE_EPSILON = 0.0001;
 const REPAIR_REGISTER_PADDING = 1;
+const MAX_REPAIR_CANDIDATES = 6;
+
+export const MELODY_CRITIC_TEXT_LIMITS = {
+  rationale: 220,
+  strengths: 180,
+  concerns: 180,
+} as const;
 
 export function createMelodyRepairTake(options: MelodyRepairOptions): MelodyRepairTake {
   const melodyPattern = getPatternForPlayer(options.song, "melody");
@@ -115,40 +153,64 @@ export function createMelodyRepairTake(options: MelodyRepairOptions): MelodyRepa
   const primaryPerspective = perspectives.find((perspective) =>
     perspective.playerId === (options.perspectivePlayerId ?? "melody")
   ) ?? perspectives[0];
+  const scoreContext = {
+    phraseBeats: MELODY_CHORUS_PHRASE_BEATS,
+    rootDegrees,
+    scaleLength: options.tonalContext.scale.length,
+  };
 
-  const primaryRawScore = scoreMelodyPhrase(rawPhrase, {
-    phraseBeats: MELODY_CHORUS_PHRASE_BEATS,
-    rootDegrees,
-    scaleLength: options.tonalContext.scale.length,
-  }, primaryPerspective);
-  const repairedPhrase = repairMelodyPhrase(rawPhrase, {
-    phraseBeats: MELODY_CHORUS_PHRASE_BEATS,
-    rootDegrees,
-    scaleLength: options.tonalContext.scale.length,
-  }, primaryPerspective, options.rejectedPhraseKeys ?? new Set());
+  const primaryRawScore = scoreMelodyPhrase(rawPhrase, scoreContext, primaryPerspective);
+  const repairedPhrase = repairMelodyPhrase(
+    rawPhrase,
+    scoreContext,
+    primaryPerspective,
+    options.rejectedPhraseKeys ?? new Set(),
+  );
   const repairedEvents = eventsFromPhrase(rawEvents, repairedPhrase);
   const rawScores = perspectives.map((perspective) =>
-    scoreMelodyPhrase(rawPhrase, {
-      phraseBeats: MELODY_CHORUS_PHRASE_BEATS,
-      rootDegrees,
-      scaleLength: options.tonalContext.scale.length,
-    }, perspective)
+    scoreMelodyPhrase(rawPhrase, scoreContext, perspective)
   );
   const repairedScores = perspectives.map((perspective) =>
-    scoreMelodyPhrase(repairedPhrase, {
-      phraseBeats: MELODY_CHORUS_PHRASE_BEATS,
-      rootDegrees,
-      scaleLength: options.tonalContext.scale.length,
-    }, perspective)
+    scoreMelodyPhrase(repairedPhrase, scoreContext, perspective)
   );
   const primaryRepairedScore = repairedScores.find((score) =>
     score.perspectiveId === primaryPerspective.playerId
-  ) ?? scoreMelodyPhrase(repairedPhrase, {
-    phraseBeats: MELODY_CHORUS_PHRASE_BEATS,
-    rootDegrees,
-    scaleLength: options.tonalContext.scale.length,
-  }, primaryPerspective);
+  ) ?? scoreMelodyPhrase(repairedPhrase, scoreContext, primaryPerspective);
   const phraseKey = createPhraseKey(repairedPhrase);
+  const rawCandidate = createMelodyRepairCandidate({
+    source: "raw-transform",
+    label: "Raw transform",
+    rank: 0,
+    songId: options.song.id,
+    rawPhrase,
+    phrase: rawPhrase,
+    events: rawEvents,
+    scores: rawScores,
+    primaryScore: primaryRawScore,
+  });
+  const deterministicCandidate = createMelodyRepairCandidate({
+    source: "heuristic-repair",
+    label: "Heuristic repair",
+    rank: 1,
+    songId: options.song.id,
+    rawPhrase,
+    phrase: repairedPhrase,
+    events: repairedEvents,
+    scores: repairedScores,
+    primaryScore: primaryRepairedScore,
+  });
+  const candidates = createMelodyRepairCandidateSet({
+    songId: options.song.id,
+    rawPhrase,
+    rawCandidate,
+    deterministicCandidate,
+    repairedPhrase,
+    rawEvents,
+    context: scoreContext,
+    perspectives,
+    primaryPerspective,
+    rejectedPhraseKeys: options.rejectedPhraseKeys ?? new Set(),
+  });
 
   return {
     id: [
@@ -160,6 +222,8 @@ export function createMelodyRepairTake(options: MelodyRepairOptions): MelodyRepa
     songId: options.song.id,
     perspectiveId: primaryPerspective.playerId,
     mode: "repaired",
+    deterministicCandidateId: deterministicCandidate.id,
+    candidates,
     rawPhrase,
     repairedPhrase,
     rawEvents,
@@ -177,6 +241,44 @@ export function createMelodyRepairTake(options: MelodyRepairOptions): MelodyRepa
         ? `repaired cleared raw flag: ${primaryRawScore.critiques[0].message}`
         : "No urgent repair flags."),
   };
+}
+
+export function createMockMelodyCriticSelection(take: MelodyRepairTake): MelodyCriticSelection {
+  const candidate = getMelodyRepairCandidate(take, take.deterministicCandidateId) ??
+    take.candidates[0];
+  return {
+    selectedCandidateId: candidate?.id ?? take.deterministicCandidateId,
+    rationale: "Deterministic scorer keeps the most balanced repaired chorus.",
+    strengths: candidate
+      ? `${candidate.label} scores ${candidate.primaryScore.total.toFixed(3)} with ${candidate.changedNotes} changed note(s).`
+      : "The deterministic repair remains the fallback.",
+    concerns: candidate?.primaryScore.critiques[0]?.message ?? "No urgent repair flags.",
+  };
+}
+
+export function validateMelodyCriticSelection(
+  selection: MelodyCriticSelection,
+  take: MelodyRepairTake,
+): MelodyCriticValidation {
+  const errors: string[] = [];
+  if (!getMelodyRepairCandidate(take, selection.selectedCandidateId)) {
+    errors.push(`selectedCandidateId must match one of ${take.candidates.length} candidate id(s)`);
+  }
+  validateRequiredTextField("rationale", selection.rationale, MELODY_CRITIC_TEXT_LIMITS.rationale, errors);
+  validateRequiredTextField("strengths", selection.strengths, MELODY_CRITIC_TEXT_LIMITS.strengths, errors);
+  validateRequiredTextField("concerns", selection.concerns, MELODY_CRITIC_TEXT_LIMITS.concerns, errors);
+  return {
+    valid: errors.length === 0,
+    errors,
+  };
+}
+
+export function getMelodyRepairCandidate(
+  take: MelodyRepairTake,
+  candidateId: string | undefined,
+): MelodyRepairCandidate | undefined {
+  if (!candidateId) return undefined;
+  return take.candidates.find((candidate) => candidate.id === candidateId);
 }
 
 export function scoreMelodyPhrase(
@@ -260,6 +362,135 @@ function repairMelodyPhrase(
 
   if (!rejectedPhraseKeys.has(createPhraseKey(repaired))) return repaired;
   return chooseAlternatePhrase(repaired, context, perspective, rejectedPhraseKeys);
+}
+
+function createMelodyRepairCandidateSet(input: {
+  songId: SongMaterial["id"];
+  rawPhrase: readonly MelodyPhraseNote[];
+  rawCandidate: MelodyRepairCandidate;
+  deterministicCandidate: MelodyRepairCandidate;
+  repairedPhrase: readonly MelodyPhraseNote[];
+  rawEvents: readonly (PatternNoteSource | null)[];
+  context: {
+    phraseBeats: number;
+    rootDegrees: readonly number[];
+    scaleLength: number;
+  };
+  perspectives: readonly MelodyPerspective[];
+  primaryPerspective: MelodyPerspective;
+  rejectedPhraseKeys: ReadonlySet<string>;
+}): readonly MelodyRepairCandidate[] {
+  const seenKeys = new Set<string>();
+  const candidates: MelodyRepairCandidate[] = [];
+
+  addCandidate(input.deterministicCandidate);
+
+  const alternatives = createAlternateRepairCandidatePhrases(
+    input.repairedPhrase,
+    input.context,
+    input.primaryPerspective,
+    input.rejectedPhraseKeys,
+    new Set([
+      input.deterministicCandidate.phraseKey,
+      input.rawCandidate.phraseKey,
+    ]),
+  ).slice(0, Math.max(0, MAX_REPAIR_CANDIDATES - 2));
+
+  alternatives.forEach((alternative, index) => {
+    const scores = input.perspectives.map((perspective) =>
+      scoreMelodyPhrase(alternative.phrase, input.context, perspective)
+    );
+    const primaryScore = scores.find((score) => score.perspectiveId === input.primaryPerspective.playerId) ??
+      scoreMelodyPhrase(alternative.phrase, input.context, input.primaryPerspective);
+    addCandidate(createMelodyRepairCandidate({
+      source: "repair-alternate",
+      label: `Alternate ${index + 1}`,
+      rank: index + 2,
+      songId: input.songId,
+      rawPhrase: input.rawPhrase,
+      phrase: alternative.phrase,
+      events: eventsFromPhrase(input.rawEvents, alternative.phrase),
+      scores,
+      primaryScore,
+    }));
+  });
+
+  addCandidate(input.rawCandidate);
+  return candidates.slice(0, MAX_REPAIR_CANDIDATES);
+
+  function addCandidate(candidate: MelodyRepairCandidate): void {
+    if (seenKeys.has(candidate.phraseKey)) return;
+    if (candidate.source !== "raw-transform" && input.rejectedPhraseKeys.has(candidate.phraseKey)) return;
+    seenKeys.add(candidate.phraseKey);
+    candidates.push(candidate);
+  }
+}
+
+function createAlternateRepairCandidatePhrases(
+  phrase: readonly MelodyPhraseNote[],
+  context: {
+    rootDegrees: readonly number[];
+    scaleLength: number;
+  },
+  perspective: MelodyPerspective,
+  rejectedPhraseKeys: ReadonlySet<string>,
+  excludedPhraseKeys: ReadonlySet<string>,
+): ReadonlyArray<{ key: string; score: number; phrase: readonly MelodyPhraseNote[] }> {
+  const alternatives = new Map<string, { key: string; score: number; phrase: readonly MelodyPhraseNote[] }>();
+  for (let noteIndex = 0; noteIndex < phrase.length; noteIndex += 1) {
+    for (const candidate of createRepairCandidates(phrase, noteIndex, context)) {
+      const candidatePhrase = replacePhraseNote(phrase, noteIndex, candidate);
+      const key = createPhraseKey(candidatePhrase);
+      if (excludedPhraseKeys.has(key) || rejectedPhraseKeys.has(key) || alternatives.has(key)) continue;
+      alternatives.set(key, {
+        key,
+        score: scoreMelodyPhrase(candidatePhrase, {
+          phraseBeats: MELODY_CHORUS_PHRASE_BEATS,
+          rootDegrees: context.rootDegrees,
+          scaleLength: context.scaleLength,
+        }, perspective).total,
+        phrase: candidatePhrase,
+      });
+    }
+  }
+
+  return [...alternatives.values()].sort((left, right) =>
+    right.score - left.score || left.key.localeCompare(right.key)
+  );
+}
+
+function createMelodyRepairCandidate(input: {
+  source: MelodyRepairCandidateSource;
+  label: string;
+  rank: number;
+  songId: SongMaterial["id"];
+  rawPhrase: readonly MelodyPhraseNote[];
+  phrase: readonly MelodyPhraseNote[];
+  events: readonly (PatternNoteSource | null)[];
+  scores: readonly MelodyPhraseScore[];
+  primaryScore: MelodyPhraseScore;
+}): MelodyRepairCandidate {
+  const phraseKey = createPhraseKey(input.phrase);
+  const changedNotes = countChangedNotes(input.rawPhrase, input.phrase);
+  const topCritique = input.primaryScore.critiques[0]?.message ?? "no urgent critique";
+  return {
+    id: `chorus-candidate-${input.songId}-${hashString(phraseKey).toString(36)}`,
+    label: input.label,
+    source: input.source,
+    rank: input.rank,
+    phraseKey,
+    phrase: input.phrase.map((note) => ({ ...note })),
+    events: input.events.map((event) => event ? { ...event } : null),
+    scores: input.scores.map(cloneMelodyPhraseScore),
+    primaryScore: cloneMelodyPhraseScore(input.primaryScore),
+    changedNotes,
+    critiqueCount: input.primaryScore.critiques.length,
+    summary: [
+      `${input.label}: ${input.primaryScore.total.toFixed(3)}`,
+      `${changedNotes} changed`,
+      topCritique,
+    ].join(" | "),
+  };
 }
 
 function chooseAlternatePhrase(
@@ -691,6 +922,37 @@ function replacePhraseNote(
   return phrase.map((candidate, index) => index === noteIndex ? { ...note } : { ...candidate });
 }
 
+function countChangedNotes(
+  rawPhrase: readonly MelodyPhraseNote[],
+  candidatePhrase: readonly MelodyPhraseNote[],
+): number {
+  const rawByStep = new Map(rawPhrase.map((note) => [note.stepIndex, note]));
+  let changed = 0;
+  for (const note of candidatePhrase) {
+    const raw = rawByStep.get(note.stepIndex);
+    if (
+      !raw ||
+      raw.scaleDegree !== note.scaleDegree ||
+      raw.octave !== note.octave ||
+      raw.durationBeats !== note.durationBeats
+    ) {
+      changed += 1;
+    }
+  }
+  return changed;
+}
+
+function cloneMelodyPhraseScore(score: MelodyPhraseScore): MelodyPhraseScore {
+  return {
+    ...score,
+    weights: { ...score.weights },
+    critiques: score.critiques.map((critique) => ({
+      ...critique,
+      range: critique.range ? [critique.range[0], critique.range[1]] : undefined,
+    })),
+  };
+}
+
 function rootForPosition(positionBeats: number, roots: readonly number[]): number {
   if (roots.length === 0) return 0;
   return roots[Math.floor(positionBeats / 4) % roots.length] ?? roots[0] ?? 0;
@@ -818,4 +1080,27 @@ function clampInteger(value: number, minimum: number, maximum: number): number {
 
 function roundScore(value: number): number {
   return Math.round(clamp(value, 0, 1) * 1_000) / 1_000;
+}
+
+function validateRequiredTextField(
+  field: string,
+  value: string,
+  maxLength: number,
+  errors: string[],
+): void {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    errors.push(`${field} is required`);
+    return;
+  }
+  if (value.trim().length > maxLength) {
+    errors.push(`${field} must be ${maxLength} characters or fewer`);
+  }
+}
+
+function hashString(value: string): number {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = ((hash << 5) - hash + value.charCodeAt(index)) | 0;
+  }
+  return Math.abs(hash);
 }

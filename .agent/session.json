@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Implement Byte 15a deterministic melody scoring and repair",
-  "status": "byte15a-approved-on-main-next-byte15b-a",
-  "updatedAt": "2026-06-07T18:24:52Z",
+  "lastTask": "Implement Byte 15b-a model critic over scored chorus candidates",
+  "status": "byte15b-a-implemented-awaiting-review",
+  "updatedAt": "2026-06-07T18:50:50Z",
   "lastHandoff": "",
-  "branch": "main",
-  "commit": "be5351d",
+  "branch": "codex/byte-15b-a",
+  "commit": "HEAD",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 15a builds on the approved Byte 14 song form by adding deterministic melody scoring and repair for the chorus. Players now have tiny influence phrase corpora, `src/melody-scoring.ts` scores raw and repaired chorus material for landing, monotony, and surprise-vs-target from each player's perspective, transport receives Raw/Repaired chorus material through the song-form/lookahead arrangement seam, the inspector exposes Melody Score A/B plus per-player scores and critique, and Up/Down feedback persists `song.take_feedback` records while Down rejects a phrase key and repairs again. Claude approved the substrate after the register-aware fix: repair candidates are bounded to the phrase register and leap/monotony/surprise intervals use register-aware melodic position, closing the octave-plunge bug. No model critic is in the loop yet; that remains Byte 15b-a."
+    "summary": "Byte 15b-a adds the first model critic on top of Byte 15a's deterministic melody repair substrate. `MelodyRepairTake` now exposes a bounded candidate menu of raw, heuristic, and alternate chorus repairs; `src/ollama.ts` sends only scored candidate IDs and critique context to the model; the model can return only `selectedCandidateId` plus short prose fields. Valid model selections switch the active repaired chorus candidate through the existing lookahead material path, while invalid/failed/stale output falls back to the deterministic scorer. The model still never emits notes, pitches, timing, scores, or playback instructions."
   }
 }

@@ -30,6 +30,7 @@ Grow currently runs as a browser app with:
 - A looping song form: Verse, Chorus, Verse, Chorus, Bridge, Chorus.
 - A deterministic developed chorus melody committed through the lookahead, so the chorus is new material rather than a fire-time pitch trick.
 - A deterministic melody scorer and repair pass that A/Bs the raw transformed chorus against a repaired take from each player's perspective.
+- A manual local Ollama melody critic that can select among already-scored chorus repair candidates without emitting notes.
 - Per-section behavior: grounded verses, lifted/full choruses, and a sparse shifted bridge.
 - Session modes: break, solo practice, rehearsal, and performance.
 - Player taste rules that can repeat, support, simplify, vary, contrast, or rest.
@@ -42,7 +43,7 @@ Grow currently runs as a browser app with:
 - A local SQLite persistence shell plus browser-side buffered persistence for low-frequency decisions and musical event records.
 - Context help in the inspector so the app can explain its growing set of controls.
 
-The current milestone is Byte 15a: after the Byte 14 pivot back to audible composition, Grow now critiques and repairs the developed chorus through a deterministic scoring substrate before the next model-critic layer.
+The current milestone is Byte 15b-a: after the Byte 14 pivot back to audible composition and Byte 15a's deterministic repair substrate, Grow now lets a local model act as a critic by choosing among scored, app-owned chorus repair candidates. The model can select and explain; the app still owns the notes.
 
 ## What Is Not Here Yet
 
@@ -121,6 +122,8 @@ When the app is running, these globals are useful for inspection:
 - `window.thinking.getRequests()`
 - `window.thinking.getMockIntents()`
 - `window.melodyRepair.getTake()`
+- `window.melodyRepair.getCandidate()`
+- `window.ollama.runManualMelodyCriticTest()`
 - `window.ollama.checkHealth()`
 - `window.terrarium.getVisualState()`
 
@@ -145,7 +148,7 @@ They are intentionally boring and inspectable. The system should be weird becaus
 - `src/world-state.ts`: in-memory world state and musical event ledger.
 - `src/transport.ts`: Tone.js lifecycle and lookahead scheduling.
 - `src/song-form.ts`: deterministic form timeline and section material.
-- `src/melody-scoring.ts`: deterministic chorus scoring, repair, and perspective priors.
+- `src/melody-scoring.ts`: deterministic chorus scoring, repair candidates, model-critic validation, and perspective priors.
 - `src/listening.ts`: listening-frame summaries, mix agitation, and per-player contagion.
 - `src/taste.ts`: rule-based subjective choices.
 - `src/expression.ts`: deterministic velocity expression.

@@ -5,15 +5,21 @@ import {
   checkOllamaHealth,
   createDefaultOllamaConfig,
   createInitialOllamaHealth,
+  createInitialOllamaMelodyCriticTest,
   createInitialOllamaProposalTextTest,
   createInitialOllamaThoughtTest,
   createOllamaInfluenceProbePrompt,
+  createOllamaMelodyCriticPrompt,
   createOllamaSessionPrimer,
+  parseOllamaMelodyCriticResponse,
   parseOllamaThoughtResponse,
+  runOllamaMelodyCriticTest,
   runOllamaProposalTextTest,
   runOllamaThoughtTest,
   type OllamaConfig,
   type OllamaHealthState,
+  type OllamaMelodyCriticParseResult,
+  type OllamaMelodyCriticTestResult,
   type OllamaProposalTextTestResult,
   type OllamaThoughtParseResult,
   type OllamaThoughtTestResult,
@@ -34,8 +40,11 @@ import {
 } from "./musical-event-record";
 import {
   createMelodyRepairTake,
+  getMelodyRepairCandidate,
   type MelodyDevelopmentMode,
   type MelodyFeedbackValue,
+  type MelodyRepairCandidate,
+  type MelodyCriticSelection,
   type MelodyPhraseScore,
   type MelodyRepairTake,
 } from "./melody-scoring";
@@ -120,6 +129,7 @@ let ollamaConfig = createDefaultOllamaConfig();
 let ollamaHealth = createInitialOllamaHealth(ollamaConfig);
 let ollamaThoughtTest = createInitialOllamaThoughtTest(ollamaConfig);
 let ollamaProposalTextTest = createInitialOllamaProposalTextTest(ollamaConfig);
+let ollamaMelodyCriticTest = createInitialOllamaMelodyCriticTest(ollamaConfig);
 let ollamaRequestInFlight = false;
 let songId: SongId = DEFAULT_SONG_ID;
 let timingFeelMode: TimingFeelMode = "feel";
@@ -128,6 +138,7 @@ let cachedSongSketchKey = "";
 let cachedSongSketchBase: SongSketch | undefined;
 let cachedMelodyRepairKey = "";
 let cachedMelodyRepairTake: MelodyRepairTake | undefined;
+let activeMelodyCriticSelection: MelodyCriticSelection | undefined;
 let melodyRepairFeedbackMessage = "No feedback yet.";
 const rejectedMelodyRepairKeysBySong = new Map<SongId, Set<string>>();
 const rememberedMelodyRepairCountsBySong = new Map<SongId, number>();
@@ -136,7 +147,7 @@ const persistence = createPersistenceClient({
   name: "Grow browser session",
   metadata: {
     app: "Grow",
-    persistenceByte: "15a",
+    persistenceByte: "15b-a",
   },
 }, {
   onStateChange: () => {
@@ -316,11 +327,11 @@ function getSongLabel(nextSongId: SongId): string {
 }
 
 app.innerHTML = `
-  <section class="app-shell" aria-label="Grow Byte 15a">
+  <section class="app-shell" aria-label="Grow Byte 15b-a">
     <header class="topbar">
       <div class="brand">
         <h1 class="brand__title">Grow</h1>
-        <p class="brand__subtitle">Scored and repaired chorus melody, still deterministic</p>
+        <p class="brand__subtitle">Model critic chooses among scored chorus repairs</p>
       </div>
       <div class="transport-controls">
         <fieldset class="mode-control">
@@ -534,16 +545,21 @@ ${melodyDevelopmentControls}
           <div class="ollama-actions">
             <button class="mini-button" data-testid="melody-repair-up" type="button">Up</button>
             <button class="mini-button" data-testid="melody-repair-down" type="button">Down</button>
+            <button class="mini-button" data-testid="melody-critic-send" type="button">Send critic</button>
           </div>
           <dl>
             <dt>Mode</dt>
             <dd data-testid="melody-development-current">Repaired</dd>
+            <dt>Candidate</dt>
+            <dd data-testid="melody-candidate-current">heuristic</dd>
             <dt>Total</dt>
             <dd data-testid="melody-score-total">none</dd>
             <dt>Subscores</dt>
             <dd data-testid="melody-score-subscores">none</dd>
             <dt>Top critique</dt>
             <dd data-testid="melody-score-critique">none</dd>
+            <dt>Critic</dt>
+            <dd data-testid="melody-critic-status">idle</dd>
             <dt>Perspectives</dt>
             <dd data-testid="melody-score-perspectives">none</dd>
             <dt>Feedback</dt>
@@ -649,9 +665,12 @@ const melodyDevelopmentControl = requireElement<HTMLDivElement>("[data-testid='m
 const melodyDevelopmentCurrent = requireElement<HTMLElement>("[data-testid='melody-development-current']");
 const melodyRepairUpButton = requireElement<HTMLButtonElement>("[data-testid='melody-repair-up']");
 const melodyRepairDownButton = requireElement<HTMLButtonElement>("[data-testid='melody-repair-down']");
+const melodyCriticSendButton = requireElement<HTMLButtonElement>("[data-testid='melody-critic-send']");
+const melodyCandidateCurrent = requireElement<HTMLElement>("[data-testid='melody-candidate-current']");
 const melodyScoreTotal = requireElement<HTMLElement>("[data-testid='melody-score-total']");
 const melodyScoreSubscores = requireElement<HTMLElement>("[data-testid='melody-score-subscores']");
 const melodyScoreCritique = requireElement<HTMLElement>("[data-testid='melody-score-critique']");
+const melodyCriticStatus = requireElement<HTMLElement>("[data-testid='melody-critic-status']");
 const melodyScorePerspectives = requireElement<HTMLElement>("[data-testid='melody-score-perspectives']");
 const melodyScoreFeedback = requireElement<HTMLElement>("[data-testid='melody-score-feedback']");
 
@@ -1224,6 +1243,7 @@ function createMelodyRepairCacheKey(
 function invalidateMelodyRepairCache(): void {
   cachedMelodyRepairKey = "";
   cachedMelodyRepairTake = undefined;
+  activeMelodyCriticSelection = undefined;
 }
 
 function getRejectedMelodyRepairKeys(nextSongId: SongId = songId): Set<string> {
@@ -1241,7 +1261,59 @@ function getCurrentChorusDevelopment(): ChorusDevelopment {
   }
   return {
     mode: "repaired",
-    repairedEvents: getCurrentMelodyRepairTake().repairedEvents,
+    repairedEvents: getCurrentMelodyRepairDecision().candidate.events,
+  };
+}
+
+function getCurrentMelodyRepairDecision(state: GrowTransportState = getState()): {
+  take: MelodyRepairTake;
+  candidate: MelodyRepairCandidate;
+  selection?: MelodyCriticSelection;
+} {
+  const take = getCurrentMelodyRepairTake(state);
+  const selection = getActiveMelodyCriticSelection(take);
+  const candidate = getMelodyRepairCandidate(take, selection?.selectedCandidateId) ??
+    getMelodyRepairCandidate(take, take.deterministicCandidateId) ??
+    take.candidates[0];
+  if (!candidate) {
+    throw new Error(`Melody repair take ${take.id} has no candidates`);
+  }
+  return {
+    take,
+    candidate,
+    selection,
+  };
+}
+
+function getRawMelodyRepairCandidate(take: MelodyRepairTake): MelodyRepairCandidate {
+  const candidate = take.candidates.find((candidate) => candidate.source === "raw-transform") ??
+    take.candidates[0] ??
+    getMelodyRepairCandidate(take, take.deterministicCandidateId);
+  if (!candidate) {
+    throw new Error(`Melody repair take ${take.id} has no raw candidate`);
+  }
+  return candidate;
+}
+
+function getActiveMelodyCriticSelection(take: MelodyRepairTake): MelodyCriticSelection | undefined {
+  if (
+    ollamaMelodyCriticTest.status !== "valid" ||
+    ollamaMelodyCriticTest.takeId !== take.id ||
+    !activeMelodyCriticSelection
+  ) {
+    return undefined;
+  }
+  if (!getMelodyRepairCandidate(take, activeMelodyCriticSelection.selectedCandidateId)) {
+    return undefined;
+  }
+  return activeMelodyCriticSelection;
+}
+
+function resetMelodyCriticTest(message = "Melody repair context changed"): void {
+  activeMelodyCriticSelection = undefined;
+  ollamaMelodyCriticTest = {
+    ...createInitialOllamaMelodyCriticTest(ollamaConfig),
+    message,
   };
 }
 
@@ -1254,22 +1326,23 @@ function applyMelodyDevelopmentMode(mode: MelodyDevelopmentMode): MelodyDevelopm
 }
 
 function rememberCurrentMelodyRepairTake(): MelodyRepairTake {
-  const take = getCurrentMelodyRepairTake();
+  const { take, candidate, selection } = getCurrentMelodyRepairDecision();
   const nextCount = (rememberedMelodyRepairCountsBySong.get(songId) ?? 0) + 1;
   rememberedMelodyRepairCountsBySong.set(songId, nextCount);
   const currentNudge = melodyRepairWeightNudgesByPlayer.get(take.perspectiveId) ?? 0;
   melodyRepairWeightNudgesByPlayer.set(take.perspectiveId, clamp(currentNudge + 0.025, -0.12, 0.12));
-  melodyRepairFeedbackMessage = `remembered ${take.id}`;
-  recordMelodyRepairFeedback("up", take);
+  melodyRepairFeedbackMessage = `remembered ${candidate.id}`;
+  recordMelodyRepairFeedback("up", take, candidate, selection);
   queueRender();
   return take;
 }
 
 function rejectCurrentMelodyRepairTake(): MelodyRepairTake {
-  const take = getCurrentMelodyRepairTake();
-  getRejectedMelodyRepairKeys(songId).add(take.phraseKey);
-  melodyRepairFeedbackMessage = `rejected ${take.id}; repaired again`;
-  recordMelodyRepairFeedback("down", take);
+  const { take, candidate, selection } = getCurrentMelodyRepairDecision();
+  getRejectedMelodyRepairKeys(songId).add(candidate.phraseKey);
+  melodyRepairFeedbackMessage = `rejected ${candidate.id}; repaired again`;
+  recordMelodyRepairFeedback("down", take, candidate, selection);
+  resetMelodyCriticTest("Rejected candidate; melody critic reset");
   invalidateMelodyRepairCache();
   refreshLookaheadSchedule();
   renderWorld();
@@ -1279,6 +1352,8 @@ function rejectCurrentMelodyRepairTake(): MelodyRepairTake {
 function recordMelodyRepairFeedback(
   feedback: MelodyFeedbackValue,
   take: MelodyRepairTake,
+  candidate: MelodyRepairCandidate,
+  selection: MelodyCriticSelection | undefined,
 ): void {
   persistence.record({
     type: "song.take_feedback",
@@ -1292,12 +1367,17 @@ function recordMelodyRepairFeedback(
       songId,
       sectionType: "chorus",
       takeId: take.id,
+      candidateId: candidate.id,
+      candidateSource: candidate.source,
+      selectedBy: selection ? "model-critic" : "deterministic-scorer",
       perspectiveId: take.perspectiveId,
-      phraseKey: take.phraseKey,
+      phraseKey: candidate.phraseKey,
       rawScore: snapshotMelodyScore(take.primaryRawScore),
-      repairedScore: snapshotMelodyScore(take.primaryRepairedScore),
+      repairedScore: snapshotMelodyScore(candidate.primaryScore),
+      deterministicCandidateId: take.deterministicCandidateId,
       rejectedCount: getRejectedMelodyRepairKeys(songId).size,
       rememberedCount: rememberedMelodyRepairCountsBySong.get(songId) ?? 0,
+      modelRationale: selection?.rationale,
     },
   });
 }
@@ -1315,6 +1395,9 @@ function snapshotMelodyScore(score: MelodyPhraseScore): Record<string, unknown> 
 }
 
 function renderMelodyRepair(take: MelodyRepairTake): void {
+  const decision = getCurrentMelodyRepairDecision();
+  const rawCandidate = getRawMelodyRepairCandidate(take);
+  const activeCandidate = melodyDevelopmentMode === "raw" ? rawCandidate : decision.candidate;
   melodyDevelopmentCurrent.textContent = melodyDevelopmentMode === "raw" ? "Raw transform" : "Repaired";
   for (
     const input of melodyDevelopmentControl.querySelectorAll<HTMLInputElement>("input[name='melody-development']")
@@ -1322,23 +1405,60 @@ function renderMelodyRepair(take: MelodyRepairTake): void {
     input.checked = input.value === melodyDevelopmentMode;
   }
 
-  const activeScore = melodyDevelopmentMode === "raw"
-    ? take.primaryRawScore
-    : take.primaryRepairedScore;
+  const activeScore = activeCandidate.primaryScore;
+  const deterministicCandidate = getMelodyRepairCandidate(take, take.deterministicCandidateId) ?? decision.candidate;
+  melodyCandidateCurrent.textContent = formatMelodyCandidate(activeCandidate, decision.selection);
   melodyScoreTotal.textContent = [
     `${melodyDevelopmentMode} ${activeScore.total.toFixed(3)}`,
     `raw ${take.primaryRawScore.total.toFixed(3)}`,
-    `repaired ${take.primaryRepairedScore.total.toFixed(3)}`,
-    take.improved ? "improved" : "not improved",
+    `heuristic ${deterministicCandidate.primaryScore.total.toFixed(3)}`,
+    activeCandidate.id === deterministicCandidate.id ? "deterministic" : "critic-selected",
   ].join(" | ");
   melodyScoreSubscores.textContent = formatMelodyScoreSubscores(activeScore);
-  melodyScoreCritique.textContent = take.topCritique;
-  melodyScorePerspectives.textContent = take.repairedScores.map(formatPerspectiveScore).join(" | ");
+  melodyScoreCritique.textContent = activeScore.critiques[0]?.message ??
+    (take.primaryRawScore.critiques[0]
+      ? `repaired cleared raw flag: ${take.primaryRawScore.critiques[0].message}`
+      : "No urgent repair flags.");
+  melodyCriticStatus.textContent = formatMelodyCriticStatus(take, decision.candidate, decision.selection);
+  melodyScorePerspectives.textContent = activeCandidate.scores.map(formatPerspectiveScore).join(" | ");
   melodyScoreFeedback.textContent = [
     `${rememberedMelodyRepairCountsBySong.get(songId) ?? 0} remembered`,
     `${getRejectedMelodyRepairKeys(songId).size} rejected`,
     melodyRepairFeedbackMessage,
   ].join(" | ");
+}
+
+function formatMelodyCandidate(
+  candidate: MelodyRepairCandidate,
+  selection: MelodyCriticSelection | undefined,
+): string {
+  const source = selection ? "model" : candidate.source;
+  return `${source}: ${candidate.label} (${candidate.id}, ${candidate.changedNotes} changed, score ${
+    candidate.primaryScore.total.toFixed(3)
+  })`;
+}
+
+function formatMelodyCriticStatus(
+  take: MelodyRepairTake,
+  activeCandidate: MelodyRepairCandidate,
+  selection: MelodyCriticSelection | undefined,
+): string {
+  if (ollamaMelodyCriticTest.status === "idle") {
+    return `idle; deterministic ${take.deterministicCandidateId}`;
+  }
+  if (ollamaMelodyCriticTest.status === "running") {
+    return `running ${take.id}`;
+  }
+  if (selection && ollamaMelodyCriticTest.status === "valid") {
+    return `model selected ${activeCandidate.label}: ${selection.rationale}`;
+  }
+  if (ollamaMelodyCriticTest.status === "invalid") {
+    return `invalid (${ollamaMelodyCriticTest.validation.errors.length}); deterministic repair active`;
+  }
+  if (ollamaMelodyCriticTest.status === "failed") {
+    return `failed; deterministic repair active`;
+  }
+  return ollamaMelodyCriticTest.message;
 }
 
 function formatMelodyScoreSubscores(score: MelodyPhraseScore): string {
@@ -1406,6 +1526,7 @@ function renderOllama(): void {
   ollamaHealthButton.disabled = ollamaRequestInFlight;
   ollamaSendThoughtButton.disabled = ollamaRequestInFlight;
   ollamaSendProposalButton.disabled = ollamaRequestInFlight;
+  melodyCriticSendButton.disabled = ollamaRequestInFlight;
   ollamaHealthStatus.textContent = `${ollamaHealth.status}: ${ollamaHealth.message}`;
   ollamaModelStatus.textContent = `${ollamaConfig.model} @ ${ollamaConfig.baseUrl}`;
   ollamaProtocolStatus.textContent = `${ollamaConfig.promptProtocol} (${getThoughtPromptProtocol(ollamaConfig.promptProtocol).label})`;
@@ -1826,6 +1947,7 @@ function setOllamaConfig(nextConfig: Partial<OllamaConfig>): OllamaConfig {
     message: "Config changed; health not checked",
   };
   ollamaProposalTextTest = createInitialOllamaProposalTextTest(ollamaConfig);
+  resetMelodyCriticTest("Config changed; melody critic reset");
   renderOllama();
   return ollamaConfig;
 }
@@ -1893,6 +2015,45 @@ async function runManualOllamaProposalTextTest(): Promise<OllamaProposalTextTest
   }
 }
 
+async function runManualOllamaMelodyCriticTest(): Promise<OllamaMelodyCriticTestResult> {
+  const config = readOllamaConfigFromInputs();
+  const take = getCurrentMelodyRepairTake();
+  const previousCandidateId = getCurrentMelodyRepairDecision().candidate.id;
+  ollamaRequestInFlight = true;
+  activeMelodyCriticSelection = undefined;
+  ollamaMelodyCriticTest = {
+    ...createInitialOllamaMelodyCriticTest(config),
+    status: "running",
+    provider: "ollama",
+    takeId: take.id,
+    songId: take.songId,
+    deterministicCandidateId: take.deterministicCandidateId,
+    message: "Sending scored candidates to local melody critic",
+  };
+  renderWorld();
+  try {
+    ollamaMelodyCriticTest = await runOllamaMelodyCriticTest(take, config);
+    if (
+      ollamaMelodyCriticTest.status === "valid" &&
+      ollamaMelodyCriticTest.selection &&
+      getMelodyRepairCandidate(take, ollamaMelodyCriticTest.selection.selectedCandidateId)
+    ) {
+      activeMelodyCriticSelection = ollamaMelodyCriticTest.selection;
+    } else {
+      activeMelodyCriticSelection = undefined;
+    }
+
+    const nextCandidateId = getCurrentMelodyRepairDecision().candidate.id;
+    if (nextCandidateId !== previousCandidateId) {
+      refreshLookaheadSchedule();
+    }
+    return ollamaMelodyCriticTest;
+  } finally {
+    ollamaRequestInFlight = false;
+    renderWorld();
+  }
+}
+
 function getInfluenceProbePrompt(playerId = "melody"): string {
   const request = getCurrentThoughtRequest(playerId, "influence_probe");
   return createOllamaInfluenceProbePrompt(
@@ -1906,6 +2067,10 @@ function parseManualOllamaThoughtResponse(
   playerId = "melody",
 ): OllamaThoughtParseResult {
   return parseOllamaThoughtResponse(rawResponse, getCurrentThoughtRequest(playerId));
+}
+
+function parseManualOllamaMelodyCriticResponse(rawResponse: string): OllamaMelodyCriticParseResult {
+  return parseOllamaMelodyCriticResponse(rawResponse);
 }
 
 function formatOllamaLatency(
@@ -2120,6 +2285,7 @@ function applySongId(nextSongId: SongId): SongId {
   melodyRepairFeedbackMessage = "No feedback yet.";
   invalidateMelodyRepairCache();
   ollamaProposalTextTest = createInitialOllamaProposalTextTest(ollamaConfig);
+  resetMelodyCriticTest("Song changed; melody critic reset");
   cancelSlowThinkingControllers("song changed before the thought could land");
   clearSlowThoughtPlayback();
   world.clearMusicalEvents();
@@ -2285,6 +2451,10 @@ melodyRepairDownButton.addEventListener("click", () => {
   rejectCurrentMelodyRepairTake();
 });
 
+melodyCriticSendButton.addEventListener("click", () => {
+  void runManualOllamaMelodyCriticTest();
+});
+
 ollamaBaseUrlInput.addEventListener("change", () => {
   setOllamaConfig({ baseUrl: ollamaBaseUrlInput.value.trim() || ollamaConfig.baseUrl });
 });
@@ -2411,6 +2581,8 @@ declare global {
       getMode(): MelodyDevelopmentMode;
       setMode(mode: string): MelodyDevelopmentMode;
       getTake(): MelodyRepairTake;
+      getCandidate(): MelodyRepairCandidate;
+      getCritic(): OllamaMelodyCriticTestResult;
       remember(): MelodyRepairTake;
       reject(): MelodyRepairTake;
     };
@@ -2427,12 +2599,16 @@ declare global {
       setConfig(config: Partial<OllamaConfig>): OllamaConfig;
       getHealth(): OllamaHealthState;
       checkHealth(): Promise<OllamaHealthState>;
+      getLastMelodyCriticTest(): OllamaMelodyCriticTestResult;
+      getMelodyCriticPrompt(): string;
+      runManualMelodyCriticTest(): Promise<OllamaMelodyCriticTestResult>;
       getLastProposalTextTest(): OllamaProposalTextTestResult;
       runManualProposalTextTest(): Promise<OllamaProposalTextTestResult>;
       getLastThoughtTest(): OllamaThoughtTestResult;
       runManualThoughtTest(playerId?: string): Promise<OllamaThoughtTestResult>;
       getSessionPrimer(): string;
       getInfluenceProbePrompt(playerId?: string): string;
+      parseMelodyCriticResponse(rawResponse: string): OllamaMelodyCriticParseResult;
       parseThoughtResponse(rawResponse: string, playerId?: string): OllamaThoughtParseResult;
     };
     terrarium?: {
@@ -2547,6 +2723,8 @@ window.melodyRepair = {
     return melodyDevelopmentMode;
   },
   getTake: () => getCurrentMelodyRepairTake(),
+  getCandidate: () => getCurrentMelodyRepairDecision().candidate,
+  getCritic: () => ollamaMelodyCriticTest,
   remember: () => rememberCurrentMelodyRepairTake(),
   reject: () => rejectCurrentMelodyRepairTake(),
 };
@@ -2568,12 +2746,16 @@ window.ollama = {
     availableModels: [...ollamaHealth.availableModels],
   }),
   checkHealth: () => runOllamaHealthCheck(),
+  getLastMelodyCriticTest: () => ollamaMelodyCriticTest,
+  getMelodyCriticPrompt: () => createOllamaMelodyCriticPrompt(getCurrentMelodyRepairTake()),
+  runManualMelodyCriticTest: () => runManualOllamaMelodyCriticTest(),
   getLastProposalTextTest: () => ollamaProposalTextTest,
   runManualProposalTextTest: () => runManualOllamaProposalTextTest(),
   getLastThoughtTest: () => ollamaThoughtTest,
   runManualThoughtTest: (playerId) => runManualOllamaThoughtTest(playerId),
   getSessionPrimer: () => createOllamaSessionPrimer(),
   getInfluenceProbePrompt: (playerId) => getInfluenceProbePrompt(playerId),
+  parseMelodyCriticResponse: (rawResponse) => parseManualOllamaMelodyCriticResponse(rawResponse),
   parseThoughtResponse: (rawResponse, playerId) => parseManualOllamaThoughtResponse(rawResponse, playerId),
 };
 

@@ -7,7 +7,9 @@ import {
 import { calculatePerformedTiming } from "../src/performed-time";
 import { MELODY_PLAYER, PLAYER_REGISTRY } from "../src/players";
 import {
+  createMockMelodyCriticSelection,
   createMelodyRepairTake,
+  validateMelodyCriticSelection,
   type MelodyRepairTake,
 } from "../src/melody-scoring";
 import {
@@ -299,6 +301,25 @@ type OllamaProposalTextProbe = {
       reason: string;
       requestedChange?: string;
     }>;
+  };
+  fallbackValidation?: { valid: boolean; errors: string[] };
+};
+
+type OllamaMelodyCriticProbe = {
+  status: string;
+  provider: string;
+  promptProtocol: string;
+  takeId?: string;
+  songId?: string;
+  deterministicCandidateId?: string;
+  selectedCandidateId?: string;
+  rawResponse: string;
+  validation: { valid: boolean; errors: string[] };
+  selection?: {
+    selectedCandidateId: string;
+    rationale: string;
+    strengths: string;
+    concerns: string;
   };
   fallbackValidation?: { valid: boolean; errors: string[] };
 };
@@ -648,6 +669,21 @@ async function getMelodyRepairTake(page: Page): Promise<MelodyRepairTake> {
   }
 
   return take;
+}
+
+async function getMelodyRepairCandidate(page: Page): Promise<MelodyRepairTake["candidates"][number]> {
+  const candidate = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      melodyRepair?: { getCandidate(): MelodyRepairTake["candidates"][number] };
+    };
+    return appWindow.melodyRepair?.getCandidate();
+  });
+
+  if (!candidate) {
+    throw new Error("window.melodyRepair.getCandidate() was not available");
+  }
+
+  return candidate;
 }
 
 function getSongSketchAssignmentDensity(sketch: SongSketch, playerId: string): number {
@@ -1186,6 +1222,13 @@ test("melody scoring repairs the chorus and scores player perspectives different
   const repairedPositions = take.repairedPhrase.map((note) => note.octave * scaleLength + note.scaleDegree);
   const pulseScore = take.repairedScores.find((score) => score.perspectiveId === "pulse");
   const melodyScore = take.repairedScores.find((score) => score.perspectiveId === "melody");
+  const deterministicCandidate = take.candidates.find((candidate) =>
+    candidate.id === take.deterministicCandidateId
+  );
+  const alternateCandidate = take.candidates.find((candidate) =>
+    candidate.source === "repair-alternate"
+  );
+  const mockCriticSelection = createMockMelodyCriticSelection(take);
 
   expect(take.improved).toBe(true);
   expect(take.primaryRepairedScore.total).toBeGreaterThan(take.primaryRawScore.total);
@@ -1204,6 +1247,22 @@ test("melody scoring repairs the chorus and scores player perspectives different
   expect(take.primaryRepairedScore.critiques.length).toBeLessThanOrEqual(
     take.primaryRawScore.critiques.length,
   );
+  expect(take.candidates.length).toBeGreaterThanOrEqual(3);
+  expect(deterministicCandidate?.events).toEqual(take.repairedEvents);
+  expect(alternateCandidate?.phraseKey).not.toEqual(take.phraseKey);
+  expect(take.candidates.every((candidate) =>
+    candidate.phrase.every((note) =>
+      DEFAULT_TONAL_CONTEXT.scale[modulo(note.scaleDegree, scaleLength)] !== undefined
+    )
+  )).toBe(true);
+  expect(mockCriticSelection.selectedCandidateId).toBe(take.deterministicCandidateId);
+  expect(validateMelodyCriticSelection(mockCriticSelection, take).valid).toBe(true);
+  expect(validateMelodyCriticSelection({
+    ...mockCriticSelection,
+    selectedCandidateId: "not-a-candidate",
+  }, take)).toMatchObject({
+    valid: false,
+  });
 });
 
 test("melody repair readout supports A/B audition and remembered feedback", async ({ page }) => {
@@ -1248,6 +1307,155 @@ test("melody repair readout supports A/B audition and remembered feedback", asyn
     songId: "lantern",
     sectionType: "chorus",
   });
+});
+
+test("manual Ollama melody critic selects a validated local chorus candidate", async ({ page }) => {
+  const proxyChatPayloads: Array<{
+    baseUrl?: string;
+    request?: {
+      model?: string;
+      messages?: Array<{ role?: string; content?: string }>;
+      stream?: boolean;
+      format?: unknown;
+      think?: boolean;
+      options?: { temperature?: number; num_predict?: number };
+    };
+  }> = [];
+  let selectedCandidateId = "";
+
+  await page.route("**/api/ollama/chat**", async (route) => {
+    proxyChatPayloads.push(JSON.parse(route.request().postData() ?? "{}"));
+    await route.fulfill({
+      status: 200,
+      headers: {
+        "content-type": "application/json",
+        "x-grow-ollama-proxy": "smoke",
+      },
+      body: JSON.stringify({
+        model: "qwen3:4b-instruct-2507-q4_K_M",
+        message: {
+          role: "assistant",
+          content: JSON.stringify({
+            selectedCandidateId,
+            rationale: "Pick the alternate because its contour keeps the chorus from sounding too automatic.",
+            strengths: "The contour has a clearer lift and keeps the cadence bounded.",
+            concerns: "It gives up a little deterministic score margin for feel.",
+          }),
+        },
+        done: true,
+      }),
+    });
+  });
+
+  await page.goto("/");
+  await expect(page.getByTestId("melody-candidate-current")).toContainText("chorus-candidate");
+  const take = await getMelodyRepairTake(page);
+  const alternate = take.candidates.find((candidate) =>
+    candidate.source === "repair-alternate" &&
+    candidate.id !== take.deterministicCandidateId &&
+    candidate.events.some((event, index) =>
+      JSON.stringify(event) !== JSON.stringify(take.repairedEvents[index] ?? null)
+    )
+  ) ?? take.candidates.find((candidate) => candidate.id !== take.deterministicCandidateId);
+  expect(alternate).toBeTruthy();
+  selectedCandidateId = alternate?.id ?? "";
+
+  const initialCandidate = await getMelodyRepairCandidate(page);
+  expect(initialCandidate.id).toBe(take.deterministicCandidateId);
+  await page.getByTestId("melody-critic-send").click();
+  await expect(page.getByTestId("melody-critic-status")).toContainText("model selected");
+  await expect(page.getByTestId("melody-candidate-current")).toContainText(selectedCandidateId);
+
+  const activeCandidate = await getMelodyRepairCandidate(page);
+  expect(activeCandidate.id).toBe(selectedCandidateId);
+  expect(activeCandidate.events).toEqual(alternate?.events);
+  expect(activeCandidate.id).not.toBe(take.deterministicCandidateId);
+
+  const probe = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      ollama?: { getLastMelodyCriticTest(): OllamaMelodyCriticProbe };
+    };
+    return appWindow.ollama?.getLastMelodyCriticTest();
+  });
+
+  expect(probe?.status).toBe("valid");
+  expect(probe?.provider).toBe("ollama");
+  expect(probe?.promptProtocol).toBe("melody-critic");
+  expect(probe?.takeId).toBe(take.id);
+  expect(probe?.selectedCandidateId).toBe(selectedCandidateId);
+  expect(probe?.validation.valid).toBe(true);
+  expect(probe?.fallbackValidation?.valid).toBe(true);
+  expect((await getTransportState(page)).status).toBe("stopped");
+
+  expect(proxyChatPayloads).toHaveLength(1);
+  const chatPayload = proxyChatPayloads[0].request ?? {};
+  const formatText = JSON.stringify(chatPayload.format);
+  const userMessage = chatPayload.messages?.find((message) => message.role === "user")?.content ?? "";
+  const systemMessage = chatPayload.messages?.find((message) => message.role === "system")?.content ?? "";
+  expect(proxyChatPayloads[0].baseUrl).toBe("http://127.0.0.1:11434");
+  expect(chatPayload.model).toBe("qwen3:4b-instruct-2507-q4_K_M");
+  expect(chatPayload.stream).toBe(false);
+  expect(chatPayload.think).toBe(false);
+  expect(chatPayload.options?.num_predict).toBeLessThanOrEqual(256);
+  expect(formatText).toContain("selectedCandidateId");
+  expect(formatText).toContain(selectedCandidateId);
+  expect(formatText).not.toContain("scaleDegree");
+  expect(formatText).not.toContain("octave");
+  expect(userMessage).toContain("Candidate projection:");
+  expect(userMessage).toContain('"v":"grow.melodyCritic/1"');
+  expect(userMessage).toContain(selectedCandidateId);
+  expect(userMessage).toContain("Do not return phrase, notes, scaleDegree, octave");
+  expect(systemMessage).toContain("must not emit, rewrite, or invent notes");
+});
+
+test("manual Ollama melody critic keeps deterministic fallback for invalid candidate id", async ({ page }) => {
+  await page.route("**/api/ollama/chat**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      headers: {
+        "content-type": "application/json",
+        "x-grow-ollama-proxy": "smoke",
+      },
+      body: JSON.stringify({
+        model: "qwen3:4b-instruct-2507-q4_K_M",
+        message: {
+          role: "assistant",
+          content: JSON.stringify({
+            selectedCandidateId: "not-a-real-candidate",
+            rationale: "This intentionally points outside the app-owned candidate list.",
+            strengths: "It should parse but fail validation.",
+            concerns: "The deterministic scorer must remain active.",
+          }),
+        },
+        done: true,
+      }),
+    });
+  });
+
+  await page.goto("/");
+  await expect(page.getByTestId("melody-candidate-current")).toContainText("chorus-candidate");
+  const take = await getMelodyRepairTake(page);
+  await expect(page.getByTestId("melody-candidate-current")).toContainText(take.deterministicCandidateId);
+  await page.getByTestId("melody-critic-send").click();
+  await expect(page.getByTestId("melody-critic-status")).toContainText("invalid");
+  await expect(page.getByTestId("melody-candidate-current")).toContainText(take.deterministicCandidateId);
+
+  const activeCandidate = await getMelodyRepairCandidate(page);
+  expect(activeCandidate.id).toBe(take.deterministicCandidateId);
+
+  const probe = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      ollama?: { getLastMelodyCriticTest(): OllamaMelodyCriticProbe };
+    };
+    return appWindow.ollama?.getLastMelodyCriticTest();
+  });
+
+  expect(probe?.status).toBe("invalid");
+  expect(probe?.provider).toBe("ollama");
+  expect(probe?.validation.valid).toBe(false);
+  expect(probe?.validation.errors.join(" ")).toContain("selectedCandidateId");
+  expect(probe?.fallbackValidation?.valid).toBe(true);
+  expect((await getTransportState(page)).status).toBe("stopped");
 });
 
 test("manual Ollama thought probe is inspectable with a mocked local endpoint", async ({ page }) => {
@@ -2291,7 +2499,7 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   const canvas = page.getByTestId("terrarium-canvas");
 
   await expect(page.locator(".brand__subtitle")).toHaveText(
-    "Scored and repaired chorus melody, still deterministic",
+    "Model critic chooses among scored chorus repairs",
   );
   await expect(button).toHaveText("Start");
   await expect(status).toContainText(
@@ -2311,7 +2519,9 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   await expect(page.getByTestId("song-sketch-responses")).toContainText("bass");
   await expect(page.getByTestId("song-sketch-questions")).not.toHaveText("none");
   await expect(page.getByTestId("melody-development-current")).toHaveText("Repaired");
-  await expect(page.getByTestId("melody-score-total")).toContainText("improved");
+  await expect(page.getByTestId("melody-candidate-current")).toContainText("heuristic-repair");
+  await expect(page.getByTestId("melody-score-total")).toContainText("deterministic");
+  await expect(page.getByTestId("melody-critic-status")).toContainText("idle");
   await expect(page.getByTestId("melody-score-perspectives")).toContainText("melody");
   const songSketch = await getSongSketch(page);
   expect(songSketch.id).toBe("sketch-lantern-c-mixolydian");

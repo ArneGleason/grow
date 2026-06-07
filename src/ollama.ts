@@ -28,6 +28,15 @@ import {
   type SongSketchProposalTextResponse,
   type SongSketchProposalTextValidation,
 } from "./song-sketch";
+import {
+  MELODY_CRITIC_TEXT_LIMITS,
+  createMockMelodyCriticSelection,
+  validateMelodyCriticSelection,
+  type MelodyCriticSelection,
+  type MelodyCriticValidation,
+  type MelodyRepairCandidate,
+  type MelodyRepairTake,
+} from "./melody-scoring";
 
 export interface OllamaConfig {
   baseUrl: string;
@@ -101,6 +110,32 @@ export interface OllamaProposalTextTestResult {
   message: string;
 }
 
+export interface OllamaMelodyCriticParseResult {
+  status: "idle" | "ok" | "error";
+  errors: string[];
+  selection?: MelodyCriticSelection;
+}
+
+export interface OllamaMelodyCriticTestResult {
+  status: "idle" | "running" | "valid" | "invalid" | "failed";
+  provider: "none" | "ollama" | "mock-fallback";
+  model: string;
+  baseUrl: string;
+  promptProtocol: "melody-critic";
+  takeId?: string;
+  songId?: string;
+  deterministicCandidateId?: string;
+  selectedCandidateId?: string;
+  latencyMs?: number;
+  rawResponse: string;
+  parse: OllamaMelodyCriticParseResult;
+  validation: MelodyCriticValidation;
+  selection?: MelodyCriticSelection;
+  fallbackSelection?: MelodyCriticSelection;
+  fallbackValidation?: MelodyCriticValidation;
+  message: string;
+}
+
 export interface OllamaThoughtRunOptions {
   signal?: AbortSignal;
 }
@@ -143,6 +178,8 @@ const SHORT_RESPONSE_RULE =
   `${COMPACT_JSON_RULE} Keep rationale under 160 characters.`;
 const PROPOSAL_TEXT_RULE =
   `${COMPACT_JSON_RULE} Keep every text field short enough for an inspector row.`;
+const MELODY_CRITIC_RULE =
+  `${COMPACT_JSON_RULE} Choose one listed candidateId only. Keep critique fields short.`;
 
 export function createDefaultOllamaConfig(): OllamaConfig {
   return {
@@ -195,6 +232,22 @@ export function createInitialOllamaProposalTextTest(
   };
 }
 
+export function createInitialOllamaMelodyCriticTest(
+  config: OllamaConfig,
+): OllamaMelodyCriticTestResult {
+  return {
+    status: "idle",
+    provider: "none",
+    model: config.model,
+    baseUrl: config.baseUrl,
+    promptProtocol: "melody-critic",
+    rawResponse: "",
+    parse: { status: "idle", errors: [] },
+    validation: { valid: false, errors: [] },
+    message: "No melody critic sent",
+  };
+}
+
 export function createOllamaSessionPrimer(options: {
   allowsRegisterShift?: boolean;
 } = {}): string {
@@ -225,6 +278,17 @@ export function createOllamaSongSketchProposalPrimer(): string {
     "Do not add, remove, or change proposal kind, status, target section, proposer, chord plan, root degrees, response stances, player ids, timing, or scheduling.",
     "Do not invent a key change, mode change, new section, new chord, or playback instruction.",
     "Keep the wording grounded in the fixed chord/root plan and each player's existing stance.",
+  ].join("\n");
+}
+
+export function createOllamaMelodyCriticPrimer(): string {
+  return [
+    "You are Grow's local melody critic.",
+    "You receive a deterministic chorus repair take with already-scored candidate phrases.",
+    "Choose exactly one candidate by selectedCandidateId and write short critique prose.",
+    "The app owns all notes, pitches, timing, scores, and playback. You must not emit, rewrite, or invent notes.",
+    "The app validates your JSON. Invalid output is ignored and the deterministic scorer fallback stays active.",
+    MELODY_CRITIC_RULE,
   ].join("\n");
 }
 
@@ -279,6 +343,28 @@ export function createOllamaSongSketchProposalPrompt(
     "requestedChange is optional; omit it when the stance does not need a concrete change.",
     "Do not return kind, status, role, stance, chordPlan, rootDegrees, targetSectionId, or proposedByPlayerId.",
     "Proposal projection:",
+    JSON.stringify(projection),
+  ].join("\n");
+}
+
+export function createOllamaMelodyCriticPrompt(
+  take: MelodyRepairTake,
+): string {
+  const projection = {
+    v: "grow.melodyCritic/1",
+    takeId: take.id,
+    songId: take.songId,
+    perspectiveId: take.perspectiveId,
+    deterministicCandidateId: take.deterministicCandidateId,
+    candidates: take.candidates.map(projectMelodyRepairCandidate),
+  };
+
+  return [
+    "Select one candidate from this deterministic chorus repair menu.",
+    "Return this JSON shape exactly: {\"selectedCandidateId\":\"...\",\"rationale\":\"...\",\"strengths\":\"...\",\"concerns\":\"...\"}",
+    "selectedCandidateId must equal one listed candidateId. Do not return phrase, notes, scaleDegree, octave, events, scores, or instructions.",
+    "Ground your critique in the given scores, changed note count, top critique, and contour summary.",
+    "Candidate projection:",
     JSON.stringify(projection),
   ].join("\n");
 }
@@ -497,6 +583,95 @@ export async function runOllamaProposalTextTest(
   }
 }
 
+export async function runOllamaMelodyCriticTest(
+  take: MelodyRepairTake,
+  config: OllamaConfig,
+  options: OllamaThoughtRunOptions = {},
+): Promise<OllamaMelodyCriticTestResult> {
+  const startedAt = Date.now();
+  const fallbackSelection = createMockMelodyCriticSelection(take);
+  const fallbackValidation = validateMelodyCriticSelection(fallbackSelection, take);
+  const ollamaRequest: OllamaChatRequest = {
+    model: config.model,
+    messages: [
+      { role: "system", content: createOllamaMelodyCriticPrimer() },
+      { role: "user", content: createOllamaMelodyCriticPrompt(take) },
+    ],
+    stream: false,
+    format: createMelodyCriticResponseFormat(take),
+    think: false,
+    options: {
+      temperature: 0.5,
+      num_predict: 256,
+    },
+  };
+
+  try {
+    const response = await fetchWithTimeout(
+      createOllamaProxyUrl("chat", config),
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          baseUrl: sanitizeBaseUrl(config.baseUrl),
+          request: ollamaRequest,
+        } satisfies OllamaProxyChatRequest),
+      },
+      config.timeoutMs,
+      options.signal,
+    );
+    const latencyMs = Date.now() - startedAt;
+    if (!response.ok) {
+      return createFailedMelodyCriticTest(
+        take,
+        config,
+        fallbackSelection,
+        fallbackValidation,
+        latencyMs,
+        `HTTP ${response.status}`,
+      );
+    }
+
+    const payload = await response.json() as OllamaChatResponse;
+    const rawResponse = getOllamaResponseText(payload);
+    const parse = parseOllamaMelodyCriticResponse(rawResponse);
+    const validation = parse.selection
+      ? validateMelodyCriticSelection(parse.selection, take)
+      : { valid: false, errors: parse.errors };
+
+    return {
+      status: parse.selection && validation.valid ? "valid" : "invalid",
+      provider: "ollama",
+      model: config.model,
+      baseUrl: config.baseUrl,
+      promptProtocol: "melody-critic",
+      takeId: take.id,
+      songId: take.songId,
+      deterministicCandidateId: take.deterministicCandidateId,
+      selectedCandidateId: parse.selection?.selectedCandidateId,
+      latencyMs,
+      rawResponse,
+      parse,
+      validation,
+      selection: parse.selection,
+      fallbackSelection,
+      fallbackValidation,
+      message: parse.selection && validation.valid
+        ? "Ollama selected a valid melody candidate"
+        : "Ollama responded, but the melody selection did not validate",
+    };
+  } catch (error) {
+    return createFailedMelodyCriticTest(
+      take,
+      config,
+      fallbackSelection,
+      fallbackValidation,
+      Date.now() - startedAt,
+      getErrorMessage(error),
+    );
+  }
+}
+
 function getOllamaResponseText(payload: OllamaChatResponse): string {
   const candidates = [
     payload.message?.content,
@@ -504,6 +679,40 @@ function getOllamaResponseText(payload: OllamaChatResponse): string {
     payload.message?.thinking,
   ];
   return candidates.find((candidate) => (candidate?.trim().length ?? 0) > 0) ?? "";
+}
+
+export function parseOllamaMelodyCriticResponse(
+  rawResponse: string,
+): OllamaMelodyCriticParseResult {
+  const jsonText = extractJsonObject(rawResponse);
+  if (!jsonText) {
+    return {
+      status: "error",
+      errors: ["response did not contain a JSON object"],
+    };
+  }
+
+  try {
+    const parsed = JSON.parse(jsonText) as unknown;
+    const object = unwrapMelodyCriticObject(parsed);
+    if (!object) {
+      return {
+        status: "error",
+        errors: ["response JSON was not an object"],
+      };
+    }
+
+    return {
+      status: "ok",
+      errors: [],
+      selection: coerceMelodyCriticSelection(object),
+    };
+  } catch (error) {
+    return {
+      status: "error",
+      errors: [`response JSON parse failed: ${getErrorMessage(error)}`],
+    };
+  }
 }
 
 export function parseOllamaProposalTextResponse(
@@ -643,6 +852,36 @@ function createFailedProposalTextTest(
   };
 }
 
+function createFailedMelodyCriticTest(
+  take: MelodyRepairTake,
+  config: OllamaConfig,
+  fallbackSelection: MelodyCriticSelection,
+  fallbackValidation: MelodyCriticValidation,
+  latencyMs: number,
+  message: string,
+): OllamaMelodyCriticTestResult {
+  return {
+    status: "failed",
+    provider: "mock-fallback",
+    model: config.model,
+    baseUrl: config.baseUrl,
+    promptProtocol: "melody-critic",
+    takeId: take.id,
+    songId: take.songId,
+    deterministicCandidateId: take.deterministicCandidateId,
+    selectedCandidateId: fallbackSelection.selectedCandidateId,
+    latencyMs,
+    rawResponse: "",
+    parse: { status: "error", errors: [message] },
+    validation: { valid: false, errors: [message] },
+    fallbackSelection,
+    fallbackValidation,
+    message: `Ollama unavailable; deterministic melody critic fallback is ${
+      fallbackValidation.valid ? "valid" : "invalid"
+    }`,
+  };
+}
+
 function createSongSketchProposalTextResponseFormat(proposal: SongSketchProposal): unknown {
   const playerIds = proposal.responses.map((response) => response.playerId);
   return {
@@ -683,6 +922,64 @@ function createSongSketchProposalTextResponseFormat(proposal: SongSketchProposal
         },
       },
     },
+  };
+}
+
+function createMelodyCriticResponseFormat(take: MelodyRepairTake): unknown {
+  return {
+    type: "object",
+    additionalProperties: false,
+    required: ["selectedCandidateId", "rationale", "strengths", "concerns"],
+    properties: {
+      selectedCandidateId: {
+        type: "string",
+        enum: take.candidates.map((candidate) => candidate.id),
+      },
+      rationale: {
+        type: "string",
+        minLength: 1,
+        maxLength: MELODY_CRITIC_TEXT_LIMITS.rationale,
+      },
+      strengths: {
+        type: "string",
+        minLength: 1,
+        maxLength: MELODY_CRITIC_TEXT_LIMITS.strengths,
+      },
+      concerns: {
+        type: "string",
+        minLength: 1,
+        maxLength: MELODY_CRITIC_TEXT_LIMITS.concerns,
+      },
+    },
+  };
+}
+
+function projectMelodyRepairCandidate(candidate: MelodyRepairCandidate): Record<string, unknown> {
+  return {
+    candidateId: candidate.id,
+    label: candidate.label,
+    source: candidate.source,
+    rank: candidate.rank,
+    total: candidate.primaryScore.total,
+    subscores: {
+      landing: candidate.primaryScore.landing,
+      monotony: candidate.primaryScore.monotony,
+      surprise: candidate.primaryScore.surprise,
+      averageSurprise: candidate.primaryScore.averageSurprise,
+    },
+    playerScores: candidate.scores.map((score) => ({
+      playerId: score.perspectiveId,
+      total: score.total,
+    })),
+    changedNotes: candidate.changedNotes,
+    critiqueCount: candidate.critiqueCount,
+    topCritique: candidate.primaryScore.critiques[0]?.message ?? "none",
+    contour: candidate.phrase.map((note) => ({
+      step: note.stepIndex,
+      degree: note.scaleDegree,
+      octave: note.octave,
+      duration: note.durationBeats,
+    })),
   };
 }
 
@@ -729,6 +1026,15 @@ function coerceSongSketchProposalTextResponse(
     playerId,
     reason: getString(object.reason),
     requestedChange: requestedChange.length > 0 ? requestedChange : undefined,
+  };
+}
+
+function coerceMelodyCriticSelection(value: Record<string, unknown>): MelodyCriticSelection {
+  return {
+    selectedCandidateId: getString(value.selectedCandidateId),
+    rationale: getString(value.rationale),
+    strengths: getString(value.strengths),
+    concerns: getString(value.concerns),
   };
 }
 
@@ -833,6 +1139,13 @@ function unwrapIntentObject(value: unknown): Record<string, unknown> | undefined
 function unwrapProposalTextObject(value: unknown): Record<string, unknown> | undefined {
   if (!isRecord(value)) return undefined;
   if (isRecord(value.proposalText)) return value.proposalText;
+  return value;
+}
+
+function unwrapMelodyCriticObject(value: unknown): Record<string, unknown> | undefined {
+  if (!isRecord(value)) return undefined;
+  if (isRecord(value.melodyCritic)) return value.melodyCritic;
+  if (isRecord(value.selection)) return value.selection;
   return value;
 }
 
