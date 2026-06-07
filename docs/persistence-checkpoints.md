@@ -33,6 +33,8 @@ Use an append-only event log plus periodic snapshots.
 
 `docs/persistence-records.md` defines the current Byte 13a durable record boundaries for thoughts, song sketches, proposals, proposal text, playback windows, and checkpoint generator state. Treat that document as the more detailed companion to this strategy.
 
+Byte 13b-a adds the first local SQLite shell around this strategy: schema initialization, append/read helpers, and dump/smoke commands. It does not wire the browser app to persistence yet.
+
 Events describe what happened:
 
 - Player moved.
@@ -58,6 +60,7 @@ Snapshots describe state at a point:
 - Current tempo, key, mode, transport position.
 - Any deterministic random seed or clock information needed for replay.
 - Transport generator state needed to seek to a checkpoint and continue generating, such as per-player committed event indexes, latest committed pitch per player, next scheduled beat, scheduled-through beat, and event serial.
+- Taste action-dwell state per player, because current action and `actionSinceBeat` affect future note decisions.
 
 To rewind, load a snapshot and replay later events. To fork, create a new branch from a snapshot or event sequence and append new events there.
 

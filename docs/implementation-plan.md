@@ -1420,6 +1420,24 @@ Review focus:
 - Whether the schema remains under-normalized but queryable.
 - Whether the first records are useful for debugging without turning Grow into an archive.
 
+#### Byte 13b-a: SQLite Shell
+
+Status: implemented; awaiting review.
+
+Scope:
+
+- Add a dependency-free Node SQLite shell using `node:sqlite`.
+- Add schema initialization for `sessions`, append-only `events`, schema metadata, and the first event indexes.
+- Add reusable append/read helpers in `server/persistence.mjs`.
+- Add `npm run db:init`, `npm run db:dump`, and `npm run db:smoke`.
+- Keep all app wiring, browser writes, playback writes, replay, fork UI, and checkpoint restore out of scope.
+
+Acceptance criteria:
+
+- `npm run db:smoke` creates a temporary database, inserts a session plus two events, reads them back, and cleans up after itself.
+- The default database path is ignored by Git.
+- The app still does not write to SQLite.
+
 ### Byte 14: Producer Marker, No LLM
 
 Add the producer proxy visually and with a rule-based command interpreter.

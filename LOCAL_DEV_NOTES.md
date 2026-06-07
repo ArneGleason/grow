@@ -222,6 +222,7 @@ Resume work:
 - Byte 10c review approved the data model and cleared Byte 10d. UI labels now distinguish `Dynamics heard` from `Offset queued` because expression latest is fire-time/just-heard while performed timing latest is schedule-time/future-committed.
 - Byte 10e-v adds `window.terrarium.getVisualState()` for derived visual heat inspection. It should remain a read-only visual snapshot sourced from the current listening frame, not a new behavior state source.
 - Persistence/checkpoint note: event-ledger replay is self-contained from stored event payloads, but seek-and-continue must restore transport generator state such as committed event indexes, next scheduled beat, scheduled-through beat, and event serial.
+- Byte 13b-a adds the local SQLite shell without app wiring. It uses Node's built-in `node:sqlite` module, verified locally on Node `v25.8.1`. Use `npm run db:smoke` for a temp-file append/read check, `npm run db:init` to create the default ignored `data/grow.sqlite3`, and `npm run db:dump -- --limit 20` to inspect sessions/events.
 - Before runtime key/mode changes, remember that transport patterns currently materialize from tonal context at `initTransport`/start time; tonal changes will need pattern re-materialization.
 - PixiJS v8 clamps alpha to 1.0, so note-on flashes should not rely on `alpha > 1`. Use scale, tint, or a resting alpha below 1.0 so the flash has visible headroom.
 - Use `git ls-files --cached --others --exclude-standard | sort` for the file inventory now that ignored `node_modules/` and `dist/` trees exist.
