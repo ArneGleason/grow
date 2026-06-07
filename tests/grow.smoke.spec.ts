@@ -328,6 +328,19 @@ async function flushPersistence(page: Page): Promise<void> {
   });
 }
 
+async function flushPersistenceUntilIdle(page: Page): Promise<void> {
+  for (let attempt = 0; attempt < 25; attempt += 1) {
+    await flushPersistence(page);
+    const state = await getPersistenceState(page);
+    if (state.pendingCount === 0 && state.status !== "flushing" && state.status !== "scheduled") {
+      return;
+    }
+  }
+
+  const state = await getPersistenceState(page);
+  throw new Error(`Persistence queue did not drain: ${state.status}, ${state.pendingCount} pending`);
+}
+
 async function getMusicalEventBufferState(page: Page): Promise<MusicalEventBufferState> {
   const state = await page.evaluate(() => {
     const appWindow = window as unknown as {
@@ -1859,30 +1872,34 @@ test("persistence records low-frequency decisions off the audio path", async ({ 
 
 test("persistence records musical events through an off-callback buffer", async ({ page }) => {
   await page.goto("/");
-  await flushPersistence(page);
+  await flushPersistenceUntilIdle(page);
 
   const button = page.getByTestId("transport-toggle");
-  await button.click();
-  await expect(button).toHaveText("Stop");
+  const playSpan = async () => {
+    const before = await getMusicalEventBufferState(page);
+    await button.click();
+    await expect(button).toHaveText("Stop");
 
-  await expect.poll(async () => (await getMusicalEventBufferState(page)).enqueuedCount, {
-    timeout: 8_000,
-  }).toBeGreaterThan(6);
-  await expect(page.getByTestId("musical-event-buffer-status")).toContainText("heard");
+    await expect.poll(async () => (await getMusicalEventBufferState(page)).enqueuedCount, {
+      timeout: 8_000,
+    }).toBeGreaterThan(before.enqueuedCount + 6);
+    await expect(page.getByTestId("musical-event-buffer-status")).toContainText("heard");
 
-  await flushMusicalEvents(page);
-  await flushPersistence(page);
+    await button.click();
+    await expect(button).toHaveText("Start");
+    const stoppedBufferState = await getMusicalEventBufferState(page);
+    expect(stoppedBufferState.pendingCount).toBe(0);
+    expect(stoppedBufferState.drainedCount).toBeGreaterThan(before.drainedCount);
+    expect(stoppedBufferState.droppedCount).toBe(0);
+    await flushPersistenceUntilIdle(page);
+    return stoppedBufferState;
+  };
 
-  await button.click();
-  await expect(button).toHaveText("Start");
-  const stoppedBufferState = await getMusicalEventBufferState(page);
-  expect(stoppedBufferState.pendingCount).toBe(0);
-  expect(stoppedBufferState.drainedCount).toBeGreaterThan(0);
-  expect(stoppedBufferState.droppedCount).toBe(0);
-
-  await flushPersistence(page);
+  const firstSpanBufferState = await playSpan();
+  const stoppedBufferState = await playSpan();
+  expect(stoppedBufferState.drainedCount).toBeGreaterThan(firstSpanBufferState.drainedCount);
   const persistenceState = await getPersistenceState(page);
-  const dump = await dumpPersistence(page, 300);
+  const dump = await dumpPersistence(page, 1_000);
   const musicalEvents = dump.events
     .filter((event) =>
       event.sessionId === persistenceState.sessionId &&
@@ -1890,16 +1907,24 @@ test("persistence records musical events through an off-callback buffer", async 
     )
     .sort((left, right) => left.seq - right.seq);
 
-  expect(musicalEvents.length).toBeGreaterThan(6);
+  expect(musicalEvents.length).toBe(stoppedBufferState.drainedCount);
   expect(new Set(musicalEvents.map((event) => event.id)).size).toBe(musicalEvents.length);
-  expect(musicalEvents.every((event) =>
-    event.id.startsWith(`musical-${persistenceState.sessionId}-event-`)
+  const idDetails = musicalEvents.map((event) => {
+    const tail = event.id.replace(`musical-${persistenceState.sessionId}-span-`, "");
+    const [spanSerial, sourceSerial] = tail.split("-event-").map(Number);
+    return { spanSerial, sourceSerial };
+  });
+  expect(idDetails.every(({ spanSerial, sourceSerial }) =>
+    Number.isFinite(spanSerial) && Number.isFinite(sourceSerial)
   )).toBe(true);
-  const sourceSerials = musicalEvents.map((event) =>
-    Number(String(event.payload.sourceEventId).replace("event-", ""))
-  );
-  expect(sourceSerials.every(Number.isFinite)).toBe(true);
-  expect(sourceSerials).toEqual([...sourceSerials].sort((left, right) => left - right));
+  expect([...new Set(idDetails.map(({ spanSerial }) => spanSerial))]).toEqual([1, 2]);
+  for (const spanSerial of [1, 2]) {
+    const sourceSerials = idDetails
+      .filter((details) => details.spanSerial === spanSerial)
+      .map((details) => details.sourceSerial);
+    expect(sourceSerials.length).toBeGreaterThan(6);
+    expect(sourceSerials).toEqual([...sourceSerials].sort((left, right) => left - right));
+  }
 
   const firstMusicalPayload = musicalEvents[0].payload as {
     schemaVersion?: number;

@@ -1,6 +1,6 @@
 # Persistence Record Boundaries
 
-Status: Byte 13b-c3. The app persists low-frequency decision records and `musical.event_recorded` rows through SQLite. Musical events flow through an in-memory source buffer and retained persistence queue before they reach the dev middleware.
+Status: Byte 13b-c4. The app persists low-frequency decision records and `musical.event_recorded` rows through SQLite. Musical events flow through an in-memory source buffer and retained persistence queue before they reach the dev middleware; their database ids include a play-span discriminator because transport-local source event ids reset on each start.
 
 ## Principles
 

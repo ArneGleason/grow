@@ -30,6 +30,7 @@ import {
   MusicalEventRecordSourceBuffer,
   createMusicalEventPersistenceRecord,
   type MusicalEventRecordBufferState,
+  type MusicalEventRecordSource,
 } from "./musical-event-record";
 import { PLAYER_REGISTRY } from "./players";
 import {
@@ -135,6 +136,7 @@ const musicalEventRecordBuffer = new MusicalEventRecordSourceBuffer(MUSICAL_EVEN
 let musicalEventFlushTimerId = 0;
 let musicalEventLastFlushAt: string | undefined;
 let musicalEventLastFlushCount = 0;
+let musicalEventPlaySpanSerial = 0;
 const SLOW_THINKING_PLAYER_IDS = ["melody", "bass"] as const;
 const SLOW_THINKING_INTERVAL_BEATS = 8;
 const SLOW_THINKING_SECONDARY_INITIAL_DELAY_BEATS = 6;
@@ -1704,6 +1706,7 @@ function enqueueMusicalEventForPersistence(event: MusicalEvent): void {
     event,
     tonalContext: cloneTonalContext(world.getTonalContext()),
     enqueuedAtMs: performance.now(),
+    playSpanSerial: musicalEventPlaySpanSerial,
   });
 }
 
@@ -1717,7 +1720,7 @@ function flushMusicalEventBufferToPersistence(
   for (const source of sources) {
     const record = createMusicalEventPersistenceRecord(source.event, source.tonalContext);
     persistence.record({
-      id: createMusicalEventPersistenceId(record.payload.sourceEventId),
+      id: createMusicalEventPersistenceId(source),
       type: record.type,
       actorId: record.actorId,
       sessionMode: world.getSessionMode(),
@@ -1735,8 +1738,12 @@ function flushMusicalEventBufferToPersistence(
   return sources.length;
 }
 
-function createMusicalEventPersistenceId(sourceEventId: string): string {
-  return `musical-${persistence.getState().sessionId}-${sourceEventId}`;
+function beginMusicalEventPersistenceSpan(): void {
+  musicalEventPlaySpanSerial += 1;
+}
+
+function createMusicalEventPersistenceId(source: MusicalEventRecordSource): string {
+  return `musical-${persistence.getState().sessionId}-span-${source.playSpanSerial}-${source.event.id}`;
 }
 
 function cloneTonalContext(tonalContext: ListeningFrame["tonalContext"]): ListeningFrame["tonalContext"] {
@@ -1886,7 +1893,10 @@ button.addEventListener("click", async () => {
       stopTransport();
       flushMusicalEventBufferToPersistence("stop", MUSICAL_EVENT_DRAIN_ALL);
     } else {
-      await startTransport();
+      const nextState = await startTransport();
+      if (nextState.status === "playing") {
+        beginMusicalEventPersistenceSpan();
+      }
     }
   } catch (error) {
     console.error("[grow] transport toggle failed", error);

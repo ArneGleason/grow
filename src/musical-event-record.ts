@@ -52,6 +52,7 @@ export interface MusicalEventRecordSource {
   event: MusicalEvent;
   tonalContext: TonalContext;
   enqueuedAtMs: number;
+  playSpanSerial: number;
 }
 
 export interface MusicalEventRecordBufferState {

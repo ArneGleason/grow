@@ -1568,6 +1568,29 @@ Status:
 - Implemented in Byte 13b-c3.
 - `handleMusicalEvent` still does no fetch, DB write, or timer scheduling; the flusher interval is started during app setup.
 - Failed DB appends are handled by the existing `src/persistence.ts` retained queue and stable event ids rather than by re-entering the source buffer.
+- Claude reviewed Byte 13b-c3 and found one required fix: musical persistence ids collided across stop/start play spans because transport-local `eventSerial` resets to `event-0` on each start while the browser session id stays stable.
+
+#### Byte 13b-c4: Musical Event Play-Span Idempotency Fix
+
+Fix the cross-span id collision found in Byte 13b-c3 review.
+
+Scope:
+
+- Add a browser-local play-span serial that increments on each successful transport start.
+- Capture the play-span serial in each musical-event source-buffer entry when the audio callback enqueues it.
+- Shape musical persistence ids as `musical-<sessionId>-span-<playSpanSerial>-<sourceEventId>` so `event-0` can recur safely in later play spans.
+- Keep `MusicalEvent.id` / `sourceEventId` span-local so deterministic event-index/expression behavior does not change.
+- Expand smoke to play, stop, play, stop, then assert persisted musical rows equal total drained source events and that each span's source ids are ordered independently.
+
+Out of scope:
+
+- Persisting `playSpanSerial` inside the schema-v1 musical-event payload.
+- Changing transport event serial semantics.
+- Reporting inserted-versus-deduped counts from `/api/persistence/append`.
+
+Status:
+
+- Implemented in Byte 13b-c4.
 
 ### Byte 14: Producer Marker, No LLM
 

@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Implement Byte 13b-c3 musical event buffer flush to persistence",
-  "status": "byte13b-c3-awaiting-review",
-  "updatedAt": "2026-06-07T13:25:16Z",
+  "lastTask": "Implement Byte 13b-c4 musical event play-span idempotency fix",
+  "status": "byte13b-c4-awaiting-review",
+  "updatedAt": "2026-06-07T13:41:00Z",
   "lastHandoff": "",
-  "branch": "codex/byte-13b-c3",
-  "commit": "f292357",
+  "branch": "codex/byte-13b-c4",
+  "commit": "HEAD",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 13b-c3 wires high-frequency musical events to persistence without doing I/O in the audio callback. `handleMusicalEvent` only enqueues the emitted event plus a tonal-context snapshot into the source buffer. A setup-time interval drains up to 64 sources, builds schema-v1 `musical.event_recorded` payloads, and hands deterministic ids (`musical-<sessionId>-<sourceEventId>`) to the existing retained/idempotent persistence queue. The source buffer flushes on stop/pagehide/HMR, the Session inspector shows event-buffer pending/enqueued/dropped/last-flush state, and smoke verifies persisted musical rows are ordered by source event id with grid/performed payloads."
+    "summary": "Byte 13b-c4 fixes the required Byte 13b-c3 review finding: musical persistence ids now include a play-span serial (`musical-<sessionId>-span-<playSpanSerial>-<sourceEventId>`) because transport-local source event ids reset to `event-0` on every start while the browser session stays stable. The source buffer captures the play-span serial at enqueue time, payload schema v1 stays unchanged, and smoke now plays/stops twice and asserts persisted musical rows equal total drained source events with each span ordered independently."
   }
 }
