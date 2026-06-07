@@ -27,7 +27,7 @@
   "updatedAt": "2026-06-07T22:28:57Z",
   "lastHandoff": "",
   "branch": "codex/byte-15b-b",
-  "commit": "18246ee",
+  "commit": "f32f586",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
     "summary": "Byte 15b-b diversifies the model critic menu while preserving the Byte 15b-a safety boundary. `MelodyRepairTake` now exposes named app-owned chorus strategies (`balanced-repair`, `lifted-hook`, `stepwise-hook`, `spacious-hook`, `energetic-hook`, `cadence-hook`, plus local/raw fallbacks), each with strategy summary, note count, best-candidate id, and score deltas versus local best and deterministic fallback. The Ollama melody critic still returns only `selectedCandidateId` plus short prose; valid picks switch to the selected app-owned candidate through the existing chorus/lookahead path. Manual critic outcomes are persisted as `song.melody_critic_selection` so model choices can be compared over time."
