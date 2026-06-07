@@ -1510,9 +1510,8 @@ function applySongSectionDecision(
         action: "contrast",
         shouldPlay,
         velocityMultiplier: shouldPlay ? 0.82 : 0,
-        pitch: shouldPlay ? shiftPitchOctave(input.pitch, 1) : undefined,
-        tags: [...tags, "section:bridge-shift"],
-        reason: "Bridge: sparse lifted melody answers the chorus.",
+        tags: [...tags, "section:bridge-lifted-material"],
+        reason: "Bridge: sparse committed melody lift answers the chorus.",
       };
     }
   }

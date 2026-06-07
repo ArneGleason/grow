@@ -1129,6 +1129,7 @@ test("song form timeline develops an in-scale chorus melody", () => {
   const melodyPattern = getPatternForPlayer(song.patterns, "melody");
   const verseNotes = collectArrangedMelody(song, melodyPattern, 0);
   const chorusNotes = collectArrangedMelody(song, melodyPattern, 32);
+  const bridgeNotes = collectArrangedMelody(song, melodyPattern, 128);
   const scaleLength = DEFAULT_TONAL_CONTEXT.scale.length;
   const firstRoot = deriveSongRootDegrees(song)[0] ?? 0;
   const chordToneClasses = new Set([firstRoot, firstRoot + 2, firstRoot + 4].map((degree) =>
@@ -1145,6 +1146,8 @@ test("song form timeline develops an in-scale chorus melody", () => {
   )).toBe(true);
   expect(chordToneClasses.has(modulo(chorusNotes[0].scaleDegree, scaleLength))).toBe(true);
   expect(chorusNotes.some((note) => note.durationBeats >= 1)).toBe(true);
+  expect(bridgeNotes.length).toBeGreaterThan(0);
+  expect(Math.max(...bridgeNotes.map((note) => note.octave))).toBe(5);
 });
 
 test("manual Ollama thought probe is inspectable with a mocked local endpoint", async ({ page }) => {
