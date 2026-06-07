@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Implement Byte 13b-c1 persistence writer hardening",
-  "status": "byte13b-c1-awaiting-review",
-  "updatedAt": "2026-06-07T12:35:22Z",
+  "lastTask": "Merge Byte 13b-c1 persistence writer hardening",
+  "status": "byte13b-c1-merged-byte13b-c-ready",
+  "updatedAt": "2026-06-07T12:46:18Z",
   "lastHandoff": "",
-  "branch": "codex/byte-13b-c1",
+  "branch": "main",
   "commit": "pending",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 13b-c1 hardens the low-frequency persistence writer before `musical.event_recorded`: no-db status/dump reports an uninitialized DB instead of creating one, queued records retry with bounded backoff, `window.persistence.flushOnPageHide()` sends a best-effort beacon/keepalive batch without removing queued records, and the Session inspector shows persistence status/pending/error details. Smoke now covers a forced append outage and verifies the app remains usable while records stay pending. High-frequency musical event persistence remains deferred to a ring-buffer/batch-flush slice."
+    "summary": "Byte 13b-c1 is approved and merged. It hardens the low-frequency persistence writer before `musical.event_recorded`: no-db status/dump reports an uninitialized DB instead of creating one, queued records retry with bounded backoff, `window.persistence.flushOnPageHide()` sends a best-effort beacon/keepalive batch without removing queued records, and the Session inspector shows persistence status/pending/error details. Claude confirmed no persistence work moved into `handleMusicalEvent` or Tone callbacks. Byte 13b-c is next: persist `musical.event_recorded` through a scheduler-safe ring buffer plus batch flusher, with tests for no callback fetch/timer work, ordered appends under load, explicit stop cleanup, bounded back-pressure, and the grid-vs-performed pitch decision."
   }
 }

@@ -1517,6 +1517,7 @@ Carry forward:
 
 - `flushOnPageHide()` intentionally does not remove queued records because the browser gives no response; server-side event ids keep a repeated write idempotent.
 - High-frequency `musical.event_recorded` remains deferred to Byte 13b-c, where the writer must prove ring-buffer/batch-flush discipline away from Tone callbacks.
+- Claude approved Byte 13b-c1. Byte 13b-c should test that scheduler callbacks only enqueue memory data, persisted musical events stay ordered/idempotent under load, stop/cleanup either flushes or discards deliberately, bounded back-pressure is surfaced in the inspector, and grid versus performed pitch is decided before or alongside the event payload.
 
 ### Byte 14: Producer Marker, No LLM
 
