@@ -1519,6 +1519,30 @@ Carry forward:
 - High-frequency `musical.event_recorded` remains deferred to Byte 13b-c, where the writer must prove ring-buffer/batch-flush discipline away from Tone callbacks.
 - Claude approved Byte 13b-c1. Byte 13b-c should test that scheduler callbacks only enqueue memory data, persisted musical events stay ordered/idempotent under load, stop/cleanup either flushes or discards deliberately, bounded back-pressure is surfaced in the inspector, and grid versus performed pitch is decided before or alongside the event payload.
 
+#### Byte 13b-c2: Musical Event Payload And Buffer Boundary
+
+Define the high-frequency event record shape before connecting it to SQLite.
+
+Scope:
+
+- Add explicit grid versus performed pitch fields to emitted `MusicalEvent` while preserving `event.pitch` as the existing performed-pitch compatibility field.
+- Add a `MusicalEventRecordPayload` with `grid` and `performed` sections for timing and pitch replay truth.
+- Add an in-memory fixed-capacity musical-event record buffer that drops oldest records under pressure and drains in order.
+- Add fast tests for payload shape and ring-buffer back-pressure, plus a live shifted-register assertion proving `gridPitch` and `performedPitch` diverge correctly.
+
+Out of scope:
+
+- Appending `musical.event_recorded` to SQLite.
+- Fetching, scheduling, timers, or DB writes from Tone callbacks.
+- Replay, fork UI, checkpoint restore, and media capture.
+
+Status:
+
+- Implemented in Byte 13b-c2.
+- `src/musical-event-record.ts` owns the schema-v1 payload builder and fixed-capacity ring buffer.
+- `transport` emits `gridPitch` from committed material and `performedPitch` from the actual sounded decision.
+- The next slice should wire musical events into the buffer and a separate batch flusher, without letting scheduler callbacks do anything beyond synchronous memory enqueue.
+
 ### Byte 14: Producer Marker, No LLM
 
 Add the producer proxy visually and with a rule-based command interpreter.

@@ -1,5 +1,9 @@
 import { expect, test, type Page } from "@playwright/test";
 import { calculatePlayerExpression } from "../src/expression";
+import {
+  MusicalEventRecordBuffer,
+  createMusicalEventPersistenceRecord,
+} from "../src/musical-event-record";
 import { calculatePerformedTiming } from "../src/performed-time";
 import { MELODY_PLAYER } from "../src/players";
 import {
@@ -184,6 +188,8 @@ type ListeningFrame = {
       eventIndex: number;
       summary: string;
     };
+    gridPitch?: string;
+    performedPitch?: string;
     tags: string[];
   }>;
   players: Array<{
@@ -690,6 +696,137 @@ test("performed timing snapshots are deterministic bounded data", () => {
   expect(first.summary.length).toBeGreaterThan(0);
   expect(nextStep.performedOffsetBeats).toBe(first.performedOffsetBeats);
   expect(nextPocket.performedOffsetBeats).not.toBe(first.performedOffsetBeats);
+});
+
+test("musical event record payload separates grid and performed pitch", () => {
+  const tonalContext = {
+    tonic: "C",
+    mode: "mixolydian",
+    scale: ["C", "D", "E", "F", "G", "A", "Bb"],
+  };
+  const record = createMusicalEventPersistenceRecord({
+    id: "event-shifted",
+    kind: "note",
+    playerId: "melody",
+    instrumentId: "sine",
+    transportPosition: "4:0:0",
+    bar: 5,
+    beat: 1,
+    absoluteBeat: 16,
+    eventIndex: 7,
+    durationBeats: 0.5,
+    performedOffsetBeats: 0.0125,
+    performedOffsetSeconds: 0.0083,
+    velocity: 0.44,
+    pitch: "E5",
+    gridPitch: "E4",
+    performedPitch: "E5",
+    tags: ["melody", "thought:shift_register", "register:+1"],
+    createdAtMs: 1234,
+  }, tonalContext);
+
+  expect(record.type).toBe("musical.event_recorded");
+  expect(record.actorId).toBe("melody");
+  expect(record.beat).toBe(16);
+  expect(record.payload.schemaVersion).toBe(1);
+  expect(record.payload.grid).toMatchObject({
+    absoluteBeat: 16,
+    pitch: "E4",
+    pitchClass: "E",
+    octave: 4,
+    scaleDegree: 2,
+  });
+  expect(record.payload.performed).toMatchObject({
+    offsetBeats: 0.0125,
+    offsetSeconds: 0.0083,
+    pitch: "E5",
+    pitchClass: "E",
+    octave: 5,
+    scaleDegree: 2,
+    sounded: true,
+    pitchChanged: true,
+    registerShift: 1,
+  });
+
+  const restRecord = createMusicalEventPersistenceRecord({
+    id: "event-rest",
+    kind: "rest",
+    playerId: "melody",
+    instrumentId: "sine",
+    transportPosition: "4:1:0",
+    bar: 5,
+    beat: 2,
+    absoluteBeat: 17,
+    eventIndex: 8,
+    durationBeats: 0.5,
+    performedOffsetBeats: 0,
+    performedOffsetSeconds: 0,
+    velocity: 0,
+    pitch: undefined,
+    gridPitch: "G4",
+    performedPitch: undefined,
+    tags: ["melody", "taste:rest"],
+    createdAtMs: 1235,
+  }, tonalContext);
+  expect(restRecord.payload.grid.pitch).toBe("G4");
+  expect(restRecord.payload.grid.scaleDegree).toBe(4);
+  expect(restRecord.payload.performed.pitch).toBeUndefined();
+  expect(restRecord.payload.performed.sounded).toBe(false);
+  expect(restRecord.payload.performed.pitchChanged).toBe(false);
+});
+
+test("musical event record buffer drains in order and drops oldest under pressure", () => {
+  const tonalContext = {
+    tonic: "C",
+    mode: "mixolydian",
+    scale: ["C", "D", "E", "F", "G", "A", "Bb"],
+  };
+  const makeRecord = (sourceEventId: string, absoluteBeat: number) => createMusicalEventPersistenceRecord({
+    id: sourceEventId,
+    kind: "note",
+    playerId: "pulse",
+    instrumentId: "pulse",
+    transportPosition: `0:0:${absoluteBeat}`,
+    bar: 1,
+    beat: absoluteBeat + 1,
+    absoluteBeat,
+    eventIndex: absoluteBeat,
+    durationBeats: 0.5,
+    performedOffsetBeats: 0,
+    performedOffsetSeconds: 0,
+    velocity: 0.5,
+    pitch: "C2",
+    gridPitch: "C2",
+    performedPitch: "C2",
+    tags: ["pulse"],
+    createdAtMs: absoluteBeat,
+  }, tonalContext);
+
+  const buffer = new MusicalEventRecordBuffer(2);
+  const first = makeRecord("event-1", 0);
+  const second = makeRecord("event-2", 1);
+  const third = makeRecord("event-3", 2);
+
+  expect(buffer.enqueue(first).state.pendingCount).toBe(1);
+  expect(buffer.enqueue(second).state.pendingCount).toBe(2);
+  const overflow = buffer.enqueue(third);
+  expect(overflow.dropped?.payload.sourceEventId).toBe("event-1");
+  expect(overflow.state).toMatchObject({
+    capacity: 2,
+    pendingCount: 2,
+    enqueuedCount: 3,
+    droppedCount: 1,
+    lastDroppedEventId: "event-1",
+  });
+  expect(buffer.drain().map((record) => record.payload.sourceEventId)).toEqual([
+    "event-2",
+    "event-3",
+  ]);
+  expect(buffer.getState()).toMatchObject({
+    pendingCount: 0,
+    drainedCount: 2,
+    droppedCount: 1,
+  });
 });
 
 test("session mode refill policy is explicit", () => {
@@ -1455,6 +1592,17 @@ test("slow thinking loop compiles a bounded register shift for existing melody n
       event.tags.includes("register:+1")
     );
   }, { timeout: 10_000 }).toBe(true);
+  const shiftedFrame = await getListeningFrame(page);
+  const shiftedEvent = shiftedFrame.recentEvents.find((event) =>
+    event.playerId === "melody" &&
+    event.kind === "note" &&
+    event.absoluteBeat >= (playback?.startBeat ?? Infinity) &&
+    event.absoluteBeat < (playback?.endBeat ?? -Infinity) &&
+    event.tags.includes("thought:shift_register")
+  );
+  expect(shiftedEvent?.gridPitch?.endsWith("4")).toBe(true);
+  expect(shiftedEvent?.performedPitch?.endsWith("5")).toBe(true);
+  expect(shiftedEvent?.pitch).toBe(shiftedEvent?.performedPitch);
   expect((await getTransportState(page)).status).toBe("playing");
 
   await button.click();

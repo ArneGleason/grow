@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Merge Byte 13b-c1 persistence writer hardening",
-  "status": "byte13b-c1-merged-byte13b-c-ready",
-  "updatedAt": "2026-06-07T12:46:18Z",
+  "lastTask": "Implement Byte 13b-c2 musical event payload and buffer boundary",
+  "status": "byte13b-c2-awaiting-review",
+  "updatedAt": "2026-06-07T12:55:49Z",
   "lastHandoff": "",
-  "branch": "main",
+  "branch": "codex/byte-13b-c2",
   "commit": "pending",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 13b-c1 is approved and merged. It hardens the low-frequency persistence writer before `musical.event_recorded`: no-db status/dump reports an uninitialized DB instead of creating one, queued records retry with bounded backoff, `window.persistence.flushOnPageHide()` sends a best-effort beacon/keepalive batch without removing queued records, and the Session inspector shows persistence status/pending/error details. Claude confirmed no persistence work moved into `handleMusicalEvent` or Tone callbacks. Byte 13b-c is next: persist `musical.event_recorded` through a scheduler-safe ring buffer plus batch flusher, with tests for no callback fetch/timer work, ordered appends under load, explicit stop cleanup, bounded back-pressure, and the grid-vs-performed pitch decision."
+    "summary": "Byte 13b-c2 defines the musical-event persistence shape without writing high-frequency events yet. `MusicalEvent` now carries `gridPitch` from committed material and `performedPitch` from the sounded decision while preserving `pitch` as the performed-pitch compatibility field. `src/musical-event-record.ts` owns schema-v1 `MusicalEventRecordPayload` with `grid` and `performed` sections plus a fixed-capacity drop-oldest ring buffer. Tests cover payload grid/performed pitch, buffer order/back-pressure, and live shift-register events with divergent grid/performed pitch. Next slice should wire musical events into the buffer and a separate batch flusher without fetch/timer/DB work inside Tone callbacks."
   }
 }

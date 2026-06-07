@@ -203,7 +203,7 @@ function emitNoteEvent(
   decision: TasteNoteDecision,
   expression: PlayerExpressionSnapshot,
   velocity: number,
-  pitch: string,
+  performedPitch: string,
 ): void {
   if (status !== "playing") return;
   const { note, snapshot } = committed;
@@ -224,7 +224,9 @@ function emitNoteEvent(
     performedOffsetBeats: committed.performedTiming.performedOffsetBeats,
     performedOffsetSeconds: beatsToSeconds(committed.performedTiming.performedOffsetBeats),
     velocity,
-    pitch: decision.shouldPlay ? pitch : undefined,
+    pitch: decision.shouldPlay ? performedPitch : undefined,
+    gridPitch: note.pitch,
+    performedPitch: decision.shouldPlay ? performedPitch : undefined,
     expression,
     performedTiming: committed.performedTiming,
     tags: [

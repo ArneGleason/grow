@@ -1,6 +1,6 @@
 # Persistence Record Boundaries
 
-Status: Byte 13b-a prep/shell. This document defines durable shapes and boundaries. Byte 13b-a adds a local SQLite schema shell and dump/smoke commands, but the browser app still does not write events or replay from storage.
+Status: Byte 13b-c2 prep. The app persists low-frequency decision records through SQLite, and this document now names the musical-event payload shape and buffer boundary before high-frequency event writes are enabled.
 
 ## Principles
 
@@ -22,7 +22,7 @@ These are logical records. They may initially be stored as `events.type + payloa
 | `song.changed` | Makes selected song material replayable and explains generator resets. | `fromSongId`, `toSongId`, beat, actor/source, cleared ledger/thinking flags. | Inspector-only labels. |
 | `timing.feel_changed` | Makes grid/feel/wide timing choices replayable. | `fromFeel`, `toFeel`, beat, actor/source. | Button selected state. |
 | `transport.started` / `transport.stopped` | Optional transport lifecycle audit if start/stop becomes replayable. | beat, actor/source, clear/drain behavior, reason. | AudioContext internals or scheduler handles. |
-| `musical.event_recorded` | Ledger source of truth for heard playback. | Full `MusicalEvent` payload, `seq`, `actorId`, `absoluteBeat`, `performedOffsetBeats`, `performedOffsetSeconds`, expression snapshot, performed-timing snapshot, tags. | Recomputed expression/timing values. |
+| `musical.event_recorded` | Ledger source of truth for heard playback. | `MusicalEventRecordPayload`, `seq`, `actorId`, grid timing/pitch, performed timing/pitch, expression snapshot, performed-timing snapshot, tags. | Recomputed expression/timing values. |
 | `thought.requested` | Captures the exact player prompt contract. | `PlayerThoughtRequest`, prompt protocol id, model config, generated beat, selected seed fragments. | In-flight promise/controller state. |
 | `thought.responded` | Audits a model or fallback response. | Provider, model, latency, raw response, parse status/errors, `PlayerThoughtIntent` if parsed, validation result, fallback intent/validation. | Interpreting rationale as commands. |
 | `thought.accepted` | Marks a thought result that passed the gate. | Request id, intent id, accepted beat, retarget information, validator version. | New musical slots unless they are actually committed later. |
@@ -62,32 +62,55 @@ The ledger can replay already-recorded events without the generator layer. Conti
 
 ## Grid Versus Performed Musical Data
 
-Grow now distinguishes grid truth from performed truth in timing. Future persistence should mirror that for pitch before replay becomes load-bearing:
+Grow now distinguishes grid truth from performed truth in timing and pitch:
 
 - `absoluteBeat` stays the grid position.
 - `performedOffsetBeats` / `performedOffsetSeconds` describe audible timing feel.
-- Add explicit grid pitch versus performed pitch before persisting slow-thought pitch overrides as replay truth. Today a `shift_register` event stores the performed pitch in `MusicalEvent.pitch` and tags the shift; that is enough for inspection, but not ideal as a durable replay contract.
+- `MusicalEvent.gridPitch` stores the scheduled material pitch, even when taste or a slow thought turns the slot into a rest.
+- `MusicalEvent.performedPitch` and the legacy `MusicalEvent.pitch` store the sounded pitch when the slot actually plays.
+- `src/musical-event-record.ts` converts those fields into a `MusicalEventRecordPayload` with `grid` and `performed` sections before any database write path consumes musical events.
 
-Recommended future event payload shape:
+Current event payload shape:
 
 ```ts
 {
+  schemaVersion: 1;
+  sourceEventId: string;
+  kind: "note" | "rest" | "effect";
+  playerId: string;
+  instrumentId: string;
+  eventIndex: number;
+  durationBeats: number;
+  velocity: number;
   grid: {
+    transportPosition: string;
+    bar: number;
+    beat: number;
     absoluteBeat: number;
     pitch?: string;
+    pitchClass?: string;
     scaleDegree?: number;
     octave?: number;
   };
   performed: {
     offsetBeats: number;
     offsetSeconds: number;
+    sounded: boolean;
+    pitchChanged: boolean;
     pitch?: string;
+    pitchClass?: string;
+    scaleDegree?: number;
+    octave?: number;
     registerShift?: number;
   };
+  expression?: PlayerExpressionSnapshot;
+  performedTiming?: PlayerPerformedTimingSnapshot;
+  tags: string[];
+  createdAtMs: number;
 }
 ```
 
-Do this before a real event-log replay byte, not as part of Byte 13a.
+`MusicalEvent.pitch` remains as a compatibility/readability alias for performed pitch until replay code depends on the split payload.
 
 ## Model Prose Boundary
 

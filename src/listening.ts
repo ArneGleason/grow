@@ -26,6 +26,8 @@ export interface MusicalEvent {
   performedOffsetSeconds: number;
   velocity: number;
   pitch?: string;
+  gridPitch?: string;
+  performedPitch?: string;
   expression?: PlayerExpressionSnapshot;
   performedTiming?: PlayerPerformedTimingSnapshot;
   tags: string[];
