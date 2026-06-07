@@ -23,13 +23,13 @@
     }
   },
   "lastTask": "Implement Byte 15a deterministic melody scoring and repair",
-  "status": "byte15a-awaiting-review",
-  "updatedAt": "2026-06-07T17:24:00Z",
+  "status": "byte15a-post-review-register-fix-awaiting-sanity-check",
+  "updatedAt": "2026-06-07T18:06:00Z",
   "lastHandoff": "",
   "branch": "codex/byte-15a",
   "commit": "HEAD",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 15a builds on the approved Byte 14 song form by adding deterministic melody scoring and repair for the chorus. Players now have tiny influence phrase corpora, `src/melody-scoring.ts` scores raw and repaired chorus material for landing, monotony, and surprise-vs-target from each player's perspective, transport receives Raw/Repaired chorus material through the song-form/lookahead arrangement seam, the inspector exposes Melody Score A/B plus per-player scores and critique, and Up/Down feedback persists `song.take_feedback` records while Down rejects a phrase key and repairs again. No model critic is in the loop yet; that remains Byte 15b."
+    "summary": "Byte 15a builds on the approved Byte 14 song form by adding deterministic melody scoring and repair for the chorus. Players now have tiny influence phrase corpora, `src/melody-scoring.ts` scores raw and repaired chorus material for landing, monotony, and surprise-vs-target from each player's perspective, transport receives Raw/Repaired chorus material through the song-form/lookahead arrangement seam, the inspector exposes Melody Score A/B plus per-player scores and critique, and Up/Down feedback persists `song.take_feedback` records while Down rejects a phrase key and repairs again. Claude approved the substrate but found one required feel fix: octave-blind scoring could reward a multi-octave plunge. The branch now bounds repair candidates to the phrase register and uses register-aware melodic position for leap/monotony/surprise intervals. No model critic is in the loop yet; that remains Byte 15b."
   }
 }

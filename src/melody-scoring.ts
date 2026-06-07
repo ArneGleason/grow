@@ -102,6 +102,7 @@ const CHORD_TONE_OFFSETS = [0, 2, 4] as const;
 const LEAP_INTERVAL_THRESHOLD = 3;
 const REPAIR_PASSES = 2;
 const SCORE_EPSILON = 0.0001;
+const REPAIR_REGISTER_PADDING = 1;
 
 export function createMelodyRepairTake(options: MelodyRepairOptions): MelodyRepairTake {
   const melodyPattern = getPatternForPlayer(options.song, "melody");
@@ -301,6 +302,7 @@ function createRepairCandidates(
 ): readonly MelodyPhraseNote[] {
   const note = phrase[noteIndex];
   if (!note) return [];
+  const registerBounds = getPhraseRegisterBounds(phrase, context.scaleLength);
   const root = rootForPosition(note.positionBeats, context.rootDegrees);
   const chordCandidates = CHORD_TONE_OFFSETS.map((offset) =>
     nearestDegree(note.scaleDegree, root + offset, context.scaleLength)
@@ -327,17 +329,18 @@ function createRepairCandidates(
       scaleDegree: degree,
       octave: clampInteger(note.octave + octaveNudge(note.scaleDegree, degree, context.scaleLength), 1, 7),
     };
-    const key = `${candidate.scaleDegree}:${candidate.octave}`;
+    const boundedCandidate = clampNoteToRegister(candidate, registerBounds, context.scaleLength);
+    const key = `${boundedCandidate.scaleDegree}:${boundedCandidate.octave}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    candidates.push(candidate);
+    candidates.push(boundedCandidate);
   }
 
   for (const octaveDelta of [-1, 1]) {
-    const candidate = {
+    const candidate = clampNoteToRegister({
       ...note,
       octave: clampInteger(note.octave + octaveDelta, 1, 7),
-    };
+    }, registerBounds, context.scaleLength);
     const key = `${candidate.scaleDegree}:${candidate.octave}`;
     if (seen.has(key)) continue;
     seen.add(key);
@@ -378,8 +381,10 @@ function scoreLanding(
     const previous = phrase[index - 1];
     const next = phrase[index + 1];
     if (previous && next) {
-      const leap = note.scaleDegree - previous.scaleDegree;
-      const resolution = next.scaleDegree - note.scaleDegree;
+      const leap = melodicPosition(note, context.scaleLength) -
+        melodicPosition(previous, context.scaleLength);
+      const resolution = melodicPosition(next, context.scaleLength) -
+        melodicPosition(note, context.scaleLength);
       if (Math.abs(leap) >= LEAP_INTERVAL_THRESHOLD) {
         checks += 1;
         if (!(Math.sign(resolution) === -Math.sign(leap) && Math.abs(resolution) <= 2)) {
@@ -421,7 +426,9 @@ function scoreMonotony(
   critiques: MelodyCritique[],
 ): number {
   if (phrase.length <= 2) return 0.5;
-  const intervals = phrase.slice(1).map((note, index) => note.scaleDegree - phrase[index].scaleDegree);
+  const intervals = phrase.slice(1).map((note, index) =>
+    melodicPosition(note, scaleLength) - melodicPosition(phrase[index], scaleLength)
+  );
   let penalty = 0;
   const uniquePitchClasses = new Set(phrase.map((note) => normalizeDegree(note.scaleDegree, scaleLength))).size;
   const varietyRatio = uniquePitchClasses / Math.max(1, phrase.length);
@@ -511,9 +518,11 @@ function noteSurprise(
   const degreeClass = normalizeDegree(note.scaleDegree);
   const degreeCount = perspective.prior.degreeCounts.get(degreeClass) ?? 0;
   const degreeProbability = (degreeCount + 1) / (perspective.prior.totalDegrees + 7);
-  const interval = previous ? clampInteger(note.scaleDegree - previous.scaleDegree, -7, 7) : 0;
+  const interval = previous
+    ? clampInteger(melodicPosition(note) - melodicPosition(previous), -14, 14)
+    : 0;
   const intervalCount = perspective.prior.intervalCounts.get(interval) ?? 0;
-  const intervalProbability = (intervalCount + 1) / (perspective.prior.totalIntervals + 15);
+  const intervalProbability = (intervalCount + 1) / (perspective.prior.totalIntervals + 29);
   return roundScore(clamp((-Math.log2(degreeProbability * intervalProbability)) / 10, 0, 1));
 }
 
@@ -577,7 +586,7 @@ function buildPrior(player: Player, song: SongMaterial): MelodyPerspective["prio
       degreeCounts.set(degree, (degreeCounts.get(degree) ?? 0) + 1);
       totalDegrees += 1;
       if (index <= 0) continue;
-      const interval = clampInteger(degrees[index] - degrees[index - 1], -7, 7);
+      const interval = clampInteger(degrees[index] - degrees[index - 1], -14, 14);
       intervalCounts.set(interval, (intervalCounts.get(interval) ?? 0) + 1);
       totalIntervals += 1;
     }
@@ -692,6 +701,45 @@ function isChordTone(scaleDegree: number, rootDegree: number, scaleLength: numbe
   return CHORD_TONE_OFFSETS.some((offset) =>
     normalizeDegree(rootDegree + offset, scaleLength) === noteClass
   );
+}
+
+function getPhraseRegisterBounds(
+  phrase: readonly MelodyPhraseNote[],
+  scaleLength: number,
+): { min: number; max: number } {
+  if (phrase.length === 0) {
+    return {
+      min: 0,
+      max: scaleLength * 7,
+    };
+  }
+  const positions = phrase.map((note) => melodicPosition(note, scaleLength));
+  return {
+    min: Math.min(...positions) - REPAIR_REGISTER_PADDING,
+    max: Math.max(...positions) + REPAIR_REGISTER_PADDING,
+  };
+}
+
+function clampNoteToRegister(
+  note: MelodyPhraseNote,
+  bounds: { min: number; max: number },
+  scaleLength: number,
+): MelodyPhraseNote {
+  let nextNote = { ...note };
+  let position = melodicPosition(nextNote, scaleLength);
+  while (position < bounds.min && nextNote.octave < 7) {
+    nextNote = { ...nextNote, octave: nextNote.octave + 1 };
+    position = melodicPosition(nextNote, scaleLength);
+  }
+  while (position > bounds.max && nextNote.octave > 1) {
+    nextNote = { ...nextNote, octave: nextNote.octave - 1 };
+    position = melodicPosition(nextNote, scaleLength);
+  }
+  return nextNote;
+}
+
+function melodicPosition(note: MelodyPhraseNote, scaleLength = 7): number {
+  return note.octave * Math.max(1, scaleLength) + note.scaleDegree;
 }
 
 function nearestDegree(currentDegree: number, targetClass: number, scaleLength: number): number {

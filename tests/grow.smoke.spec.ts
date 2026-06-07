@@ -1182,6 +1182,8 @@ test("melody scoring repairs the chorus and scores player perspectives different
   const repairedKey = take.repairedPhrase.map((note) =>
     `${note.stepIndex}:${note.scaleDegree}:${note.octave}`
   ).join("|");
+  const rawPositions = take.rawPhrase.map((note) => note.octave * scaleLength + note.scaleDegree);
+  const repairedPositions = take.repairedPhrase.map((note) => note.octave * scaleLength + note.scaleDegree);
   const pulseScore = take.repairedScores.find((score) => score.perspectiveId === "pulse");
   const melodyScore = take.repairedScores.find((score) => score.perspectiveId === "melody");
 
@@ -1193,6 +1195,11 @@ test("melody scoring repairs the chorus and scores player perspectives different
   expect(pulseScore?.total).not.toBe(melodyScore?.total);
   expect(take.repairedPhrase.every((note) =>
     DEFAULT_TONAL_CONTEXT.scale[modulo(note.scaleDegree, scaleLength)] !== undefined
+  )).toBe(true);
+  expect(Math.min(...repairedPositions)).toBeGreaterThanOrEqual(Math.min(...rawPositions) - 1);
+  expect(Math.max(...repairedPositions)).toBeLessThanOrEqual(Math.max(...rawPositions) + 1);
+  expect(repairedPositions.slice(1).every((position, index) =>
+    Math.abs(position - repairedPositions[index]) <= scaleLength
   )).toBe(true);
   expect(take.primaryRepairedScore.critiques.length).toBeLessThanOrEqual(
     take.primaryRawScore.critiques.length,
