@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Implement Byte 15b-b strategy-diverse chorus critic candidates",
-  "status": "byte15b-b-implementation-ready-for-review",
-  "updatedAt": "2026-06-07T22:28:57Z",
+  "lastTask": "Merge approved Byte 15b-b strategy-diverse chorus critic candidates",
+  "status": "byte15b-b-approved-on-main-next-consensus",
+  "updatedAt": "2026-06-07T23:20:03Z",
   "lastHandoff": "",
-  "branch": "codex/byte-15b-b",
-  "commit": "f32f586",
+  "branch": "main",
+  "commit": "57e7ecf",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 15b-b diversifies the model critic menu while preserving the Byte 15b-a safety boundary. `MelodyRepairTake` now exposes named app-owned chorus strategies (`balanced-repair`, `lifted-hook`, `stepwise-hook`, `spacious-hook`, `energetic-hook`, `cadence-hook`, plus local/raw fallbacks), each with strategy summary, note count, best-candidate id, and score deltas versus local best and deterministic fallback. The Ollama melody critic still returns only `selectedCandidateId` plus short prose; valid picks switch to the selected app-owned candidate through the existing chorus/lookahead path. Manual critic outcomes are persisted as `song.melody_critic_selection` so model choices can be compared over time."
+    "summary": "Byte 15b-b is approved and merged on main. The model critic menu is now strategy-diverse while preserving the Byte 15b-a safety boundary: candidates are app-owned, in-scale, scored, and selected only by id. Claude verified the menu gives meaningful musical choices, a live qwen run picked `spacious-hook` with grounded rationale, and `song.melody_critic_selection` records model-vs-heuristic comparison data. Next direction is multi-player consensus on these real choices, especially rhythm-section pushback and remember-good use of the critic-selection log."
   }
 }
