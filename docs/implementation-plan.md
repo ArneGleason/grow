@@ -1542,6 +1542,7 @@ Status:
 - `src/musical-event-record.ts` owns the schema-v1 payload builder and fixed-capacity ring buffer.
 - `transport` emits `gridPitch` from committed material and `performedPitch` from the actual sounded decision.
 - The next slice should wire musical events into the buffer and a separate batch flusher, without letting scheduler callbacks do anything beyond synchronous memory enqueue.
+- Claude approved Byte 13b-c2. Forward notes for Byte 13b-c3: keep callback push minimal, preferably event plus tonal snapshot; build payloads in the flusher if possible; send drained-but-failed batches to the retained/idempotent persistence queue keyed by `sourceEventId`; make stop cleanup flush-or-discard explicit; treat buffer drops as replay discontinuities because persisted seq remains contiguous on write.
 
 ### Byte 14: Producer Marker, No LLM
 

@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Implement Byte 13b-c2 musical event payload and buffer boundary",
-  "status": "byte13b-c2-awaiting-review",
-  "updatedAt": "2026-06-07T12:55:49Z",
+  "lastTask": "Merge Byte 13b-c2 musical event payload and buffer boundary",
+  "status": "byte13b-c2-merged-byte13b-c3-ready",
+  "updatedAt": "2026-06-07T13:11:18Z",
   "lastHandoff": "",
-  "branch": "codex/byte-13b-c2",
+  "branch": "main",
   "commit": "pending",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 13b-c2 defines the musical-event persistence shape without writing high-frequency events yet. `MusicalEvent` now carries `gridPitch` from committed material and `performedPitch` from the sounded decision while preserving `pitch` as the performed-pitch compatibility field. `src/musical-event-record.ts` owns schema-v1 `MusicalEventRecordPayload` with `grid` and `performed` sections plus a fixed-capacity drop-oldest ring buffer. Tests cover payload grid/performed pitch, buffer order/back-pressure, and live shift-register events with divergent grid/performed pitch. Next slice should wire musical events into the buffer and a separate batch flusher without fetch/timer/DB work inside Tone callbacks."
+    "summary": "Byte 13b-c2 is approved and merged. It defines the musical-event persistence shape without writing high-frequency events yet: `MusicalEvent` carries `gridPitch` from committed material and `performedPitch` from the sounded decision while preserving `pitch` as the performed-pitch compatibility field; `src/musical-event-record.ts` owns schema-v1 `MusicalEventRecordPayload` with `grid` and `performed` sections plus a fixed-capacity drop-oldest ring buffer. Claude confirmed the grid/performed schema is durable, the pitch alias is acceptable, and drop-oldest is fine if replay treats drops as discontinuities. Byte 13b-c3 should wire musical events into the buffer plus a separate batch flusher with no I/O/timers in Tone callbacks, failed drained batches routed to the retained/idempotent queue keyed by `sourceEventId`, and explicit stop cleanup behavior."
   }
 }
