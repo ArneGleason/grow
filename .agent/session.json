@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Merge Byte 13b-a SQLite shell",
-  "status": "byte13b-a-merged-byte13b-b-ready",
-  "updatedAt": "2026-06-07T11:53:26Z",
+  "lastTask": "Implement Byte 13b-b low-frequency decision writer",
+  "status": "byte13b-b-ready-for-review",
+  "updatedAt": "2026-06-07T12:05:28Z",
   "lastHandoff": "",
-  "branch": "main",
-  "commit": "7ca8c0a",
+  "branch": "codex/byte-13b-b",
+  "commit": "31661b4",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 13b-a is approved, merged into `main`, and the Claude review artifact has been cherry-picked. It adds a dependency-free local SQLite shell via Node's `node:sqlite`: `server/persistence.mjs` owns schema initialization plus append/read/dump helpers, `scripts/grow-db.mjs` exposes init/dump/smoke commands, and package scripts `db:init`, `db:dump`, and `db:smoke` exercise the shell. The review fix added SQLite sidecar ignores for `.sqlite`/`.sqlite3` WAL files and a Node `>=25.0.0` engine floor. Byte 13b-b is the next clean slice: wire only low-frequency decision records (`session.started`, `session.mode_changed`, `song.changed`, `timing.feel_changed`) through a buffered off-audio-path writer; hold `musical.event_recorded` for a separate high-frequency scheduler-safe slice."
+    "summary": "Byte 13b-b is implemented on `codex/byte-13b-b` and awaiting review. It adds a browser-side persistence queue in `src/persistence.ts`, Vite dev middleware endpoints under `/api/persistence/status`, `/api/persistence/append`, and `/api/persistence/dump`, batch `appendEvents`, and app wiring for `session.started`, `session.mode_changed`, `song.changed`, and `timing.feel_changed`. The queue schedules flushes outside UI handlers and no persistence call is made from Tone scheduler callbacks or `handleMusicalEvent`. The persistence schema now uses `beat` and `scheduled_beat` columns. `musical.event_recorded`, replay, fork UI, checkpoint restore, moments, compaction, and media export remain deferred."
   }
 }
