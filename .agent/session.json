@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Implement Byte 13b-a SQLite shell",
-  "status": "byte13b-a-ready-for-review",
-  "updatedAt": "2026-06-07T11:40:06Z",
+  "lastTask": "Merge Byte 13b-a SQLite shell",
+  "status": "byte13b-a-merged-byte13b-b-ready",
+  "updatedAt": "2026-06-07T11:53:26Z",
   "lastHandoff": "",
-  "branch": "codex/byte-13b-a",
-  "commit": "444d3bd",
+  "branch": "main",
+  "commit": "7ca8c0a",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 13b-a is implemented on `codex/byte-13b-a` and awaiting review. It adds a dependency-free local SQLite shell via Node's `node:sqlite`: `server/persistence.mjs` owns schema initialization plus append/read/dump helpers, `scripts/grow-db.mjs` exposes init/dump/smoke commands, and package scripts `db:init`, `db:dump`, and `db:smoke` exercise the shell. The persistence docs now include `song.changed`, `timing.feel_changed`, taste action-dwell checkpoint state, and derived listening/agitation/contagion/taste-display ephemeral guidance from Claude's Byte 13a review. The browser app, playback, transport, scheduling, replay, fork UI, and checkpoint restore remain unwired."
+    "summary": "Byte 13b-a is approved, merged into `main`, and the Claude review artifact has been cherry-picked. It adds a dependency-free local SQLite shell via Node's `node:sqlite`: `server/persistence.mjs` owns schema initialization plus append/read/dump helpers, `scripts/grow-db.mjs` exposes init/dump/smoke commands, and package scripts `db:init`, `db:dump`, and `db:smoke` exercise the shell. The review fix added SQLite sidecar ignores for `.sqlite`/`.sqlite3` WAL files and a Node `>=25.0.0` engine floor. Byte 13b-b is the next clean slice: wire only low-frequency decision records (`session.started`, `session.mode_changed`, `song.changed`, `timing.feel_changed`) through a buffered off-audio-path writer; hold `musical.event_recorded` for a separate high-frequency scheduler-safe slice."
   }
 }

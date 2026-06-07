@@ -1403,7 +1403,7 @@ Add the smallest local persistence writer without replay or fork UI.
 Scope:
 
 - Introduce a local SQLite store owned by the local backend/server layer, with database files ignored by Git.
-- Add append-only records for a very small set of safe types, starting with `session.started`, `session.mode_changed`, and `musical.event_recorded`.
+- Add append-only records for a very small set of safe types. Start with low-frequency UI decisions (`session.started`, `session.mode_changed`, `song.changed`, and `timing.feel_changed`); hold high-frequency `musical.event_recorded` for a later slice.
 - Fold in the Byte 13a review additions before writing schema: `song.changed`, `timing.feel_changed`, taste action-dwell checkpoint state, and derived listening/agitation/contagion/taste display ephemeral guidance.
 - Buffer writes off the audio scheduler path; never write to SQLite directly from a Tone scheduler callback.
 - Add a tiny dump or inspect command so the log can be checked without a UI.
@@ -1422,7 +1422,7 @@ Review focus:
 
 #### Byte 13b-a: SQLite Shell
 
-Status: implemented; awaiting review.
+Status: implemented; approved and merged.
 
 Scope:
 
@@ -1437,6 +1437,34 @@ Acceptance criteria:
 - `npm run db:smoke` creates a temporary database, inserts a session plus two events, reads them back, and cleans up after itself.
 - The default database path is ignored by Git.
 - The app still does not write to SQLite.
+
+Review outcome:
+
+- Claude approved the shell and the `node:sqlite` choice.
+- A follow-up commit added ignored SQLite WAL/SHM sidecars for `.sqlite` and `.sqlite3` databases, plus a Node engine floor because `node:sqlite` is version-sensitive.
+- Forward notes: add batch `appendEvents` before buffered writers need it, align `bar`/`scheduled_bar` naming with the app's beat vocabulary before replay, make `db:dump` avoid creating an empty database if that becomes annoying, and add real schema migration checks before schema version 2.
+
+#### Byte 13b-b: Low-Frequency Decision Writer
+
+Wire the first app-side persistence path without touching the audio scheduler.
+
+Scope:
+
+- Add a local persistence writer boundary that buffers records and flushes them outside UI/audio event handlers.
+- Persist `session.started`, `session.mode_changed`, `song.changed`, and `timing.feel_changed`.
+- Keep writes out of Tone scheduler callbacks.
+- Expose enough debug/dump information to prove the records are appended in order.
+
+Out of scope:
+
+- `musical.event_recorded`, because it is high-frequency and scheduler-adjacent.
+- Replay, fork UI, checkpoint restore, moments, compaction, and media export.
+
+Review focus:
+
+- Whether the writer is buffered and clearly off the audio path.
+- Whether low-frequency records are enough to prove app-to-SQLite wiring.
+- Whether the app remains usable when persistence is unavailable.
 
 ### Byte 14: Producer Marker, No LLM
 
