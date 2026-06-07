@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Merge approved Byte 15b-a model critic over scored chorus candidates",
-  "status": "byte15b-a-approved-on-main-next-diversify-candidates",
-  "updatedAt": "2026-06-07T22:11:17Z",
+  "lastTask": "Implement Byte 15b-b strategy-diverse chorus critic candidates",
+  "status": "byte15b-b-implementation-ready-for-review",
+  "updatedAt": "2026-06-07T22:28:57Z",
   "lastHandoff": "",
-  "branch": "main",
-  "commit": "d585eac",
+  "branch": "codex/byte-15b-b",
+  "commit": "18246ee",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 15b-a is approved and merged. It adds the first model critic on top of Byte 15a's deterministic melody repair substrate. `MelodyRepairTake` exposes a bounded candidate menu of raw, heuristic, and alternate chorus repairs; `src/ollama.ts` sends only scored candidate IDs and critique context to the model; the model can return only `selectedCandidateId` plus short prose fields. Valid model selections switch the active repaired chorus candidate through the existing lookahead material path, while invalid/failed/stale output falls back to the deterministic scorer. Claude's forward finding: the mechanism is safe, but the current candidate menu is too clustered to prove model value; next work should diversify candidate strategies and log model-pick versus deterministic-best score deltas."
+    "summary": "Byte 15b-b diversifies the model critic menu while preserving the Byte 15b-a safety boundary. `MelodyRepairTake` now exposes named app-owned chorus strategies (`balanced-repair`, `lifted-hook`, `stepwise-hook`, `spacious-hook`, `energetic-hook`, `cadence-hook`, plus local/raw fallbacks), each with strategy summary, note count, best-candidate id, and score deltas versus local best and deterministic fallback. The Ollama melody critic still returns only `selectedCandidateId` plus short prose; valid picks switch to the selected app-owned candidate through the existing chorus/lookahead path. Manual critic outcomes are persisted as `song.melody_critic_selection` so model choices can be compared over time."
   }
 }

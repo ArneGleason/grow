@@ -67,11 +67,22 @@ export interface MelodyPhraseScore {
 }
 
 export type MelodyRepairCandidateSource = "raw-transform" | "heuristic-repair" | "repair-alternate";
+export type MelodyRepairCandidateStrategy =
+  | "raw-transform"
+  | "balanced-repair"
+  | "lifted-hook"
+  | "stepwise-hook"
+  | "spacious-hook"
+  | "energetic-hook"
+  | "cadence-hook"
+  | "local-alternate";
 
 export interface MelodyRepairCandidate {
   id: string;
   label: string;
   source: MelodyRepairCandidateSource;
+  strategy: MelodyRepairCandidateStrategy;
+  strategySummary: string;
   rank: number;
   phraseKey: string;
   phrase: readonly MelodyPhraseNote[];
@@ -80,6 +91,9 @@ export interface MelodyRepairCandidate {
   primaryScore: MelodyPhraseScore;
   changedNotes: number;
   critiqueCount: number;
+  noteCount: number;
+  scoreDeltaFromBest: number;
+  scoreDeltaFromDeterministic: number;
   summary: string;
 }
 
@@ -101,6 +115,7 @@ export interface MelodyRepairTake {
   perspectiveId: string;
   mode: MelodyDevelopmentMode;
   deterministicCandidateId: string;
+  bestCandidateId: string;
   candidates: readonly MelodyRepairCandidate[];
   rawPhrase: readonly MelodyPhraseNote[];
   repairedPhrase: readonly MelodyPhraseNote[];
@@ -134,7 +149,7 @@ const LEAP_INTERVAL_THRESHOLD = 3;
 const REPAIR_PASSES = 2;
 const SCORE_EPSILON = 0.0001;
 const REPAIR_REGISTER_PADDING = 1;
-const MAX_REPAIR_CANDIDATES = 6;
+const MAX_REPAIR_CANDIDATES = 7;
 
 export const MELODY_CRITIC_TEXT_LIMITS = {
   rationale: 220,
@@ -179,7 +194,9 @@ export function createMelodyRepairTake(options: MelodyRepairOptions): MelodyRepa
   const phraseKey = createPhraseKey(repairedPhrase);
   const rawCandidate = createMelodyRepairCandidate({
     source: "raw-transform",
+    strategy: "raw-transform",
     label: "Raw transform",
+    strategySummary: "The first deterministic chorus transform before critique or repair.",
     rank: 0,
     songId: options.song.id,
     rawPhrase,
@@ -190,7 +207,9 @@ export function createMelodyRepairTake(options: MelodyRepairOptions): MelodyRepa
   });
   const deterministicCandidate = createMelodyRepairCandidate({
     source: "heuristic-repair",
+    strategy: "balanced-repair",
     label: "Heuristic repair",
+    strategySummary: "The scorer's balanced local repair of landing, monotony, and surprise.",
     rank: 1,
     songId: options.song.id,
     rawPhrase,
@@ -211,6 +230,7 @@ export function createMelodyRepairTake(options: MelodyRepairOptions): MelodyRepa
     primaryPerspective,
     rejectedPhraseKeys: options.rejectedPhraseKeys ?? new Set(),
   });
+  const bestCandidateId = getBestMelodyRepairCandidate(candidates)?.id ?? deterministicCandidate.id;
 
   return {
     id: [
@@ -223,6 +243,7 @@ export function createMelodyRepairTake(options: MelodyRepairOptions): MelodyRepa
     perspectiveId: primaryPerspective.playerId,
     mode: "repaired",
     deterministicCandidateId: deterministicCandidate.id,
+    bestCandidateId,
     candidates,
     rawPhrase,
     repairedPhrase,
@@ -281,6 +302,25 @@ export function getMelodyRepairCandidate(
   return take.candidates.find((candidate) => candidate.id === candidateId);
 }
 
+export function getBestMelodyRepairCandidate(
+  takeOrCandidates: MelodyRepairTake | readonly MelodyRepairCandidate[],
+): MelodyRepairCandidate | undefined {
+  const candidates: readonly MelodyRepairCandidate[] = "candidates" in takeOrCandidates
+    ? takeOrCandidates.candidates
+    : takeOrCandidates;
+  return candidates.reduce<MelodyRepairCandidate | undefined>((best, candidate) => {
+    if (!best) return candidate;
+    if (candidate.primaryScore.total > best.primaryScore.total + SCORE_EPSILON) return candidate;
+    if (
+      Math.abs(candidate.primaryScore.total - best.primaryScore.total) <= SCORE_EPSILON &&
+      candidate.id < best.id
+    ) {
+      return candidate;
+    }
+    return best;
+  }, undefined);
+}
+
 export function scoreMelodyPhrase(
   phrase: readonly MelodyPhraseNote[],
   context: {
@@ -316,7 +356,13 @@ export function scoreMelodyPhrase(
 
 export function createPhraseKey(phrase: readonly MelodyPhraseNote[]): string {
   return phrase.map((note) =>
-    `${note.stepIndex}:${normalizeDegree(note.scaleDegree)}:${note.octave}:${note.durationBeats}`
+    [
+      note.stepIndex,
+      normalizeDegree(note.scaleDegree),
+      note.octave,
+      note.durationBeats,
+      note.velocity.toFixed(3),
+    ].join(":")
   ).join("|");
 }
 
@@ -385,18 +431,17 @@ function createMelodyRepairCandidateSet(input: {
 
   addCandidate(input.deterministicCandidate);
 
-  const alternatives = createAlternateRepairCandidatePhrases(
-    input.repairedPhrase,
-    input.context,
-    input.primaryPerspective,
-    input.rejectedPhraseKeys,
-    new Set([
+  const strategicPhrases = createStrategicRepairCandidatePhrases({
+    repairedPhrase: input.repairedPhrase,
+    context: input.context,
+    rejectedPhraseKeys: input.rejectedPhraseKeys,
+    excludedPhraseKeys: new Set([
       input.deterministicCandidate.phraseKey,
       input.rawCandidate.phraseKey,
     ]),
-  ).slice(0, Math.max(0, MAX_REPAIR_CANDIDATES - 2));
+  });
 
-  alternatives.forEach((alternative, index) => {
+  strategicPhrases.forEach((alternative, index) => {
     const scores = input.perspectives.map((perspective) =>
       scoreMelodyPhrase(alternative.phrase, input.context, perspective)
     );
@@ -404,7 +449,9 @@ function createMelodyRepairCandidateSet(input: {
       scoreMelodyPhrase(alternative.phrase, input.context, input.primaryPerspective);
     addCandidate(createMelodyRepairCandidate({
       source: "repair-alternate",
-      label: `Alternate ${index + 1}`,
+      strategy: alternative.strategy,
+      label: alternative.label,
+      strategySummary: alternative.summary,
       rank: index + 2,
       songId: input.songId,
       rawPhrase: input.rawPhrase,
@@ -415,8 +462,41 @@ function createMelodyRepairCandidateSet(input: {
     }));
   });
 
+  const localAlternates = createAlternateRepairCandidatePhrases(
+    input.repairedPhrase,
+    input.context,
+    input.primaryPerspective,
+    input.rejectedPhraseKeys,
+    new Set([
+      input.deterministicCandidate.phraseKey,
+      input.rawCandidate.phraseKey,
+      ...candidates.map((candidate) => candidate.phraseKey),
+    ]),
+  ).slice(0, Math.max(0, MAX_REPAIR_CANDIDATES - candidates.length - 1));
+
+  localAlternates.forEach((alternative, index) => {
+    const scores = input.perspectives.map((perspective) =>
+      scoreMelodyPhrase(alternative.phrase, input.context, perspective)
+    );
+    const primaryScore = scores.find((score) => score.perspectiveId === input.primaryPerspective.playerId) ??
+      scoreMelodyPhrase(alternative.phrase, input.context, input.primaryPerspective);
+    addCandidate(createMelodyRepairCandidate({
+      source: "repair-alternate",
+      strategy: "local-alternate",
+      label: `Local alternate ${index + 1}`,
+      strategySummary: "A high-scoring one-note local repair variant.",
+      rank: candidates.length + index + 1,
+      songId: input.songId,
+      rawPhrase: input.rawPhrase,
+      phrase: alternative.phrase,
+      events: eventsFromPhrase(input.rawEvents, alternative.phrase),
+      scores,
+      primaryScore,
+    }));
+  });
+
   addCandidate(input.rawCandidate);
-  return candidates.slice(0, MAX_REPAIR_CANDIDATES);
+  return annotateCandidateScoreDeltas(candidates.slice(0, MAX_REPAIR_CANDIDATES), input.deterministicCandidate.id);
 
   function addCandidate(candidate: MelodyRepairCandidate): void {
     if (seenKeys.has(candidate.phraseKey)) return;
@@ -424,6 +504,21 @@ function createMelodyRepairCandidateSet(input: {
     seenKeys.add(candidate.phraseKey);
     candidates.push(candidate);
   }
+}
+
+function annotateCandidateScoreDeltas(
+  candidates: readonly MelodyRepairCandidate[],
+  deterministicCandidateId: string,
+): readonly MelodyRepairCandidate[] {
+  const best = getBestMelodyRepairCandidate(candidates);
+  const deterministic = candidates.find((candidate) => candidate.id === deterministicCandidateId) ?? best;
+  const bestTotal = best?.primaryScore.total ?? 0;
+  const deterministicTotal = deterministic?.primaryScore.total ?? bestTotal;
+  return candidates.map((candidate) => ({
+    ...candidate,
+    scoreDeltaFromBest: roundSignedScore(candidate.primaryScore.total - bestTotal),
+    scoreDeltaFromDeterministic: roundSignedScore(candidate.primaryScore.total - deterministicTotal),
+  }));
 }
 
 function createAlternateRepairCandidatePhrases(
@@ -459,9 +554,238 @@ function createAlternateRepairCandidatePhrases(
   );
 }
 
+function createStrategicRepairCandidatePhrases(input: {
+  repairedPhrase: readonly MelodyPhraseNote[];
+  context: {
+    phraseBeats: number;
+    rootDegrees: readonly number[];
+    scaleLength: number;
+  };
+  rejectedPhraseKeys: ReadonlySet<string>;
+  excludedPhraseKeys: ReadonlySet<string>;
+}): ReadonlyArray<{
+  strategy: MelodyRepairCandidateStrategy;
+  label: string;
+  summary: string;
+  phrase: readonly MelodyPhraseNote[];
+}> {
+  const strategies = [
+    {
+      strategy: "lifted-hook" as const,
+      label: "Lifted hook",
+      summary: "A brighter hook that aims accented notes at upper chord tones.",
+      phrase: createLiftedHookPhrase(input.repairedPhrase, input.context),
+    },
+    {
+      strategy: "stepwise-hook" as const,
+      label: "Stepwise hook",
+      summary: "A smoother singable line that limits most moves to neighboring tones.",
+      phrase: createStepwiseHookPhrase(input.repairedPhrase, input.context),
+    },
+    {
+      strategy: "spacious-hook" as const,
+      label: "Spacious hook",
+      summary: "A leaner chorus that keeps only the strongest notes and lets them breathe.",
+      phrase: createSpaciousHookPhrase(input.repairedPhrase),
+    },
+    {
+      strategy: "energetic-hook" as const,
+      label: "Energetic hook",
+      summary: "A busier answer that pushes neighbor motion and brighter attack.",
+      phrase: createEnergeticHookPhrase(input.repairedPhrase, input.context),
+    },
+    {
+      strategy: "cadence-hook" as const,
+      label: "Cadence hook",
+      summary: "A landing-focused line that makes section starts and the final note settle.",
+      phrase: createCadenceHookPhrase(input.repairedPhrase, input.context),
+    },
+  ];
+  const seenKeys = new Set(input.excludedPhraseKeys);
+  const options: Array<{
+    strategy: MelodyRepairCandidateStrategy;
+    label: string;
+    summary: string;
+    phrase: readonly MelodyPhraseNote[];
+  }> = [];
+
+  for (const strategy of strategies) {
+    const key = createPhraseKey(strategy.phrase);
+    if (seenKeys.has(key) || input.rejectedPhraseKeys.has(key)) continue;
+    seenKeys.add(key);
+    options.push(strategy);
+  }
+
+  return options;
+}
+
+function createLiftedHookPhrase(
+  phrase: readonly MelodyPhraseNote[],
+  context: {
+    rootDegrees: readonly number[];
+    scaleLength: number;
+  },
+): readonly MelodyPhraseNote[] {
+  const bounds = extendRegisterBounds(getPhraseRegisterBounds(phrase, context.scaleLength), 0, 2);
+  return phrase.map((note, index) => {
+    const root = rootForPosition(note.positionBeats, context.rootDegrees);
+    const targetClass = isAccent(note.positionBeats) || index === 0
+      ? root + 4
+      : note.scaleDegree + 1;
+    const nextNote = moveNoteToDegree(note, nearestDegree(note.scaleDegree + 1, targetClass, context.scaleLength), {
+      bounds,
+      scaleLength: context.scaleLength,
+    });
+    return {
+      ...nextNote,
+      velocity: roundVelocity(nextNote.velocity + 0.08),
+    };
+  });
+}
+
+function createStepwiseHookPhrase(
+  phrase: readonly MelodyPhraseNote[],
+  context: {
+    rootDegrees: readonly number[];
+    scaleLength: number;
+  },
+): readonly MelodyPhraseNote[] {
+  const bounds = getPhraseRegisterBounds(phrase, context.scaleLength);
+  const nextPhrase: MelodyPhraseNote[] = [];
+  for (let index = 0; index < phrase.length; index += 1) {
+    const note = phrase[index];
+    if (!note) continue;
+    const previous = nextPhrase[index - 1];
+    if (!previous) {
+      nextPhrase.push(moveNoteToDegree(
+        note,
+        nearestDegree(note.scaleDegree, rootForPosition(note.positionBeats, context.rootDegrees) + 2, context.scaleLength),
+        { bounds, scaleLength: context.scaleLength },
+      ));
+      continue;
+    }
+
+    const root = rootForPosition(note.positionBeats, context.rootDegrees);
+    const stepTargets = [
+      previous.scaleDegree - 1,
+      previous.scaleDegree,
+      previous.scaleDegree + 1,
+      nearestDegree(previous.scaleDegree, root + 2, context.scaleLength),
+      nearestDegree(previous.scaleDegree, root + 4, context.scaleLength),
+    ];
+    const target = stepTargets.sort((left, right) =>
+      Math.abs(left - note.scaleDegree) - Math.abs(right - note.scaleDegree) ||
+      Math.abs(left - previous.scaleDegree) - Math.abs(right - previous.scaleDegree) ||
+      left - right
+    )[0] ?? note.scaleDegree;
+    const nextNote = moveNoteToDegree(note, target, { bounds, scaleLength: context.scaleLength });
+    nextPhrase.push({
+      ...nextNote,
+      velocity: roundVelocity(nextNote.velocity - 0.02),
+    });
+  }
+  return nextPhrase;
+}
+
+function createSpaciousHookPhrase(
+  phrase: readonly MelodyPhraseNote[],
+): readonly MelodyPhraseNote[] {
+  if (phrase.length <= 3) return phrase.map((note) => ({ ...note }));
+  const finalIndex = phrase.length - 1;
+  return phrase.flatMap((note, index) => {
+    const keep = index === 0 ||
+      index === finalIndex ||
+      isAccent(note.positionBeats) ||
+      index % 3 === 0;
+    if (!keep) return [];
+    return [{
+      ...note,
+      durationBeats: Math.min(1, Math.max(note.durationBeats, 1)),
+      velocity: roundVelocity(note.velocity + 0.04),
+    }];
+  });
+}
+
+function createEnergeticHookPhrase(
+  phrase: readonly MelodyPhraseNote[],
+  context: {
+    rootDegrees: readonly number[];
+    scaleLength: number;
+  },
+): readonly MelodyPhraseNote[] {
+  const bounds = extendRegisterBounds(getPhraseRegisterBounds(phrase, context.scaleLength), 1, 1);
+  return phrase.map((note, index) => {
+    const root = rootForPosition(note.positionBeats, context.rootDegrees);
+    const target = isAccent(note.positionBeats)
+      ? nearestDegree(note.scaleDegree, root + (index % 4 === 0 ? 4 : 2), context.scaleLength)
+      : note.scaleDegree + (index % 2 === 0 ? 1 : -1);
+    const nextNote = moveNoteToDegree(note, target, { bounds, scaleLength: context.scaleLength });
+    return {
+      ...nextNote,
+      durationBeats: Math.min(note.durationBeats, 0.5),
+      velocity: roundVelocity(nextNote.velocity + 0.11),
+    };
+  });
+}
+
+function createCadenceHookPhrase(
+  phrase: readonly MelodyPhraseNote[],
+  context: {
+    phraseBeats: number;
+    rootDegrees: readonly number[];
+    scaleLength: number;
+  },
+): readonly MelodyPhraseNote[] {
+  const bounds = getPhraseRegisterBounds(phrase, context.scaleLength);
+  const finalIndex = phrase.length - 1;
+  const nextPhrase = phrase.map((note, index) => {
+    const root = rootForPosition(note.positionBeats, context.rootDegrees);
+    if (index === finalIndex || isPhraseFinal(note, context.phraseBeats)) {
+      return moveNoteToDegree(note, nearestDegree(note.scaleDegree, root, context.scaleLength), {
+        bounds,
+        scaleLength: context.scaleLength,
+      });
+    }
+    if (isAccent(note.positionBeats)) {
+      return moveNoteToDegree(note, nearestDegree(note.scaleDegree, root + 2, context.scaleLength), {
+        bounds,
+        scaleLength: context.scaleLength,
+      });
+    }
+    return { ...note };
+  });
+  const finalNote = nextPhrase[finalIndex];
+  const penultimate = nextPhrase[finalIndex - 1];
+  if (finalNote && penultimate) {
+    const approach = finalNote.scaleDegree + (penultimate.scaleDegree >= finalNote.scaleDegree ? 1 : -1);
+    nextPhrase[finalIndex - 1] = moveNoteToDegree(penultimate, approach, {
+      bounds,
+      scaleLength: context.scaleLength,
+    });
+  }
+  return nextPhrase;
+}
+
+function moveNoteToDegree(
+  note: MelodyPhraseNote,
+  scaleDegree: number,
+  context: {
+    bounds: { min: number; max: number };
+    scaleLength: number;
+  },
+): MelodyPhraseNote {
+  return clampNoteToRegister({
+    ...note,
+    scaleDegree,
+    octave: clampInteger(note.octave + octaveNudge(note.scaleDegree, scaleDegree, context.scaleLength), 1, 7),
+  }, context.bounds, context.scaleLength);
+}
+
 function createMelodyRepairCandidate(input: {
   source: MelodyRepairCandidateSource;
+  strategy: MelodyRepairCandidateStrategy;
   label: string;
+  strategySummary: string;
   rank: number;
   songId: SongMaterial["id"];
   rawPhrase: readonly MelodyPhraseNote[];
@@ -477,6 +801,8 @@ function createMelodyRepairCandidate(input: {
     id: `chorus-candidate-${input.songId}-${hashString(phraseKey).toString(36)}`,
     label: input.label,
     source: input.source,
+    strategy: input.strategy,
+    strategySummary: input.strategySummary,
     rank: input.rank,
     phraseKey,
     phrase: input.phrase.map((note) => ({ ...note })),
@@ -485,8 +811,12 @@ function createMelodyRepairCandidate(input: {
     primaryScore: cloneMelodyPhraseScore(input.primaryScore),
     changedNotes,
     critiqueCount: input.primaryScore.critiques.length,
+    noteCount: input.phrase.length,
+    scoreDeltaFromBest: 0,
+    scoreDeltaFromDeterministic: 0,
     summary: [
       `${input.label}: ${input.primaryScore.total.toFixed(3)}`,
+      input.strategy,
       `${changedNotes} changed`,
       topCritique,
     ].join(" | "),
@@ -875,6 +1205,12 @@ function eventsFromPhrase(
   phrase: readonly MelodyPhraseNote[],
 ): readonly (PatternNoteSource | null)[] {
   const events = rawEvents.map((event) => event ? { ...event } : null);
+  const phraseStepIndexes = new Set(phrase.map((note) => note.stepIndex));
+  for (let index = 0; index < events.length; index += 1) {
+    if (events[index] && !phraseStepIndexes.has(index)) {
+      events[index] = null;
+    }
+  }
   for (const note of phrase) {
     const event = events[note.stepIndex];
     if (!event) continue;
@@ -927,14 +1263,21 @@ function countChangedNotes(
   candidatePhrase: readonly MelodyPhraseNote[],
 ): number {
   const rawByStep = new Map(rawPhrase.map((note) => [note.stepIndex, note]));
+  const candidateSteps = new Set(candidatePhrase.map((note) => note.stepIndex));
   let changed = 0;
+  for (const raw of rawPhrase) {
+    if (!candidateSteps.has(raw.stepIndex)) {
+      changed += 1;
+    }
+  }
   for (const note of candidatePhrase) {
     const raw = rawByStep.get(note.stepIndex);
     if (
       !raw ||
       raw.scaleDegree !== note.scaleDegree ||
       raw.octave !== note.octave ||
-      raw.durationBeats !== note.durationBeats
+      raw.durationBeats !== note.durationBeats ||
+      Math.abs(raw.velocity - note.velocity) > 0.0001
     ) {
       changed += 1;
     }
@@ -979,6 +1322,17 @@ function getPhraseRegisterBounds(
   return {
     min: Math.min(...positions) - REPAIR_REGISTER_PADDING,
     max: Math.max(...positions) + REPAIR_REGISTER_PADDING,
+  };
+}
+
+function extendRegisterBounds(
+  bounds: { min: number; max: number },
+  below: number,
+  above: number,
+): { min: number; max: number } {
+  return {
+    min: bounds.min - below,
+    max: bounds.max + above,
   };
 }
 
@@ -1080,6 +1434,14 @@ function clampInteger(value: number, minimum: number, maximum: number): number {
 
 function roundScore(value: number): number {
   return Math.round(clamp(value, 0, 1) * 1_000) / 1_000;
+}
+
+function roundSignedScore(value: number): number {
+  return Math.round(value * 1_000) / 1_000;
+}
+
+function roundVelocity(value: number): number {
+  return Math.round(clamp(value, 0.08, 0.72) * 1_000) / 1_000;
 }
 
 function validateRequiredTextField(

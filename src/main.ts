@@ -274,7 +274,7 @@ const HELP_TOPICS = {
   },
   "melody-score": {
     title: "Melody Score",
-    body: "Melody Score compares the raw transformed chorus with a deterministic repaired take. Scores are perspectival: each player hears the same phrase against its own tiny influence prior. Up remembers the take; Down rejects it and repairs again.",
+    body: "Melody Score compares raw, repaired, and strategy-diverse chorus takes. Scores are perspectival: each player hears the same phrase against its own tiny influence prior. The local critic can only choose an app-owned candidate id.",
   },
   listening: {
     title: "Listening",
@@ -327,11 +327,11 @@ function getSongLabel(nextSongId: SongId): string {
 }
 
 app.innerHTML = `
-  <section class="app-shell" aria-label="Grow Byte 15b-a">
+  <section class="app-shell" aria-label="Grow Byte 15b-b">
     <header class="topbar">
       <div class="brand">
         <h1 class="brand__title">Grow</h1>
-        <p class="brand__subtitle">Model critic chooses among scored chorus repairs</p>
+        <p class="brand__subtitle">Model critic chooses among distinct chorus takes</p>
       </div>
       <div class="transport-controls">
         <fieldset class="mode-control">
@@ -554,6 +554,8 @@ ${melodyDevelopmentControls}
             <dd data-testid="melody-candidate-current">heuristic</dd>
             <dt>Total</dt>
             <dd data-testid="melody-score-total">none</dd>
+            <dt>Choice</dt>
+            <dd data-testid="melody-score-choice">none</dd>
             <dt>Subscores</dt>
             <dd data-testid="melody-score-subscores">none</dd>
             <dt>Top critique</dt>
@@ -668,6 +670,7 @@ const melodyRepairDownButton = requireElement<HTMLButtonElement>("[data-testid='
 const melodyCriticSendButton = requireElement<HTMLButtonElement>("[data-testid='melody-critic-send']");
 const melodyCandidateCurrent = requireElement<HTMLElement>("[data-testid='melody-candidate-current']");
 const melodyScoreTotal = requireElement<HTMLElement>("[data-testid='melody-score-total']");
+const melodyScoreChoice = requireElement<HTMLElement>("[data-testid='melody-score-choice']");
 const melodyScoreSubscores = requireElement<HTMLElement>("[data-testid='melody-score-subscores']");
 const melodyScoreCritique = requireElement<HTMLElement>("[data-testid='melody-score-critique']");
 const melodyCriticStatus = requireElement<HTMLElement>("[data-testid='melody-critic-status']");
@@ -1369,7 +1372,12 @@ function recordMelodyRepairFeedback(
       takeId: take.id,
       candidateId: candidate.id,
       candidateSource: candidate.source,
+      candidateStrategy: candidate.strategy,
+      candidateStrategySummary: candidate.strategySummary,
       selectedBy: selection ? "model-critic" : "deterministic-scorer",
+      bestCandidateId: take.bestCandidateId,
+      scoreDeltaFromBest: candidate.scoreDeltaFromBest,
+      scoreDeltaFromDeterministic: candidate.scoreDeltaFromDeterministic,
       perspectiveId: take.perspectiveId,
       phraseKey: candidate.phraseKey,
       rawScore: snapshotMelodyScore(take.primaryRawScore),
@@ -1412,8 +1420,10 @@ function renderMelodyRepair(take: MelodyRepairTake): void {
     `${melodyDevelopmentMode} ${activeScore.total.toFixed(3)}`,
     `raw ${take.primaryRawScore.total.toFixed(3)}`,
     `heuristic ${deterministicCandidate.primaryScore.total.toFixed(3)}`,
+    `best ${take.bestCandidateId}`,
     activeCandidate.id === deterministicCandidate.id ? "deterministic" : "critic-selected",
   ].join(" | ");
+  melodyScoreChoice.textContent = formatMelodyCandidateChoice(activeCandidate, take);
   melodyScoreSubscores.textContent = formatMelodyScoreSubscores(activeScore);
   melodyScoreCritique.textContent = activeScore.critiques[0]?.message ??
     (take.primaryRawScore.critiques[0]
@@ -1433,9 +1443,28 @@ function formatMelodyCandidate(
   selection: MelodyCriticSelection | undefined,
 ): string {
   const source = selection ? "model" : candidate.source;
-  return `${source}: ${candidate.label} (${candidate.id}, ${candidate.changedNotes} changed, score ${
+  return `${source}: ${candidate.label} / ${candidate.strategy} (${candidate.id}, ${candidate.changedNotes} changed, score ${
     candidate.primaryScore.total.toFixed(3)
   })`;
+}
+
+function formatMelodyCandidateChoice(
+  candidate: MelodyRepairCandidate,
+  take: MelodyRepairTake,
+): string {
+  const bestMarker = candidate.id === take.bestCandidateId ? "best local score" : `best ${formatSignedScore(
+    candidate.scoreDeltaFromBest,
+  )}`;
+  const deterministicMarker = candidate.id === take.deterministicCandidateId
+    ? "deterministic fallback"
+    : `vs deterministic ${formatSignedScore(candidate.scoreDeltaFromDeterministic)}`;
+  return [
+    candidate.strategy,
+    candidate.strategySummary,
+    `${candidate.noteCount} notes`,
+    bestMarker,
+    deterministicMarker,
+  ].join(" | ");
 }
 
 function formatMelodyCriticStatus(
@@ -1463,6 +1492,10 @@ function formatMelodyCriticStatus(
 
 function formatMelodyScoreSubscores(score: MelodyPhraseScore): string {
   return `land ${score.landing.toFixed(2)}, monotony ${score.monotony.toFixed(2)}, surprise ${score.surprise.toFixed(2)} avg ${score.averageSurprise.toFixed(2)} target ${score.surpriseTarget.toFixed(2)}`;
+}
+
+function formatSignedScore(value: number): string {
+  return `${value >= 0 ? "+" : ""}${value.toFixed(3)}`;
 }
 
 function formatPerspectiveScore(score: MelodyPhraseScore): string {
@@ -2028,6 +2061,7 @@ async function runManualOllamaMelodyCriticTest(): Promise<OllamaMelodyCriticTest
     takeId: take.id,
     songId: take.songId,
     deterministicCandidateId: take.deterministicCandidateId,
+    bestCandidateId: take.bestCandidateId,
     message: "Sending scored candidates to local melody critic",
   };
   renderWorld();
@@ -2047,11 +2081,43 @@ async function runManualOllamaMelodyCriticTest(): Promise<OllamaMelodyCriticTest
     if (nextCandidateId !== previousCandidateId) {
       refreshLookaheadSchedule();
     }
+    recordMelodyCriticOutcome(take, ollamaMelodyCriticTest);
     return ollamaMelodyCriticTest;
   } finally {
     ollamaRequestInFlight = false;
     renderWorld();
   }
+}
+
+function recordMelodyCriticOutcome(
+  take: MelodyRepairTake,
+  result: OllamaMelodyCriticTestResult,
+): void {
+  const selectedCandidate = getMelodyRepairCandidate(take, result.selectedCandidateId) ??
+    getMelodyRepairCandidate(take, take.deterministicCandidateId);
+  persistence.record({
+    type: "song.melody_critic_selection",
+    actorId: "local-ollama",
+    sessionMode: world.getSessionMode(),
+    beat: getPersistenceBeat(),
+    payload: {
+      source: "melody-critic",
+      status: result.status,
+      provider: result.provider,
+      model: result.model,
+      latencyMs: result.latencyMs,
+      songId,
+      takeId: take.id,
+      deterministicCandidateId: take.deterministicCandidateId,
+      bestCandidateId: take.bestCandidateId,
+      selectedCandidateId: selectedCandidate?.id ?? result.selectedCandidateId,
+      selectedCandidateStrategy: selectedCandidate?.strategy,
+      selectedBy: result.status === "valid" ? "model-critic" : "deterministic-scorer",
+      scoreDeltaFromBest: selectedCandidate?.scoreDeltaFromBest,
+      scoreDeltaFromDeterministic: selectedCandidate?.scoreDeltaFromDeterministic,
+      validationErrors: result.validation.errors,
+    },
+  });
 }
 
 function getInfluenceProbePrompt(playerId = "melody"): string {

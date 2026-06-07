@@ -31,6 +31,7 @@ import {
 import {
   MELODY_CRITIC_TEXT_LIMITS,
   createMockMelodyCriticSelection,
+  getMelodyRepairCandidate,
   validateMelodyCriticSelection,
   type MelodyCriticSelection,
   type MelodyCriticValidation,
@@ -125,7 +126,10 @@ export interface OllamaMelodyCriticTestResult {
   takeId?: string;
   songId?: string;
   deterministicCandidateId?: string;
+  bestCandidateId?: string;
   selectedCandidateId?: string;
+  selectedScoreDeltaFromBest?: number;
+  selectedScoreDeltaFromDeterministic?: number;
   latencyMs?: number;
   rawResponse: string;
   parse: OllamaMelodyCriticParseResult;
@@ -363,7 +367,8 @@ export function createOllamaMelodyCriticPrompt(
     "Select one candidate from this deterministic chorus repair menu.",
     "Return this JSON shape exactly: {\"selectedCandidateId\":\"...\",\"rationale\":\"...\",\"strengths\":\"...\",\"concerns\":\"...\"}",
     "selectedCandidateId must equal one listed candidateId. Do not return phrase, notes, scaleDegree, octave, events, scores, or instructions.",
-    "Ground your critique in the given scores, changed note count, top critique, and contour summary.",
+    "Prefer a candidate whose strategy gives a meaningfully different musical take, not just the highest score.",
+    "Ground your critique in strategy, score deltas, changed note count, top critique, and contour summary.",
     "Candidate projection:",
     JSON.stringify(projection),
   ].join("\n");
@@ -638,6 +643,9 @@ export async function runOllamaMelodyCriticTest(
     const validation = parse.selection
       ? validateMelodyCriticSelection(parse.selection, take)
       : { valid: false, errors: parse.errors };
+    const selectedCandidate = validation.valid && parse.selection
+      ? getMelodyRepairCandidate(take, parse.selection.selectedCandidateId)
+      : undefined;
 
     return {
       status: parse.selection && validation.valid ? "valid" : "invalid",
@@ -648,7 +656,10 @@ export async function runOllamaMelodyCriticTest(
       takeId: take.id,
       songId: take.songId,
       deterministicCandidateId: take.deterministicCandidateId,
+      bestCandidateId: take.bestCandidateId,
       selectedCandidateId: parse.selection?.selectedCandidateId,
+      selectedScoreDeltaFromBest: selectedCandidate?.scoreDeltaFromBest,
+      selectedScoreDeltaFromDeterministic: selectedCandidate?.scoreDeltaFromDeterministic,
       latencyMs,
       rawResponse,
       parse,
@@ -869,7 +880,12 @@ function createFailedMelodyCriticTest(
     takeId: take.id,
     songId: take.songId,
     deterministicCandidateId: take.deterministicCandidateId,
+    bestCandidateId: take.bestCandidateId,
     selectedCandidateId: fallbackSelection.selectedCandidateId,
+    selectedScoreDeltaFromBest: getMelodyRepairCandidate(take, fallbackSelection.selectedCandidateId)
+      ?.scoreDeltaFromBest,
+    selectedScoreDeltaFromDeterministic: getMelodyRepairCandidate(take, fallbackSelection.selectedCandidateId)
+      ?.scoreDeltaFromDeterministic,
     latencyMs,
     rawResponse: "",
     parse: { status: "error", errors: [message] },
@@ -959,8 +975,12 @@ function projectMelodyRepairCandidate(candidate: MelodyRepairCandidate): Record<
     candidateId: candidate.id,
     label: candidate.label,
     source: candidate.source,
+    strategy: candidate.strategy,
+    strategySummary: candidate.strategySummary,
     rank: candidate.rank,
     total: candidate.primaryScore.total,
+    scoreDeltaFromBest: candidate.scoreDeltaFromBest,
+    scoreDeltaFromDeterministic: candidate.scoreDeltaFromDeterministic,
     subscores: {
       landing: candidate.primaryScore.landing,
       monotony: candidate.primaryScore.monotony,
@@ -972,6 +992,7 @@ function projectMelodyRepairCandidate(candidate: MelodyRepairCandidate): Record<
       total: score.total,
     })),
     changedNotes: candidate.changedNotes,
+    noteCount: candidate.noteCount,
     critiqueCount: candidate.critiqueCount,
     topCritique: candidate.primaryScore.critiques[0]?.message ?? "none",
     contour: candidate.phrase.map((note) => ({

@@ -312,7 +312,10 @@ type OllamaMelodyCriticProbe = {
   takeId?: string;
   songId?: string;
   deterministicCandidateId?: string;
+  bestCandidateId?: string;
   selectedCandidateId?: string;
+  selectedScoreDeltaFromBest?: number;
+  selectedScoreDeltaFromDeterministic?: number;
   rawResponse: string;
   validation: { valid: boolean; errors: string[] };
   selection?: {
@@ -1225,9 +1228,15 @@ test("melody scoring repairs the chorus and scores player perspectives different
   const deterministicCandidate = take.candidates.find((candidate) =>
     candidate.id === take.deterministicCandidateId
   );
+  const bestCandidate = take.candidates.find((candidate) =>
+    candidate.id === take.bestCandidateId
+  );
   const alternateCandidate = take.candidates.find((candidate) =>
     candidate.source === "repair-alternate"
   );
+  const strategies = new Set(take.candidates.map((candidate) => candidate.strategy));
+  const spaciousCandidate = take.candidates.find((candidate) => candidate.strategy === "spacious-hook");
+  const liftedCandidate = take.candidates.find((candidate) => candidate.strategy === "lifted-hook");
   const mockCriticSelection = createMockMelodyCriticSelection(take);
 
   expect(take.improved).toBe(true);
@@ -1248,7 +1257,28 @@ test("melody scoring repairs the chorus and scores player perspectives different
     take.primaryRawScore.critiques.length,
   );
   expect(take.candidates.length).toBeGreaterThanOrEqual(3);
+  expect(strategies.size).toBeGreaterThanOrEqual(5);
+  expect([...strategies]).toEqual(expect.arrayContaining([
+    "balanced-repair",
+    "lifted-hook",
+    "stepwise-hook",
+    "spacious-hook",
+  ]));
   expect(deterministicCandidate?.events).toEqual(take.repairedEvents);
+  expect(deterministicCandidate?.strategy).toBe("balanced-repair");
+  expect(bestCandidate).toBeTruthy();
+  expect(bestCandidate?.scoreDeltaFromBest).toBe(0);
+  expect(take.candidates.every((candidate) =>
+    candidate.scoreDeltaFromBest <= 0 &&
+    Number.isFinite(candidate.scoreDeltaFromDeterministic)
+  )).toBe(true);
+  expect(spaciousCandidate?.noteCount).toBeLessThan(deterministicCandidate?.noteCount ?? 0);
+  expect(liftedCandidate?.phrase.some((note, index) => {
+    const deterministicNote = deterministicCandidate?.phrase[index];
+    if (!deterministicNote) return false;
+    return note.octave * scaleLength + note.scaleDegree >
+      deterministicNote.octave * scaleLength + deterministicNote.scaleDegree;
+  })).toBe(true);
   expect(alternateCandidate?.phraseKey).not.toEqual(take.phraseKey);
   expect(take.candidates.every((candidate) =>
     candidate.phrase.every((note) =>
@@ -1270,6 +1300,7 @@ test("melody repair readout supports A/B audition and remembered feedback", asyn
   await flushPersistence(page);
   await expect(page.getByTestId("melody-development-current")).toHaveText("Repaired");
   await expect(page.getByTestId("melody-score-total")).toContainText("repaired");
+  await expect(page.getByTestId("melody-score-choice")).toContainText("balanced-repair");
   await expect(page.getByTestId("melody-score-perspectives")).toContainText("pulse");
 
   const initialTake = await getMelodyRepairTake(page);
@@ -1352,6 +1383,7 @@ test("manual Ollama melody critic selects a validated local chorus candidate", a
   const take = await getMelodyRepairTake(page);
   const alternate = take.candidates.find((candidate) =>
     candidate.source === "repair-alternate" &&
+    candidate.strategy !== "local-alternate" &&
     candidate.id !== take.deterministicCandidateId &&
     candidate.events.some((event, index) =>
       JSON.stringify(event) !== JSON.stringify(take.repairedEvents[index] ?? null)
@@ -1365,11 +1397,13 @@ test("manual Ollama melody critic selects a validated local chorus candidate", a
   await page.getByTestId("melody-critic-send").click();
   await expect(page.getByTestId("melody-critic-status")).toContainText("model selected");
   await expect(page.getByTestId("melody-candidate-current")).toContainText(selectedCandidateId);
+  await expect(page.getByTestId("melody-score-choice")).toContainText(alternate?.strategy ?? "");
 
   const activeCandidate = await getMelodyRepairCandidate(page);
   expect(activeCandidate.id).toBe(selectedCandidateId);
   expect(activeCandidate.events).toEqual(alternate?.events);
   expect(activeCandidate.id).not.toBe(take.deterministicCandidateId);
+  expect(activeCandidate.strategy).not.toBe("balanced-repair");
 
   const probe = await page.evaluate(() => {
     const appWindow = window as unknown as {
@@ -1382,7 +1416,10 @@ test("manual Ollama melody critic selects a validated local chorus candidate", a
   expect(probe?.provider).toBe("ollama");
   expect(probe?.promptProtocol).toBe("melody-critic");
   expect(probe?.takeId).toBe(take.id);
+  expect(probe?.bestCandidateId).toBe(take.bestCandidateId);
   expect(probe?.selectedCandidateId).toBe(selectedCandidateId);
+  expect(probe?.selectedScoreDeltaFromBest).toBe(activeCandidate.scoreDeltaFromBest);
+  expect(probe?.selectedScoreDeltaFromDeterministic).toBe(activeCandidate.scoreDeltaFromDeterministic);
   expect(probe?.validation.valid).toBe(true);
   expect(probe?.fallbackValidation?.valid).toBe(true);
   expect((await getTransportState(page)).status).toBe("stopped");
@@ -1404,6 +1441,8 @@ test("manual Ollama melody critic selects a validated local chorus candidate", a
   expect(userMessage).toContain("Candidate projection:");
   expect(userMessage).toContain('"v":"grow.melodyCritic/1"');
   expect(userMessage).toContain(selectedCandidateId);
+  expect(userMessage).toContain('"strategy"');
+  expect(userMessage).toContain('"scoreDeltaFromBest"');
   expect(userMessage).toContain("Do not return phrase, notes, scaleDegree, octave");
   expect(systemMessage).toContain("must not emit, rewrite, or invent notes");
 });
@@ -2499,7 +2538,7 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   const canvas = page.getByTestId("terrarium-canvas");
 
   await expect(page.locator(".brand__subtitle")).toHaveText(
-    "Model critic chooses among scored chorus repairs",
+    "Model critic chooses among distinct chorus takes",
   );
   await expect(button).toHaveText("Start");
   await expect(status).toContainText(

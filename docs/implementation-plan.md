@@ -1652,7 +1652,7 @@ Let a local model critique only by selecting among already-scored, already-valid
 Scope:
 
 - Present bounded candidate repair choices and deterministic scores to the model.
-- Validate the model's structured choice; invalid or unavailable output falls back to the deterministic best.
+- Validate the model's structured choice; invalid or unavailable output falls back to the deterministic scorer's balanced repair while the local best score remains visible for comparison.
 - Store model rationale as prose data only, never as executable instruction.
 
 Review focus:
@@ -1668,6 +1668,8 @@ Status:
 - Ollama receives only a projection of scored candidate IDs and critique context, then returns `selectedCandidateId` plus short prose fields. The response schema does not allow notes, pitches, scale degrees, octaves, scores, timing, or instructions.
 - Valid model selections refresh the chorus lookahead to use the chosen local candidate. Invalid, failed, or stale model output falls back to the deterministic candidate.
 - Human Up/Down feedback now records the active candidate id/source and whether it was selected by the model critic or deterministic scorer.
+- Byte 15b-b diversifies the menu into named deterministic strategies: balanced repair, lifted hook, stepwise hook, spacious hook, energetic hook, cadence hook, plus raw/local fallback choices when distinct. Candidates now expose strategy, note count, best-candidate id, score delta from local best, and score delta from the deterministic fallback.
+- Manual critic outcomes are recorded as `song.melody_critic_selection` so model picks can be compared with the local scorer over time without parsing model prose.
 
 Deferred producer work:
 
