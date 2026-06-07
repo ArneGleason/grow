@@ -1446,7 +1446,7 @@ Review outcome:
 
 #### Byte 13b-b: Low-Frequency Decision Writer
 
-Status: implemented; awaiting review.
+Status: implemented; approved and merged.
 
 Wire the first app-side persistence path without touching the audio scheduler.
 
@@ -1474,6 +1474,36 @@ Implementation notes:
 - `vite.config.js` exposes `/api/persistence/status`, `/api/persistence/append`, and `/api/persistence/dump` on the dev server.
 - `server/persistence.mjs` now has batch `appendEvents` and uses `beat` / `scheduled_beat` columns rather than `bar` / `scheduled_bar`.
 - Smoke verifies a stopped app records `session.started`, `session.mode_changed`, `song.changed`, and `timing.feel_changed` in order with the queue drained.
+
+Review outcome:
+
+- Claude approved the writer and verified it stays off the UI/audio scheduler path.
+- Stable client ids plus server-side skip-if-exists make retried unacknowledged batches idempotent.
+- `session.started` on page load is accepted because a session is a terrarium run, not a playback span.
+- Carry forward: unchanged-value early returns are a small bundled behavior change; each page load/HMR creates a new session; there is no pagehide flush yet.
+
+#### Byte 13b-c1: Persistence Writer Hardening
+
+Harden the low-frequency writer before persisting high-frequency musical events.
+
+Scope:
+
+- Make `db:dump` or the dump endpoint read-only when no database exists, or clearly report "no database; run db:init".
+- Add explicit unavailable/offline smoke coverage proving persistence failure stays soft and the app remains usable.
+- Add bounded retry/backoff for failed queued records.
+- Add a pagehide best-effort flush or deliberate discard behavior.
+- Add a small persistence inspector/debug line or equivalent visible state for status, pending count, and last error.
+
+Out of scope:
+
+- `musical.event_recorded`.
+- Replay, fork UI, checkpoint restore, moments, compaction, and media export.
+
+Review focus:
+
+- Whether failed persistence can recover without duplicating records.
+- Whether tab-close/pagehide behavior is explicit.
+- Whether users and agents can tell when persistence is degraded.
 
 ### Byte 14: Producer Marker, No LLM
 
