@@ -1505,6 +1505,19 @@ Review focus:
 - Whether tab-close/pagehide behavior is explicit.
 - Whether users and agents can tell when persistence is degraded.
 
+Status:
+
+- Implemented in Byte 13b-c1.
+- `npm run db:dump` and `/api/persistence/dump` now report an uninitialized database instead of creating an empty DB just to inspect it.
+- `src/persistence.ts` now has bounded retry/backoff, an explicit `retrying` state, and a best-effort `flushOnPageHide()` path using `sendBeacon` or keepalive fetch.
+- The Session inspector shows persistence status, saved count, pending count, retry attempt, and last error.
+- Smoke covers a forced `/api/persistence/append` outage and verifies the app stays usable while queued records remain pending.
+
+Carry forward:
+
+- `flushOnPageHide()` intentionally does not remove queued records because the browser gives no response; server-side event ids keep a repeated write idempotent.
+- High-frequency `musical.event_recorded` remains deferred to Byte 13b-c, where the writer must prove ring-buffer/batch-flush discipline away from Tone callbacks.
+
 ### Byte 14: Producer Marker, No LLM
 
 Add the producer proxy visually and with a rule-based command interpreter.

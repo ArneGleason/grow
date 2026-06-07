@@ -1,6 +1,7 @@
 import { defineConfig } from "vite";
 import {
   appendEvents,
+  databaseExists,
   dumpGrowDatabase,
   ensureSession,
   getSchemaVersion,
@@ -55,6 +56,7 @@ function persistencePlugin() {
     database ??= openGrowDatabase();
     return database;
   };
+  const hasDatabase = () => Boolean(database) || databaseExists();
 
   return {
     name: "grow-persistence-api",
@@ -72,7 +74,10 @@ function persistencePlugin() {
 
         const abort = createProxyAbortController(request, response);
         try {
-          await handlePersistenceRequest(request, response, getDatabase(), abort.signal);
+          await handlePersistenceRequest(request, response, {
+            getDatabase,
+            hasDatabase,
+          }, abort.signal);
         } catch (error) {
           if (isAbortError(error) || request.destroyed || response.destroyed) {
             if (!response.destroyed && !response.writableEnded) {
@@ -95,13 +100,24 @@ function persistencePlugin() {
   };
 }
 
-async function handlePersistenceRequest(request, response, database, signal) {
+async function handlePersistenceRequest(request, response, persistence, signal) {
   const requestUrl = new URL(request.url ?? "", "http://127.0.0.1");
   const path = requestUrl.pathname;
 
   if (path === `${PERSISTENCE_PREFIX}/status` && request.method === "GET") {
+    if (!persistence.hasDatabase()) {
+      sendPersistenceJson(response, 200, {
+        ok: true,
+        initialized: false,
+        databasePath: resolveDatabasePath(),
+        schemaVersion: null,
+      });
+      return;
+    }
+    const database = persistence.getDatabase();
     sendPersistenceJson(response, 200, {
       ok: true,
+      initialized: true,
       databasePath: resolveDatabasePath(),
       schemaVersion: getSchemaVersion(database),
     });
@@ -110,14 +126,28 @@ async function handlePersistenceRequest(request, response, database, signal) {
 
   if (path === `${PERSISTENCE_PREFIX}/dump` && request.method === "GET") {
     const limit = requestUrl.searchParams.get("limit") ?? undefined;
+    if (!persistence.hasDatabase()) {
+      sendPersistenceJson(response, 200, {
+        databasePath: resolveDatabasePath(),
+        initialized: false,
+        schemaVersion: null,
+        sessions: [],
+        events: [],
+        message: "No database found; run npm run db:init first.",
+      });
+      return;
+    }
+    const database = persistence.getDatabase();
     sendPersistenceJson(response, 200, {
       databasePath: resolveDatabasePath(),
+      initialized: true,
       ...dumpGrowDatabase(database, { limit }),
     });
     return;
   }
 
   if (path === `${PERSISTENCE_PREFIX}/append` && request.method === "POST") {
+    const database = persistence.getDatabase();
     const payload = await readJsonBody(request, signal);
     if (!payload.session) {
       throw new PersistenceRequestError("Persistence append requires a session");

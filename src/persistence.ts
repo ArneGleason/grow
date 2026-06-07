@@ -4,7 +4,7 @@ export type PersistenceRecordType =
   | "song.changed"
   | "timing.feel_changed";
 
-export type PersistenceStatus = "idle" | "scheduled" | "flushing" | "error";
+export type PersistenceStatus = "idle" | "scheduled" | "flushing" | "retrying" | "error";
 
 export interface PersistenceSessionInput {
   id?: string;
@@ -37,24 +37,38 @@ export interface PersistenceClientState {
   status: PersistenceStatus;
   pendingCount: number;
   appendedCount: number;
+  retryAttempt: number;
   lastFlushAt?: string;
+  lastPagehideFlushAt?: string;
   lastError?: string;
+  nextRetryAt?: string;
   lastEventTypes: readonly PersistenceRecordType[];
 }
 
 export interface PersistenceClient {
   record(event: PersistenceEventInput): PersistenceEvent;
   flush(): Promise<void>;
+  flushOnPageHide(): void;
   dump(limit?: number): Promise<unknown>;
   getState(): PersistenceClientState;
+}
+
+export interface PersistenceClientOptions {
+  onStateChange?: (state: PersistenceClientState) => void;
 }
 
 const APPEND_ENDPOINT = "/api/persistence/append";
 const DUMP_ENDPOINT = "/api/persistence/dump";
 const FLUSH_DELAY_MS = 100;
 const MAX_BATCH_SIZE = 25;
+const MAX_RETRY_ATTEMPTS = 3;
+const RETRY_BASE_DELAY_MS = 250;
+const RETRY_MAX_DELAY_MS = 1_000;
 
-export function createPersistenceClient(sessionInput: PersistenceSessionInput): PersistenceClient {
+export function createPersistenceClient(
+  sessionInput: PersistenceSessionInput,
+  options: PersistenceClientOptions = {},
+): PersistenceClient {
   const session = {
     id: sessionInput.id ?? createId("session"),
     spaceId: sessionInput.spaceId ?? "main",
@@ -72,27 +86,45 @@ export function createPersistenceClient(sessionInput: PersistenceSessionInput): 
     status: "idle",
     pendingCount: 0,
     appendedCount: 0,
+    retryAttempt: 0,
     lastEventTypes: [],
   };
 
-  const syncPendingState = () => {
-    state = {
-      ...state,
-      pendingCount: queue.length,
-    };
+  const snapshotState = (): PersistenceClientState => ({
+    ...state,
+    lastEventTypes: [...state.lastEventTypes],
+  });
+
+  const setState = (nextState: PersistenceClientState) => {
+    state = nextState;
+    options.onStateChange?.(snapshotState());
   };
 
-  const scheduleFlush = () => {
-    if (flushTimer !== undefined || flushPromise) return;
-    state = {
+  const syncPendingState = () => {
+    setState({
       ...state,
-      status: "scheduled",
       pendingCount: queue.length,
-    };
+    });
+  };
+
+  const scheduleFlush = (
+    delayMs = FLUSH_DELAY_MS,
+    status: PersistenceStatus = "scheduled",
+  ) => {
+    if (queue.length === 0) return;
+    if (flushTimer !== undefined || flushPromise) return;
+    setState({
+      ...state,
+      status,
+      pendingCount: queue.length,
+      nextRetryAt: status === "retrying"
+        ? new Date(Date.now() + delayMs).toISOString()
+        : undefined,
+    });
     flushTimer = window.setTimeout(() => {
       flushTimer = undefined;
       void flush();
-    }, FLUSH_DELAY_MS);
+    }, delayMs);
   };
 
   const flush = async () => {
@@ -102,7 +134,13 @@ export function createPersistenceClient(sessionInput: PersistenceSessionInput): 
       flushTimer = undefined;
     }
     if (queue.length === 0) {
-      state = { ...state, status: "idle", pendingCount: 0 };
+      setState({
+        ...state,
+        status: "idle",
+        pendingCount: 0,
+        retryAttempt: 0,
+        nextRetryAt: undefined,
+      });
       return;
     }
 
@@ -111,7 +149,9 @@ export function createPersistenceClient(sessionInput: PersistenceSessionInput): 
       await flushPromise;
     } finally {
       flushPromise = undefined;
-      if (queue.length > 0 && state.status !== "error") {
+      if (queue.length > 0 && state.status === "retrying") {
+        scheduleFlush(getRetryDelayMs(state.retryAttempt), "retrying");
+      } else if (queue.length > 0 && state.status !== "error") {
         scheduleFlush();
       }
     }
@@ -119,12 +159,13 @@ export function createPersistenceClient(sessionInput: PersistenceSessionInput): 
 
   const flushBatch = async () => {
     const batch = queue.slice(0, MAX_BATCH_SIZE);
-    state = {
+    setState({
       ...state,
       status: "flushing",
       pendingCount: queue.length,
       lastError: undefined,
-    };
+      nextRetryAt: undefined,
+    });
     try {
       const response = await fetch(APPEND_ENDPOINT, {
         method: "POST",
@@ -136,22 +177,70 @@ export function createPersistenceClient(sessionInput: PersistenceSessionInput): 
       }
       const payload = await response.json() as { events?: unknown[] };
       queue.splice(0, batch.length);
-      state = {
+      setState({
         ...state,
         status: "idle",
         pendingCount: queue.length,
         appendedCount: state.appendedCount + (payload.events?.length ?? batch.length),
+        retryAttempt: 0,
         lastFlushAt: new Date().toISOString(),
+        nextRetryAt: undefined,
+        lastError: undefined,
         lastEventTypes: batch.map((event) => event.type),
-      };
+      });
     } catch (error) {
-      state = {
+      const retryAttempt = state.retryAttempt + 1;
+      const lastError = error instanceof Error ? error.message : String(error);
+      if (retryAttempt <= MAX_RETRY_ATTEMPTS) {
+        setState({
+          ...state,
+          status: "retrying",
+          pendingCount: queue.length,
+          retryAttempt,
+          lastError,
+          nextRetryAt: undefined,
+        });
+        return;
+      }
+      setState({
         ...state,
         status: "error",
         pendingCount: queue.length,
-        lastError: error instanceof Error ? error.message : String(error),
-      };
+        retryAttempt,
+        lastError,
+        nextRetryAt: undefined,
+      });
     }
+  };
+
+  const flushOnPageHide = () => {
+    if (flushTimer !== undefined) {
+      window.clearTimeout(flushTimer);
+      flushTimer = undefined;
+    }
+    if (queue.length === 0) return;
+
+    const batch = queue.slice(0, MAX_BATCH_SIZE);
+    const body = JSON.stringify({ session, events: batch });
+    const blob = new Blob([body], { type: "application/json" });
+    const sentByBeacon = navigator.sendBeacon?.(APPEND_ENDPOINT, blob) ?? false;
+    if (!sentByBeacon) {
+      void fetch(APPEND_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body,
+        keepalive: true,
+      }).catch(() => undefined);
+    }
+
+    setState({
+      ...state,
+      status: "flushing",
+      pendingCount: queue.length,
+      lastPagehideFlushAt: new Date().toISOString(),
+      lastError: undefined,
+      nextRetryAt: undefined,
+    });
   };
 
   return {
@@ -164,11 +253,23 @@ export function createPersistenceClient(sessionInput: PersistenceSessionInput): 
         createdAt: new Date().toISOString(),
       };
       queue.push(queuedEvent);
-      syncPendingState();
+      if (state.status === "error") {
+        setState({
+          ...state,
+          status: "idle",
+          pendingCount: queue.length,
+          retryAttempt: 0,
+          nextRetryAt: undefined,
+          lastError: undefined,
+        });
+      } else {
+        syncPendingState();
+      }
       scheduleFlush();
       return { ...queuedEvent };
     },
     flush,
+    flushOnPageHide,
     dump: async (limit = 50) => {
       const response = await fetch(`${DUMP_ENDPOINT}?limit=${encodeURIComponent(String(limit))}`);
       if (!response.ok) {
@@ -177,10 +278,13 @@ export function createPersistenceClient(sessionInput: PersistenceSessionInput): 
       return response.json();
     },
     getState: () => ({
-      ...state,
-      lastEventTypes: [...state.lastEventTypes],
+      ...snapshotState(),
     }),
   };
+}
+
+function getRetryDelayMs(retryAttempt: number): number {
+  return Math.min(RETRY_MAX_DELAY_MS, RETRY_BASE_DELAY_MS * 2 ** Math.max(0, retryAttempt - 1));
 }
 
 function createId(prefix: string): string {

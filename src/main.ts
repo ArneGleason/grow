@@ -115,7 +115,11 @@ const persistence = createPersistenceClient({
   name: "Grow browser session",
   metadata: {
     app: "Grow",
-    persistenceByte: "13b-b",
+    persistenceByte: "13b-c1",
+  },
+}, {
+  onStateChange: () => {
+    if (!isTearingDown) queueRender();
   },
 });
 const SLOW_THINKING_PLAYER_IDS = ["melody", "bass"] as const;
@@ -370,6 +374,8 @@ ${renderHelpButton("session", "session mode")}
             <dd data-testid="song-current">${getSongLabel(songId)}</dd>
             <dt>Timing</dt>
             <dd data-testid="timing-feel-current">Feel</dd>
+            <dt>Persistence</dt>
+            <dd data-testid="persistence-status">idle, 0 saved</dd>
           </dl>
         </section>
 
@@ -517,6 +523,7 @@ const songControl = requireElement<HTMLDivElement>("[data-testid='song-control']
 const songCurrent = requireElement<HTMLElement>("[data-testid='song-current']");
 const timingFeelControl = requireElement<HTMLDivElement>("[data-testid='timing-feel-control']");
 const timingFeelCurrent = requireElement<HTMLElement>("[data-testid='timing-feel-current']");
+const persistenceStatus = requireElement<HTMLElement>("[data-testid='persistence-status']");
 const playerList = requireElement<HTMLDivElement>("#player-list");
 const thoughtSeedList = requireElement<HTMLDivElement>("#thought-seed-list");
 const ollamaBaseUrlInput = requireElement<HTMLInputElement>("[data-testid='ollama-base-url-input']");
@@ -558,6 +565,7 @@ let previousTransportStatus = getState().status;
 let renderedPlayerIds = "";
 let renderedThoughtSeedIds = "";
 let renderFrameId: number | null = null;
+let isTearingDown = false;
 const playerStateNodes = new Map<string, HTMLElement>();
 const playerTasteActionNodes = new Map<string, HTMLElement>();
 const playerTasteSummaryNodes = new Map<string, HTMLElement>();
@@ -1162,6 +1170,17 @@ function renderSessionMode(): void {
   }
 }
 
+function renderPersistence(): void {
+  persistenceStatus.textContent = formatPersistenceState(persistence.getState());
+}
+
+function formatPersistenceState(state: PersistenceClientState): string {
+  const pending = state.pendingCount > 0 ? `, ${state.pendingCount} pending` : "";
+  const retry = state.status === "retrying" ? `, retry ${state.retryAttempt}` : "";
+  const error = state.lastError ? `, ${state.lastError}` : "";
+  return `${state.status}, ${state.appendedCount} saved${pending}${retry}${error}`;
+}
+
 function renderStatus(state: GrowTransportState): void {
   button.textContent = state.status === "playing" ? "Stop" : "Start";
   status.value = `mode ${getSessionModeLabel(state.sessionMode).toLowerCase()} | song ${getSongLabel(state.songId)} | ${state.status} | ${state.bpm} BPM | bar ${state.bar} | beat ${state.currentBeat.toFixed(1)} | lookahead ${state.lookahead.health} ${state.lookahead.leadBeats.toFixed(1)}/${state.lookahead.targetBeats.toFixed(0)} | pending slots ${state.lookahead.pendingSlotCount}`;
@@ -1584,6 +1603,7 @@ function formatRawResponse(rawResponse: string): string {
 function renderWorld(state: GrowTransportState = getState()): void {
   syncWorldFromTransport(state);
   renderSessionMode();
+  renderPersistence();
   renderStatus(state);
   renderLookahead(state.lookahead);
   const players = world.getPlayers();
@@ -1649,6 +1669,10 @@ function handleMusicalEvent(event: MusicalEvent): void {
     pendingPlayerFlashes.add(event.playerId);
   }
   queueRender();
+}
+
+function handlePageHide(): void {
+  persistence.flushOnPageHide();
 }
 
 function queueRender(): void {
@@ -1898,6 +1922,7 @@ stageResizer.addEventListener("keydown", (event) => {
 });
 
 window.addEventListener("resize", handleWindowResize);
+window.addEventListener("pagehide", handlePageHide);
 setInspectorWidth(DEFAULT_INSPECTOR_WIDTH);
 
 terrarium = await createTerrariumView(container, world.getPlayers());
@@ -1941,6 +1966,7 @@ declare global {
     persistence?: {
       getState(): PersistenceClientState;
       flush(): Promise<void>;
+      flushOnPageHide(): void;
       dump(limit?: number): Promise<unknown>;
     };
     ollama?: {
@@ -2062,6 +2088,7 @@ window.timing = {
 window.persistence = {
   getState: () => persistence.getState(),
   flush: () => persistence.flush(),
+  flushOnPageHide: () => persistence.flushOnPageHide(),
   dump: (limit) => persistence.dump(limit),
 };
 
@@ -2088,6 +2115,7 @@ window.terrarium = {
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
+    isTearingDown = true;
     cancelSlowThinkingControllers("hot module replacement");
     if (renderFrameId !== null) {
       cancelAnimationFrame(renderFrameId);
@@ -2103,6 +2131,8 @@ if (import.meta.hot) {
     window.persistence = undefined;
     window.ollama = undefined;
     window.terrarium = undefined;
+    persistence.flushOnPageHide();
     window.removeEventListener("resize", handleWindowResize);
+    window.removeEventListener("pagehide", handlePageHide);
   });
 }

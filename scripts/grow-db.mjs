@@ -7,6 +7,7 @@ import { parseArgs } from "node:util";
 import {
   DEFAULT_DATABASE_PATH,
   appendEvent,
+  databaseExists,
   dumpGrowDatabase,
   ensureSession,
   getSchemaVersion,
@@ -52,10 +53,23 @@ function runInit(rawArgs) {
 function runDump(rawArgs) {
   const { values } = parseCliArgs(rawArgs);
   const databasePath = resolveDatabasePath(values.db);
+  if (!databaseExists(values.db)) {
+    console.log(JSON.stringify({
+      databasePath,
+      initialized: false,
+      schemaVersion: null,
+      sessions: [],
+      events: [],
+      message: "No database found; run npm run db:init first.",
+    }, null, 2));
+    return;
+  }
+
   const database = openGrowDatabase({ databasePath });
   try {
     console.log(JSON.stringify({
       databasePath,
+      initialized: true,
       ...dumpGrowDatabase(database, { limit: values.limit }),
     }, null, 2));
   } finally {
@@ -133,5 +147,5 @@ Usage:
   node scripts/grow-db.mjs smoke
 
 The default database path can also be set with GROW_DB_PATH.
-Byte 13b-a only initializes and inspects the local SQLite shell; the app does not write events yet.`);
+The dev app writes low-frequency decision records through /api/persistence/*; musical events are still deferred.`);
 }

@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Merge Byte 13b-b low-frequency decision writer",
-  "status": "byte13b-b-merged-byte13b-c1-ready",
-  "updatedAt": "2026-06-07T12:19:33Z",
+  "lastTask": "Implement Byte 13b-c1 persistence writer hardening",
+  "status": "byte13b-c1-awaiting-review",
+  "updatedAt": "2026-06-07T12:35:22Z",
   "lastHandoff": "",
-  "branch": "main",
-  "commit": "769379a",
+  "branch": "codex/byte-13b-c1",
+  "commit": "pending",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 13b-b is approved, merged into `main`, and the Claude review artifact has been cherry-picked. It adds a browser-side persistence queue in `src/persistence.ts`, Vite dev middleware endpoints under `/api/persistence/status`, `/api/persistence/append`, and `/api/persistence/dump`, batch `appendEvents`, and app wiring for `session.started`, `session.mode_changed`, `song.changed`, and `timing.feel_changed`. The queue schedules flushes outside UI handlers and no persistence call is made from Tone scheduler callbacks or `handleMusicalEvent`. The persistence schema now uses `beat` and `scheduled_beat` columns. Byte 13b-c1 is the next clean slice: harden the persistence writer with read-only/no-db dump behavior, unavailable/offline coverage, bounded retry/backoff, pagehide best-effort flush, and a visible/debug persistence status line before `musical.event_recorded`."
+    "summary": "Byte 13b-c1 hardens the low-frequency persistence writer before `musical.event_recorded`: no-db status/dump reports an uninitialized DB instead of creating one, queued records retry with bounded backoff, `window.persistence.flushOnPageHide()` sends a best-effort beacon/keepalive batch without removing queued records, and the Session inspector shows persistence status/pending/error details. Smoke now covers a forced append outage and verifies the app remains usable while records stay pending. High-frequency musical event persistence remains deferred to a ring-buffer/batch-flush slice."
   }
 }

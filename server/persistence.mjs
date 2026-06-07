@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
@@ -17,6 +17,11 @@ export const INITIAL_RECORD_TYPES = Object.freeze([
 export function resolveDatabasePath(databasePath = process.env.GROW_DB_PATH ?? DEFAULT_DATABASE_PATH) {
   if (databasePath === ":memory:") return databasePath;
   return resolve(process.cwd(), databasePath);
+}
+
+export function databaseExists(databasePath = process.env.GROW_DB_PATH ?? DEFAULT_DATABASE_PATH) {
+  const resolvedPath = resolveDatabasePath(databasePath);
+  return resolvedPath === ":memory:" || existsSync(resolvedPath);
 }
 
 export function openGrowDatabase(options = {}) {

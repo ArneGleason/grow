@@ -121,10 +121,14 @@ type SlowThoughtPlayback = {
 type PersistenceClientState = {
   sessionId: string;
   branchId: string;
-  status: "idle" | "scheduled" | "flushing" | "error";
+  status: "idle" | "scheduled" | "flushing" | "retrying" | "error";
   pendingCount: number;
   appendedCount: number;
+  retryAttempt: number;
+  lastFlushAt?: string;
+  lastPagehideFlushAt?: string;
   lastError?: string;
+  nextRetryAt?: string;
   lastEventTypes: readonly string[];
 };
 
@@ -290,12 +294,30 @@ async function getPersistenceState(page: Page): Promise<PersistenceClientState> 
   return state;
 }
 
+async function waitForPersistenceDebugApi(page: Page): Promise<void> {
+  await expect.poll(async () => page.evaluate(() => {
+    const appWindow = window as unknown as {
+      persistence?: { getState(): PersistenceClientState };
+    };
+    return Boolean(appWindow.persistence?.getState);
+  }), { timeout: 5_000 }).toBe(true);
+}
+
 async function flushPersistence(page: Page): Promise<void> {
   await page.evaluate(async () => {
     const appWindow = window as unknown as {
       persistence?: { flush(): Promise<void> };
     };
     await appWindow.persistence?.flush();
+  });
+}
+
+async function flushPersistenceOnPageHide(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      persistence?: { flushOnPageHide(): void };
+    };
+    appWindow.persistence?.flushOnPageHide();
   });
 }
 
@@ -1599,7 +1621,9 @@ test("persistence records low-frequency decisions off the audio path", async ({ 
   expect(persistenceState.status).toBe("idle");
   expect(persistenceState.pendingCount).toBe(0);
   expect(persistenceState.appendedCount).toBeGreaterThanOrEqual(4);
+  expect(persistenceState.retryAttempt).toBe(0);
   expect(persistenceState.lastError).toBeUndefined();
+  await expect(page.getByTestId("persistence-status")).toContainText("idle");
 
   const statusResponse = await request.get("/api/persistence/status");
   expect(statusResponse.status()).toBe(200);
@@ -1636,6 +1660,45 @@ test("persistence records low-frequency decisions off the audio path", async ({ 
     toFeel: "grid",
     refreshedLookahead: true,
   });
+
+  await setSessionMode(page, "rehearsal");
+  await flushPersistenceOnPageHide(page);
+  const pagehideState = await getPersistenceState(page);
+  expect(pagehideState.lastPagehideFlushAt).toBeTruthy();
+  expect(pagehideState.pendingCount).toBeGreaterThanOrEqual(1);
+  await expect(page.getByTestId("persistence-status")).toContainText("flushing");
+});
+
+test("persistence failure stays soft and retries are bounded", async ({ page }) => {
+  let appendAttempts = 0;
+  await page.route("**/api/persistence/append", async (route) => {
+    appendAttempts += 1;
+    await route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({ error: "persistence offline" }),
+    });
+  });
+
+  await page.goto("/");
+  await waitForPersistenceDebugApi(page);
+
+  await expect.poll(async () => (await getPersistenceState(page)).status, {
+    timeout: 8_000,
+  }).toBe("error");
+
+  const failedState = await getPersistenceState(page);
+  expect(appendAttempts).toBe(4);
+  expect(failedState.pendingCount).toBeGreaterThanOrEqual(1);
+  expect(failedState.retryAttempt).toBe(4);
+  expect(failedState.lastError).toBe("HTTP 503");
+  await expect(page.getByTestId("persistence-status")).toContainText("error");
+
+  await setSessionMode(page, "break");
+  await expect(page.getByTestId("session-mode-current")).toHaveText("Break");
+  const recoveredState = await getPersistenceState(page);
+  expect(recoveredState.pendingCount).toBeGreaterThanOrEqual(failedState.pendingCount);
+  expect(["scheduled", "flushing", "retrying", "error"]).toContain(recoveredState.status);
 });
 
 test("inspector help icons explain current controls", async ({ page }) => {
