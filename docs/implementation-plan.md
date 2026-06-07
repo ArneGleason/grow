@@ -1544,6 +1544,31 @@ Status:
 - The next slice should wire musical events into the buffer and a separate batch flusher, without letting scheduler callbacks do anything beyond synchronous memory enqueue.
 - Claude approved Byte 13b-c2. Forward notes for Byte 13b-c3: keep callback push minimal, preferably event plus tonal snapshot; build payloads in the flusher if possible; send drained-but-failed batches to the retained/idempotent persistence queue keyed by `sourceEventId`; make stop cleanup flush-or-discard explicit; treat buffer drops as replay discontinuities because persisted seq remains contiguous on write.
 
+#### Byte 13b-c3: Musical Event Buffer Flush To Persistence
+
+Wire high-frequency musical events to SQLite without doing I/O in the audio callback.
+
+Scope:
+
+- In `handleMusicalEvent`, synchronously enqueue only the emitted event plus a tonal-context snapshot into the musical-event source buffer.
+- Run a separate interval flusher that drains source events, builds schema-v1 `musical.event_recorded` payloads, and hands deterministic-id records to the existing retained/idempotent persistence queue.
+- Key musical persistence ids by browser session id plus source event id so retried drained batches do not duplicate rows.
+- Flush the source buffer on deliberate transport stop and pagehide/HMR before the existing persistence queue's best-effort flush.
+- Surface source-buffer pending/enqueued/dropped/last-flush state in the Session inspector.
+- Add smoke coverage that persisted musical rows are ordered by source event id, carry grid/performed payloads, and leave the source buffer empty after stop cleanup.
+
+Out of scope:
+
+- Replay or restoring from `musical.event_recorded`.
+- Dedicated persisted gap markers for dropped source-buffer events.
+- Re-hosting the Vite persistence middleware as a standalone server.
+
+Status:
+
+- Implemented in Byte 13b-c3.
+- `handleMusicalEvent` still does no fetch, DB write, or timer scheduling; the flusher interval is started during app setup.
+- Failed DB appends are handled by the existing `src/persistence.ts` retained queue and stable event ids rather than by re-entering the source buffer.
+
 ### Byte 14: Producer Marker, No LLM
 
 Add the producer proxy visually and with a rule-based command interpreter.

@@ -26,6 +26,11 @@ import {
   createPersistenceClient,
   type PersistenceClientState,
 } from "./persistence";
+import {
+  MusicalEventRecordSourceBuffer,
+  createMusicalEventPersistenceRecord,
+  type MusicalEventRecordBufferState,
+} from "./musical-event-record";
 import { PLAYER_REGISTRY } from "./players";
 import {
   DEFAULT_SESSION_MODE,
@@ -115,13 +120,21 @@ const persistence = createPersistenceClient({
   name: "Grow browser session",
   metadata: {
     app: "Grow",
-    persistenceByte: "13b-c1",
+    persistenceByte: "13b-c3",
   },
 }, {
   onStateChange: () => {
     if (!isTearingDown) queueRender();
   },
 });
+const MUSICAL_EVENT_BUFFER_CAPACITY = 512;
+const MUSICAL_EVENT_FLUSH_BATCH_SIZE = 64;
+const MUSICAL_EVENT_FLUSH_INTERVAL_MS = 250;
+const MUSICAL_EVENT_DRAIN_ALL = Number.POSITIVE_INFINITY;
+const musicalEventRecordBuffer = new MusicalEventRecordSourceBuffer(MUSICAL_EVENT_BUFFER_CAPACITY);
+let musicalEventFlushTimerId = 0;
+let musicalEventLastFlushAt: string | undefined;
+let musicalEventLastFlushCount = 0;
 const SLOW_THINKING_PLAYER_IDS = ["melody", "bass"] as const;
 const SLOW_THINKING_INTERVAL_BEATS = 8;
 const SLOW_THINKING_SECONDARY_INITIAL_DELAY_BEATS = 6;
@@ -376,6 +389,8 @@ ${renderHelpButton("session", "session mode")}
             <dd data-testid="timing-feel-current">Feel</dd>
             <dt>Persistence</dt>
             <dd data-testid="persistence-status">idle, 0 saved</dd>
+            <dt>Event buffer</dt>
+            <dd data-testid="musical-event-buffer-status">0 queued, 0 dropped</dd>
           </dl>
         </section>
 
@@ -524,6 +539,7 @@ const songCurrent = requireElement<HTMLElement>("[data-testid='song-current']");
 const timingFeelControl = requireElement<HTMLDivElement>("[data-testid='timing-feel-control']");
 const timingFeelCurrent = requireElement<HTMLElement>("[data-testid='timing-feel-current']");
 const persistenceStatus = requireElement<HTMLElement>("[data-testid='persistence-status']");
+const musicalEventBufferStatus = requireElement<HTMLElement>("[data-testid='musical-event-buffer-status']");
 const playerList = requireElement<HTMLDivElement>("#player-list");
 const thoughtSeedList = requireElement<HTMLDivElement>("#thought-seed-list");
 const ollamaBaseUrlInput = requireElement<HTMLInputElement>("[data-testid='ollama-base-url-input']");
@@ -1172,6 +1188,9 @@ function renderSessionMode(): void {
 
 function renderPersistence(): void {
   persistenceStatus.textContent = formatPersistenceState(persistence.getState());
+  musicalEventBufferStatus.textContent = formatMusicalEventBufferState(
+    musicalEventRecordBuffer.getState(),
+  );
 }
 
 function formatPersistenceState(state: PersistenceClientState): string {
@@ -1179,6 +1198,14 @@ function formatPersistenceState(state: PersistenceClientState): string {
   const retry = state.status === "retrying" ? `, retry ${state.retryAttempt}` : "";
   const error = state.lastError ? `, ${state.lastError}` : "";
   return `${state.status}, ${state.appendedCount} saved${pending}${retry}${error}`;
+}
+
+function formatMusicalEventBufferState(state: MusicalEventRecordBufferState): string {
+  const dropped = state.droppedCount > 0 ? `, ${state.droppedCount} dropped` : "";
+  const lastFlush = musicalEventLastFlushAt
+    ? `, flushed ${musicalEventLastFlushCount}`
+    : "";
+  return `${state.pendingCount} queued, ${state.enqueuedCount} heard${dropped}${lastFlush}`;
 }
 
 function renderStatus(state: GrowTransportState): void {
@@ -1664,6 +1691,7 @@ function handleTransportState(): void {
 }
 
 function handleMusicalEvent(event: MusicalEvent): void {
+  enqueueMusicalEventForPersistence(event);
   world.recordMusicalEvent(event);
   if (event.kind === "note") {
     pendingPlayerFlashes.add(event.playerId);
@@ -1671,7 +1699,55 @@ function handleMusicalEvent(event: MusicalEvent): void {
   queueRender();
 }
 
+function enqueueMusicalEventForPersistence(event: MusicalEvent): void {
+  musicalEventRecordBuffer.enqueue({
+    event,
+    tonalContext: cloneTonalContext(world.getTonalContext()),
+    enqueuedAtMs: performance.now(),
+  });
+}
+
+function flushMusicalEventBufferToPersistence(
+  reason: string,
+  limit = MUSICAL_EVENT_FLUSH_BATCH_SIZE,
+): number {
+  const sources = musicalEventRecordBuffer.drain(limit);
+  if (sources.length === 0) return 0;
+
+  for (const source of sources) {
+    const record = createMusicalEventPersistenceRecord(source.event, source.tonalContext);
+    persistence.record({
+      id: createMusicalEventPersistenceId(record.payload.sourceEventId),
+      type: record.type,
+      actorId: record.actorId,
+      sessionMode: world.getSessionMode(),
+      beat: record.beat,
+      payload: record.payload as unknown as Record<string, unknown>,
+    });
+  }
+
+  musicalEventLastFlushAt = new Date().toISOString();
+  musicalEventLastFlushCount = sources.length;
+  if (!isTearingDown) queueRender();
+  if (import.meta.env.DEV) {
+    console.info(`[persistence] flushed ${sources.length} musical events from buffer (${reason})`);
+  }
+  return sources.length;
+}
+
+function createMusicalEventPersistenceId(sourceEventId: string): string {
+  return `musical-${persistence.getState().sessionId}-${sourceEventId}`;
+}
+
+function cloneTonalContext(tonalContext: ListeningFrame["tonalContext"]): ListeningFrame["tonalContext"] {
+  return {
+    ...tonalContext,
+    scale: [...tonalContext.scale],
+  };
+}
+
 function handlePageHide(): void {
+  flushMusicalEventBufferToPersistence("pagehide", MUSICAL_EVENT_DRAIN_ALL);
   persistence.flushOnPageHide();
 }
 
@@ -1808,6 +1884,7 @@ button.addEventListener("click", async () => {
     const state = getState();
     if (state.status === "playing") {
       stopTransport();
+      flushMusicalEventBufferToPersistence("stop", MUSICAL_EVENT_DRAIN_ALL);
     } else {
       await startTransport();
     }
@@ -1923,6 +2000,9 @@ stageResizer.addEventListener("keydown", (event) => {
 
 window.addEventListener("resize", handleWindowResize);
 window.addEventListener("pagehide", handlePageHide);
+musicalEventFlushTimerId = window.setInterval(() => {
+  flushMusicalEventBufferToPersistence("interval");
+}, MUSICAL_EVENT_FLUSH_INTERVAL_MS);
 setInspectorWidth(DEFAULT_INSPECTOR_WIDTH);
 
 terrarium = await createTerrariumView(container, world.getPlayers());
@@ -1965,7 +2045,9 @@ declare global {
     };
     persistence?: {
       getState(): PersistenceClientState;
+      getMusicalEventBufferState(): MusicalEventRecordBufferState;
       flush(): Promise<void>;
+      flushMusicalEvents(): number;
       flushOnPageHide(): void;
       dump(limit?: number): Promise<unknown>;
     };
@@ -2087,8 +2169,10 @@ window.timing = {
 
 window.persistence = {
   getState: () => persistence.getState(),
+  getMusicalEventBufferState: () => musicalEventRecordBuffer.getState(),
   flush: () => persistence.flush(),
-  flushOnPageHide: () => persistence.flushOnPageHide(),
+  flushMusicalEvents: () => flushMusicalEventBufferToPersistence("manual", MUSICAL_EVENT_DRAIN_ALL),
+  flushOnPageHide: () => handlePageHide(),
   dump: (limit) => persistence.dump(limit),
 };
 
@@ -2120,6 +2204,11 @@ if (import.meta.hot) {
     if (renderFrameId !== null) {
       cancelAnimationFrame(renderFrameId);
     }
+    if (musicalEventFlushTimerId !== 0) {
+      window.clearInterval(musicalEventFlushTimerId);
+      musicalEventFlushTimerId = 0;
+    }
+    flushMusicalEventBufferToPersistence("hmr", MUSICAL_EVENT_DRAIN_ALL);
     terrarium?.destroy();
     terrarium = null;
     window.listening = undefined;

@@ -1,6 +1,6 @@
 # Persistence Record Boundaries
 
-Status: Byte 13b-c2 prep. The app persists low-frequency decision records through SQLite, and this document now names the musical-event payload shape and buffer boundary before high-frequency event writes are enabled.
+Status: Byte 13b-c3. The app persists low-frequency decision records and `musical.event_recorded` rows through SQLite. Musical events flow through an in-memory source buffer and retained persistence queue before they reach the dev middleware.
 
 ## Principles
 

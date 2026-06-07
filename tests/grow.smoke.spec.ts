@@ -136,9 +136,19 @@ type PersistenceClientState = {
   lastEventTypes: readonly string[];
 };
 
+type MusicalEventBufferState = {
+  capacity: number;
+  pendingCount: number;
+  enqueuedCount: number;
+  drainedCount: number;
+  droppedCount: number;
+  lastDroppedEventId?: string;
+};
+
 type PersistenceDump = {
   sessions: Array<{ id: string; branchId: string; name: string }>;
   events: Array<{
+    id: string;
     sessionId: string;
     branchId: string;
     seq: number;
@@ -316,6 +326,36 @@ async function flushPersistence(page: Page): Promise<void> {
     };
     await appWindow.persistence?.flush();
   });
+}
+
+async function getMusicalEventBufferState(page: Page): Promise<MusicalEventBufferState> {
+  const state = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      persistence?: { getMusicalEventBufferState(): MusicalEventBufferState };
+    };
+    return appWindow.persistence?.getMusicalEventBufferState();
+  });
+
+  if (!state) {
+    throw new Error("window.persistence.getMusicalEventBufferState() was not available");
+  }
+
+  return state;
+}
+
+async function flushMusicalEvents(page: Page): Promise<number> {
+  const flushedCount = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      persistence?: { flushMusicalEvents(): number };
+    };
+    return appWindow.persistence?.flushMusicalEvents();
+  });
+
+  if (flushedCount === undefined) {
+    throw new Error("window.persistence.flushMusicalEvents() was not available");
+  }
+
+  return flushedCount;
 }
 
 async function flushPersistenceOnPageHide(page: Page): Promise<void> {
@@ -1815,6 +1855,84 @@ test("persistence records low-frequency decisions off the audio path", async ({ 
   expect(pagehideState.lastPagehideFlushAt).toBeTruthy();
   expect(pagehideState.pendingCount).toBeGreaterThanOrEqual(1);
   await expect(page.getByTestId("persistence-status")).toContainText("flushing");
+});
+
+test("persistence records musical events through an off-callback buffer", async ({ page }) => {
+  await page.goto("/");
+  await flushPersistence(page);
+
+  const button = page.getByTestId("transport-toggle");
+  await button.click();
+  await expect(button).toHaveText("Stop");
+
+  await expect.poll(async () => (await getMusicalEventBufferState(page)).enqueuedCount, {
+    timeout: 8_000,
+  }).toBeGreaterThan(6);
+  await expect(page.getByTestId("musical-event-buffer-status")).toContainText("heard");
+
+  await flushMusicalEvents(page);
+  await flushPersistence(page);
+
+  await button.click();
+  await expect(button).toHaveText("Start");
+  const stoppedBufferState = await getMusicalEventBufferState(page);
+  expect(stoppedBufferState.pendingCount).toBe(0);
+  expect(stoppedBufferState.drainedCount).toBeGreaterThan(0);
+  expect(stoppedBufferState.droppedCount).toBe(0);
+
+  await flushPersistence(page);
+  const persistenceState = await getPersistenceState(page);
+  const dump = await dumpPersistence(page, 300);
+  const musicalEvents = dump.events
+    .filter((event) =>
+      event.sessionId === persistenceState.sessionId &&
+      event.type === "musical.event_recorded"
+    )
+    .sort((left, right) => left.seq - right.seq);
+
+  expect(musicalEvents.length).toBeGreaterThan(6);
+  expect(new Set(musicalEvents.map((event) => event.id)).size).toBe(musicalEvents.length);
+  expect(musicalEvents.every((event) =>
+    event.id.startsWith(`musical-${persistenceState.sessionId}-event-`)
+  )).toBe(true);
+  const sourceSerials = musicalEvents.map((event) =>
+    Number(String(event.payload.sourceEventId).replace("event-", ""))
+  );
+  expect(sourceSerials.every(Number.isFinite)).toBe(true);
+  expect(sourceSerials).toEqual([...sourceSerials].sort((left, right) => left - right));
+
+  const firstMusicalPayload = musicalEvents[0].payload as {
+    schemaVersion?: number;
+    sourceEventId?: string;
+    grid?: {
+      absoluteBeat?: number;
+      pitch?: string;
+      pitchClass?: string;
+      scaleDegree?: number;
+    };
+    performed?: {
+      offsetBeats?: number;
+      offsetSeconds?: number;
+      sounded?: boolean;
+      pitch?: string;
+      pitchClass?: string;
+    };
+    expression?: { eventIndex?: number };
+    performedTiming?: { eventIndex?: number; performedOffsetBeats?: number };
+    tags?: string[];
+  };
+  expect(firstMusicalPayload.schemaVersion).toBe(1);
+  expect(firstMusicalPayload.sourceEventId).toMatch(/^event-\d+$/);
+  expect(firstMusicalPayload.grid?.absoluteBeat).toBeGreaterThanOrEqual(0);
+  expect(firstMusicalPayload.grid?.pitch).toBeTruthy();
+  expect(firstMusicalPayload.grid?.pitchClass).toBeTruthy();
+  expect(firstMusicalPayload.grid?.scaleDegree).toBeGreaterThanOrEqual(0);
+  expect(typeof firstMusicalPayload.performed?.offsetBeats).toBe("number");
+  expect(typeof firstMusicalPayload.performed?.offsetSeconds).toBe("number");
+  expect(firstMusicalPayload.performed?.sounded).toBe(true);
+  expect(firstMusicalPayload.performed?.pitch).toBeTruthy();
+  expect(firstMusicalPayload.expression?.eventIndex).toBe(firstMusicalPayload.performedTiming?.eventIndex);
+  expect(firstMusicalPayload.tags).toContain("timing:offset-data");
 });
 
 test("persistence failure stays soft and retries are bounded", async ({ page }) => {

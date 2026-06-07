@@ -17,6 +17,7 @@ export interface PersistenceSessionInput {
 }
 
 export interface PersistenceEventInput {
+  id?: string;
   type: PersistenceRecordType;
   beat?: number;
   tick?: number;
@@ -248,7 +249,7 @@ export function createPersistenceClient(
     record(event) {
       const queuedEvent: PersistenceEvent = {
         ...event,
-        id: createId("event"),
+        id: event.id ?? createId("event"),
         sessionId: session.id,
         branchId: session.branchId,
         createdAt: new Date().toISOString(),

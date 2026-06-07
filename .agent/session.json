@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Merge Byte 13b-c2 musical event payload and buffer boundary",
-  "status": "byte13b-c2-merged-byte13b-c3-ready",
-  "updatedAt": "2026-06-07T13:11:18Z",
+  "lastTask": "Implement Byte 13b-c3 musical event buffer flush to persistence",
+  "status": "byte13b-c3-awaiting-review",
+  "updatedAt": "2026-06-07T13:25:16Z",
   "lastHandoff": "",
-  "branch": "main",
-  "commit": "pending",
+  "branch": "codex/byte-13b-c3",
+  "commit": "f292357",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 13b-c2 is approved and merged. It defines the musical-event persistence shape without writing high-frequency events yet: `MusicalEvent` carries `gridPitch` from committed material and `performedPitch` from the sounded decision while preserving `pitch` as the performed-pitch compatibility field; `src/musical-event-record.ts` owns schema-v1 `MusicalEventRecordPayload` with `grid` and `performed` sections plus a fixed-capacity drop-oldest ring buffer. Claude confirmed the grid/performed schema is durable, the pitch alias is acceptable, and drop-oldest is fine if replay treats drops as discontinuities. Byte 13b-c3 should wire musical events into the buffer plus a separate batch flusher with no I/O/timers in Tone callbacks, failed drained batches routed to the retained/idempotent queue keyed by `sourceEventId`, and explicit stop cleanup behavior."
+    "summary": "Byte 13b-c3 wires high-frequency musical events to persistence without doing I/O in the audio callback. `handleMusicalEvent` only enqueues the emitted event plus a tonal-context snapshot into the source buffer. A setup-time interval drains up to 64 sources, builds schema-v1 `musical.event_recorded` payloads, and hands deterministic ids (`musical-<sessionId>-<sourceEventId>`) to the existing retained/idempotent persistence queue. The source buffer flushes on stop/pagehide/HMR, the Session inspector shows event-buffer pending/enqueued/dropped/last-flush state, and smoke verifies persisted musical rows are ordered by source event id with grid/performed payloads."
   }
 }

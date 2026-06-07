@@ -48,6 +48,12 @@ export interface MusicalEventPersistenceRecord {
   payload: MusicalEventRecordPayload;
 }
 
+export interface MusicalEventRecordSource {
+  event: MusicalEvent;
+  tonalContext: TonalContext;
+  enqueuedAtMs: number;
+}
+
 export interface MusicalEventRecordBufferState {
   capacity: number;
   pendingCount: number;
@@ -60,6 +66,12 @@ export interface MusicalEventRecordBufferState {
 export interface MusicalEventRecordBufferEnqueueResult {
   record: MusicalEventPersistenceRecord;
   dropped?: MusicalEventPersistenceRecord;
+  state: MusicalEventRecordBufferState;
+}
+
+export interface MusicalEventRecordSourceBufferEnqueueResult {
+  source: MusicalEventRecordSource;
+  dropped?: MusicalEventRecordSource;
   state: MusicalEventRecordBufferState;
 }
 
@@ -116,6 +128,75 @@ export class MusicalEventRecordBuffer {
 
   clear(): void {
     this.records.fill(undefined);
+    this.head = 0;
+    this.pendingCount = 0;
+  }
+
+  getState(): MusicalEventRecordBufferState {
+    return {
+      capacity: this.capacity,
+      pendingCount: this.pendingCount,
+      enqueuedCount: this.enqueuedCount,
+      drainedCount: this.drainedCount,
+      droppedCount: this.droppedCount,
+      lastDroppedEventId: this.lastDroppedEventId,
+    };
+  }
+}
+
+export class MusicalEventRecordSourceBuffer {
+  private readonly sources: Array<MusicalEventRecordSource | undefined>;
+  private head = 0;
+  private pendingCount = 0;
+  private enqueuedCount = 0;
+  private drainedCount = 0;
+  private droppedCount = 0;
+  private lastDroppedEventId: string | undefined;
+
+  constructor(readonly capacity = 256) {
+    if (!Number.isInteger(capacity) || capacity < 1) {
+      throw new Error("MusicalEventRecordSourceBuffer capacity must be a positive integer");
+    }
+    this.sources = new Array<MusicalEventRecordSource | undefined>(capacity);
+  }
+
+  enqueue(source: MusicalEventRecordSource): MusicalEventRecordSourceBufferEnqueueResult {
+    let dropped: MusicalEventRecordSource | undefined;
+    if (this.pendingCount === this.capacity) {
+      dropped = this.sources[this.head];
+      this.sources[this.head] = source;
+      this.head = (this.head + 1) % this.capacity;
+      this.droppedCount += 1;
+      this.lastDroppedEventId = dropped?.event.id;
+    } else {
+      const tail = (this.head + this.pendingCount) % this.capacity;
+      this.sources[tail] = source;
+      this.pendingCount += 1;
+    }
+    this.enqueuedCount += 1;
+    return {
+      source,
+      dropped,
+      state: this.getState(),
+    };
+  }
+
+  drain(limit = this.pendingCount): MusicalEventRecordSource[] {
+    const nextLimit = Math.max(0, Math.min(this.pendingCount, Math.floor(limit)));
+    const drained: MusicalEventRecordSource[] = [];
+    for (let index = 0; index < nextLimit; index += 1) {
+      const source = this.sources[this.head];
+      if (source) drained.push(source);
+      this.sources[this.head] = undefined;
+      this.head = (this.head + 1) % this.capacity;
+      this.pendingCount -= 1;
+    }
+    this.drainedCount += drained.length;
+    return drained;
+  }
+
+  clear(): void {
+    this.sources.fill(undefined);
     this.head = 0;
     this.pendingCount = 0;
   }
