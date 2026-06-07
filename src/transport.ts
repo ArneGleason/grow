@@ -14,8 +14,15 @@ import {
   DEFAULT_SONG_ID,
   getSongMaterial,
   type PatternNoteSource,
+  type PlayerPatternSource,
   type SongId,
 } from "./song-material";
+import {
+  DEFAULT_SONG_ARRANGEMENT,
+  arrangeSongFormPatternEvent,
+  sectionAtBeat,
+  type SongSectionContext,
+} from "./song-form";
 import type { TasteNoteDecision, TasteNoteDecisionInput } from "./taste";
 import { DEFAULT_TONAL_CONTEXT, noteFromScaleDegree } from "./tonal-context";
 
@@ -47,6 +54,7 @@ export interface GrowTransportState {
   performedTiming: {
     latest: readonly PlayerPerformedTimingSnapshot[];
   };
+  songForm: SongSectionContext;
 }
 
 export interface AudioFireTimingDiagnostic {
@@ -96,13 +104,14 @@ const DEFAULT_NOTE_DECISION: TasteNoteDecision = {
   reason: "No taste decision supplied.",
 };
 
-interface ScheduledNote extends Omit<PatternNoteSource, "scaleDegree" | "octave"> {
+interface ScheduledNote extends PatternNoteSource {
   pitch: string;
 }
 
 interface PlayerPattern {
+  source: PlayerPatternSource;
   subdivisionBeats: number;
-  events: Array<ScheduledNote | null>;
+  events: Array<PatternNoteSource | null>;
 }
 
 interface ScheduledSnapshot {
@@ -140,16 +149,19 @@ const latestExpressionByPlayer = new Map<string, PlayerExpressionSnapshot>();
 const latestPerformedTimingByPlayer = new Map<string, PlayerPerformedTimingSnapshot>();
 const latestAudioFireTiming: AudioFireTimingDiagnostic[] = [];
 
-function buildPlayerPatterns(tonalContext: TonalContext, songId: SongId): readonly PlayerPattern[] {
+function buildPlayerPatterns(songId: SongId): readonly PlayerPattern[] {
   return getSongMaterial(songId).patterns.map((pattern) => ({
+    source: pattern,
     subdivisionBeats: pattern.subdivisionBeats,
-    events: pattern.events.map((note) => note ? materializeNote(tonalContext, note) : null),
+    events: pattern.events.map((note) => note ? { ...note } : null),
   }));
 }
 
 function materializeNote(tonalContext: TonalContext, note: PatternNoteSource): ScheduledNote {
   return {
     playerId: note.playerId,
+    scaleDegree: note.scaleDegree,
+    octave: note.octave,
     pitch: noteFromScaleDegree(tonalContext, note.scaleDegree, note.octave),
     duration: note.duration,
     durationBeats: note.durationBeats,
@@ -435,7 +447,17 @@ function getPatternStep(pattern: PlayerPattern, absoluteBeat: number): Scheduled
   if (!isPatternStepDue(pattern, absoluteBeat)) return undefined;
   const step = Math.round(absoluteBeat / pattern.subdivisionBeats);
   const stepIndex = step % pattern.events.length;
-  return pattern.events[stepIndex];
+  const sourceEvent = pattern.events[stepIndex] ?? null;
+  const arrangedEvent = arrangeSongFormPatternEvent({
+    song: getSongMaterial(getActiveSongId()),
+    pattern: pattern.source,
+    sourceEvent,
+    stepIndex,
+    absoluteBeat,
+    tonalContext: activeTonalContext,
+    arrangement: DEFAULT_SONG_ARRANGEMENT,
+  });
+  return arrangedEvent ? materializeNote(activeTonalContext, arrangedEvent) : arrangedEvent;
 }
 
 function getNextCommittedEventIndex(playerId: string): number {
@@ -673,7 +695,7 @@ export async function startTransport(): Promise<GrowTransportState> {
   latestAudioFireTiming.length = 0;
   nextScheduleBeat = 0;
   scheduledThroughBeat = 0;
-  activePatterns = buildPlayerPatterns(activeTonalContext, getActiveSongId());
+  activePatterns = buildPlayerPatterns(getActiveSongId());
   startLookaheadScheduler(tone);
 
   transport.start("+0.05");
@@ -707,7 +729,7 @@ export function refreshLookaheadSchedule(): GrowTransportState {
     transport.clear(eventId);
   }
   scheduledEventIds.clear();
-  activePatterns = buildPlayerPatterns(activeTonalContext, getActiveSongId());
+  activePatterns = buildPlayerPatterns(getActiveSongId());
   const currentBeat = getCurrentBeat();
   nextScheduleBeat = getFirstFutureGridBeat(currentBeat);
   scheduledThroughBeat = currentBeat;
@@ -756,6 +778,7 @@ export function getState(): GrowTransportState {
     performedTiming: {
       latest: [...latestPerformedTimingByPlayer.values()],
     },
+    songForm: sectionAtBeat(currentBeat, DEFAULT_SONG_ARRANGEMENT),
   };
 }
 

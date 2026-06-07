@@ -50,6 +50,7 @@ import {
   type SongId,
   type SongMaterial,
 } from "./song-material";
+import { sectionAtBeat } from "./song-form";
 import {
   applySongSketchProposalText,
   createInspectOnlySongSketch,
@@ -282,11 +283,11 @@ function getSongLabel(nextSongId: SongId): string {
 }
 
 app.innerHTML = `
-  <section class="app-shell" aria-label="Grow Byte 11c-a">
+  <section class="app-shell" aria-label="Grow Byte 14">
     <header class="topbar">
       <div class="brand">
         <h1 class="brand__title">Grow</h1>
-        <p class="brand__subtitle">Slow thinking loops: melody and bass can take bounded future turns</p>
+        <p class="brand__subtitle">Song form: verse, chorus, bridge, and a developed chorus melody</p>
       </div>
       <div class="transport-controls">
         <fieldset class="mode-control">
@@ -387,6 +388,8 @@ ${renderHelpButton("session", "session mode")}
             <dd data-testid="session-mode-current">${defaultSessionModeLabel}</dd>
             <dt>Song</dt>
             <dd data-testid="song-current">${getSongLabel(songId)}</dd>
+            <dt>Section</dt>
+            <dd data-testid="song-section-current">Verse 1, bar 1/8</dd>
             <dt>Timing</dt>
             <dd data-testid="timing-feel-current">Feel</dd>
             <dt>Persistence</dt>
@@ -538,6 +541,7 @@ const sessionModeControl = requireElement<HTMLDivElement>("[data-testid='session
 const sessionModeCurrent = requireElement<HTMLElement>("[data-testid='session-mode-current']");
 const songControl = requireElement<HTMLDivElement>("[data-testid='song-control']");
 const songCurrent = requireElement<HTMLElement>("[data-testid='song-current']");
+const songSectionCurrent = requireElement<HTMLElement>("[data-testid='song-section-current']");
 const timingFeelControl = requireElement<HTMLDivElement>("[data-testid='timing-feel-control']");
 const timingFeelCurrent = requireElement<HTMLElement>("[data-testid='timing-feel-current']");
 const persistenceStatus = requireElement<HTMLElement>("[data-testid='persistence-status']");
@@ -1174,11 +1178,13 @@ function renderOllama(): void {
 
 function renderSessionMode(): void {
   const mode = world.getSessionMode();
+  const transportState = getState();
   sessionModeCurrent.textContent = getSessionModeLabel(mode);
   for (const input of sessionModeControl.querySelectorAll<HTMLInputElement>("input[name='session-mode']")) {
     input.checked = input.value === mode;
   }
   songCurrent.textContent = getSongLabel(songId);
+  songSectionCurrent.textContent = formatSongSection(transportState.songForm);
   for (const input of songControl.querySelectorAll<HTMLInputElement>("input[name='song']")) {
     input.checked = input.value === songId;
   }
@@ -1186,6 +1192,10 @@ function renderSessionMode(): void {
   for (const input of timingFeelControl.querySelectorAll<HTMLInputElement>("input[name='timing-feel']")) {
     input.checked = input.value === timingFeelMode;
   }
+}
+
+function formatSongSection(section: GrowTransportState["songForm"]): string {
+  return `${section.label} ${section.occurrence}, bar ${section.localBar}/${section.bars}`;
 }
 
 function renderPersistence(): void {
@@ -1212,7 +1222,7 @@ function formatMusicalEventBufferState(state: MusicalEventRecordBufferState): st
 
 function renderStatus(state: GrowTransportState): void {
   button.textContent = state.status === "playing" ? "Stop" : "Start";
-  status.value = `mode ${getSessionModeLabel(state.sessionMode).toLowerCase()} | song ${getSongLabel(state.songId)} | ${state.status} | ${state.bpm} BPM | bar ${state.bar} | beat ${state.currentBeat.toFixed(1)} | lookahead ${state.lookahead.health} ${state.lookahead.leadBeats.toFixed(1)}/${state.lookahead.targetBeats.toFixed(0)} | pending slots ${state.lookahead.pendingSlotCount}`;
+  status.value = `mode ${getSessionModeLabel(state.sessionMode).toLowerCase()} | song ${getSongLabel(state.songId)} | section ${formatSongSection(state.songForm).toLowerCase()} | ${state.status} | ${state.bpm} BPM | bar ${state.bar} | beat ${state.currentBeat.toFixed(1)} | lookahead ${state.lookahead.health} ${state.lookahead.leadBeats.toFixed(1)}/${state.lookahead.targetBeats.toFixed(0)} | pending slots ${state.lookahead.pendingSlotCount}`;
 }
 
 function getCurrentListeningFrame(): ListeningFrame {
@@ -1440,6 +1450,83 @@ function applySlowThoughtDecision(
     };
 }
 
+function applySongSectionDecision(
+  input: TasteNoteDecisionInput,
+  baseDecision: TasteNoteDecision,
+): TasteNoteDecision {
+  const section = sectionAtBeat(input.absoluteBeat);
+  const tags = [
+    ...(baseDecision.tags ?? []),
+    `section:${section.sectionType}`,
+  ];
+
+  if (section.sectionType === "chorus") {
+    if (input.role === "melody") {
+      return {
+        ...baseDecision,
+        action: "vary",
+        shouldPlay: true,
+        velocityMultiplier: Math.max(baseDecision.shouldPlay ? baseDecision.velocityMultiplier : 0.92, 1.18),
+        tags: [...tags, "section:developed-chorus"],
+        reason: `Chorus ${section.occurrence}: lifting the developed hook above taste rests.`,
+      };
+    }
+
+    return {
+      ...baseDecision,
+      shouldPlay: baseDecision.shouldPlay,
+      velocityMultiplier: baseDecision.velocityMultiplier * (input.role === "bass" ? 1.14 : 1.08),
+      tags: [...tags, "section:full"],
+      reason: `Chorus ${section.occurrence}: fuller support under the developed hook.`,
+    };
+  }
+
+  if (section.sectionType === "bridge") {
+    if (input.role === "pulse") {
+      const shouldPlay = isBarDownbeat(section.localBeat);
+      return {
+        action: "simplify",
+        shouldPlay,
+        velocityMultiplier: shouldPlay ? 0.72 : 0,
+        tags: [...tags, "section:sparse"],
+        reason: "Bridge: pulse marks only the bar downbeats.",
+      };
+    }
+
+    if (input.role === "bass") {
+      const shouldPlay = isWholeBeat(input.absoluteBeat) && section.localBar % 2 === 1;
+      return {
+        action: "simplify",
+        shouldPlay,
+        velocityMultiplier: shouldPlay ? 0.78 : 0,
+        tags: [...tags, "section:sparse"],
+        reason: "Bridge: bass leaves alternate bars open.",
+      };
+    }
+
+    if (input.role === "melody") {
+      const shouldPlay = isWholeBeat(input.absoluteBeat);
+      return {
+        action: "contrast",
+        shouldPlay,
+        velocityMultiplier: shouldPlay ? 0.82 : 0,
+        pitch: shouldPlay ? shiftPitchOctave(input.pitch, 1) : undefined,
+        tags: [...tags, "section:bridge-shift"],
+        reason: "Bridge: sparse lifted melody answers the chorus.",
+      };
+    }
+  }
+
+  return {
+    ...baseDecision,
+    velocityMultiplier: baseDecision.velocityMultiplier * (input.role === "melody" ? 0.94 : 1),
+    tags: [...tags, "section:grounded"],
+    reason: section.sectionType === "verse"
+      ? `Verse ${section.occurrence}: keeping the source loop grounded.`
+      : baseDecision.reason,
+  };
+}
+
 function shiftPitchOctave(pitch: string, registerShift: number): string | undefined {
   const match = pitch.match(/^(.+?)(-?\d+)$/);
   if (!match) return undefined;
@@ -1456,6 +1543,10 @@ function formatSignedInteger(value: number): string {
 
 function isWholeBeat(value: number): boolean {
   return Math.abs(value - Math.round(value)) < 0.000001;
+}
+
+function isBarDownbeat(localBeat: number): boolean {
+  return Math.abs(localBeat % 4) < 0.000001;
 }
 
 function clamp(value: number, minimum: number, maximum: number): number {
@@ -1874,7 +1965,8 @@ function getPersistenceBeat(): number {
 initTransport({
   tick: handleTransportState,
   musicalEvent: handleMusicalEvent,
-  noteDecision: (input) => applySlowThoughtDecision(input, world.getTasteNoteDecision(input)),
+  noteDecision: (input) =>
+    applySlowThoughtDecision(input, applySongSectionDecision(input, world.getTasteNoteDecision(input))),
   sessionMode: () => world.getSessionMode(),
   shouldRefillLookahead: () => shouldSessionModeRefillLookahead(world.getSessionMode()),
   songId: () => songId,

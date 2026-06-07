@@ -27,27 +27,32 @@ Grow currently runs as a browser app with:
 - Tone.js transport, synth voices, lookahead scheduling, start/stop lifecycle, and audible microtiming.
 - Three deterministic players: `pulse`, `bass`, and `melody`.
 - A structured musical event ledger and listening frame.
+- A looping song form: Verse, Chorus, Verse, Chorus, Bridge, Chorus.
+- A deterministic developed chorus melody committed through the lookahead, so the chorus is new material rather than a fire-time pitch trick.
+- Per-section behavior: grounded verses, lifted/full choruses, and a sparse shifted bridge.
 - Session modes: break, solo practice, rehearsal, and performance.
 - Player taste rules that can repeat, support, simplify, vary, contrast, or rest.
+- Automatic bounded slow-thinking loops for melody and bass when local Ollama is available, with deterministic mock fallback.
 - Deterministic "reproducible aliveness": velocity movement and slight performed-time offsets.
 - A bounded agitation/contagion signal so the ensemble can expose shared heat before it changes behavior.
 - Terrarium visual heat: the room warms with mix agitation and player halos respond to caught heat.
 - A strict thought protocol for future Ollama-authored musical ideas.
 - A manual local Ollama probe routed through the local app proxy, with projected JSON prompts, validation, and mock fallback.
+- A local SQLite persistence shell plus browser-side buffered persistence for low-frequency decisions and musical event records.
 - Context help in the inspector so the app can explain its growing set of controls.
 
-The current milestone is around Byte 10f-b1: the band is still rule-based, but the local-model boundary now sends compact projected requests through a local proxy instead of talking to Ollama directly from the browser.
+The current milestone is Byte 14: after a long infrastructure run, the project deliberately pivoted back to audible composition. The band now plays a sectioned form with a developed chorus that can be reviewed by ear.
 
 ## What Is Not Here Yet
 
 These are active directions, not promises that they are already implemented:
 
-- Automatic slow-thinking player loops backed by local Ollama.
 - A language-driven human producer avatar.
-- SQLite checkpoints, forks, and replayable moments.
+- SQLite checkpoints, forks, and replayable moments beyond the current append-only event records.
 - Best-of capture/export.
 - Player-made instruments and effects routing.
 - Multiple bands or terrariums observing each other.
+- Model/player consensus that selects and remembers preferred song-section developments.
 
 The project is deliberately moving in small bytes so each piece can be heard, seen, reviewed, and changed before the next layer lands.
 
@@ -95,6 +100,7 @@ http://127.0.0.1:11434
 ```sh
 npm audit
 npm run build
+npm run db:smoke
 npm run smoke
 ```
 
@@ -105,6 +111,7 @@ The smoke tests cover the core browser behavior: transport lifecycle, event/list
 When the app is running, these globals are useful for inspection:
 
 - `window.transport.getState()`
+- `window.transport.getState().songForm`
 - `window.listening.getFrame()`
 - `window.listening.getEvents()`
 - `window.session.getMode()`

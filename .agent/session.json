@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Merge Byte 13b-c4 musical event play-span idempotency fix",
-  "status": "byte13b-c4-merged-byte14-ready",
-  "updatedAt": "2026-06-07T13:54:02Z",
+  "lastTask": "Implement Byte 14 audible song form with developed chorus",
+  "status": "byte14-awaiting-review",
+  "updatedAt": "2026-06-07T14:18:35Z",
   "lastHandoff": "",
-  "branch": "main",
+  "branch": "codex/byte-14",
   "commit": "HEAD",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 13b-c4 is approved and merged to `main` with Byte 13b-c3 included. Musical persistence ids include a play-span serial (`musical-<sessionId>-span-<playSpanSerial>-<sourceEventId>`) because transport-local source event ids reset to `event-0` on every start while the browser session stays stable. The source buffer captures the play-span serial at enqueue time, payload schema v1 stays unchanged, and smoke plays/stops twice and asserts persisted musical rows equal total drained source events with each span ordered independently. Next planned work is Byte 14: producer marker plus deterministic rule-based text input, no LLM."
+    "summary": "Byte 14 pivots from infrastructure to audible song form. The branch adds default Verse/Chorus/Verse/Chorus/Bridge/Chorus form data, a looping `sectionAtBeat` arrangement timeline, a deterministic in-scale chorus melody committed before lookahead scheduling, verse/chorus/bridge behavior through the note-decision path, and a synced Session inspector/status section readout. Live probe confirmed the first chorus at beat 32 with `section:chorus` / `section:developed-chorus` melody events (`G5`, `C5`, `Bb5`)."
   }
 }

@@ -24,9 +24,21 @@ import {
   createProjectedThoughtRequest,
   getThoughtPromptProtocol,
 } from "../src/thought-prompt-protocols";
-import { SONG_MATERIALS } from "../src/song-material";
+import {
+  SONG_MATERIALS,
+  type PatternNoteSource,
+  type PlayerPatternSource,
+  type SongMaterial,
+} from "../src/song-material";
+import {
+  DEFAULT_SONG_ARRANGEMENT,
+  arrangeSongFormPatternEvent,
+  deriveSongRootDegrees,
+  sectionAtBeat,
+} from "../src/song-form";
 import type { SongSketch, SongSketchProposal } from "../src/song-sketch";
 import type { PlayerThoughtSeed } from "../src/thought-seeds";
+import { DEFAULT_TONAL_CONTEXT } from "../src/tonal-context";
 
 type TransportState = {
   status: "stopped" | "playing";
@@ -36,6 +48,13 @@ type TransportState = {
   bpm: number;
   bar: number;
   currentBeat: number;
+  songForm: {
+    sectionType: "verse" | "chorus" | "bridge";
+    occurrence: number;
+    label: string;
+    localBar: number;
+    bars: number;
+  };
   lookahead: {
     targetBeats: number;
     minimumBeats: number;
@@ -632,6 +651,54 @@ function getSongPatternScaleDegrees(songId: TransportState["songId"], playerId: 
   ));
 }
 
+function getSongMaterialForTest(songId: TransportState["songId"]): SongMaterial {
+  const song = SONG_MATERIALS.find((material) => material.id === songId);
+  if (!song) {
+    throw new Error(`Missing song material for ${songId}`);
+  }
+  return song;
+}
+
+function getPatternForPlayer(
+  patterns: readonly PlayerPatternSource[],
+  playerId: string,
+): PlayerPatternSource {
+  const pattern = patterns.find((candidate) =>
+    candidate.events.some((event) => event?.playerId === playerId)
+  );
+  if (!pattern) {
+    throw new Error(`Missing pattern for ${playerId}`);
+  }
+  return pattern;
+}
+
+function collectArrangedMelody(
+  song: SongMaterial,
+  pattern: PlayerPatternSource,
+  sectionStartBeat: number,
+): PatternNoteSource[] {
+  const notes: PatternNoteSource[] = [];
+  for (let localBeat = 0; localBeat < 8; localBeat += pattern.subdivisionBeats) {
+    const stepIndex = Math.round(localBeat / pattern.subdivisionBeats) % pattern.events.length;
+    const sourceEvent = pattern.events[stepIndex] ?? null;
+    const arrangedEvent = arrangeSongFormPatternEvent({
+      song,
+      pattern,
+      sourceEvent,
+      stepIndex,
+      absoluteBeat: sectionStartBeat + localBeat,
+      tonalContext: DEFAULT_TONAL_CONTEXT,
+      arrangement: DEFAULT_SONG_ARRANGEMENT,
+    });
+    if (arrangedEvent) notes.push(arrangedEvent);
+  }
+  return notes;
+}
+
+function modulo(value: number, length: number): number {
+  return ((value % length) + length) % length;
+}
+
 function getSketchSectionRootDegrees(sketch: SongSketch): number[] {
   return sketch.sections.flatMap((section) => [...section.rootDegrees]);
 }
@@ -1032,6 +1099,52 @@ test("song material control switches deterministic loops", async ({ page }) => {
 
   await button.click();
   await expect(button).toHaveText("Start");
+});
+
+test("song form timeline develops an in-scale chorus melody", () => {
+  const arrangement = DEFAULT_SONG_ARRANGEMENT;
+  expect(arrangement.totalBeats).toBe(192);
+  expect(sectionAtBeat(0, arrangement)).toMatchObject({
+    sectionType: "verse",
+    occurrence: 1,
+    localBar: 1,
+  });
+  expect(sectionAtBeat(32, arrangement)).toMatchObject({
+    sectionType: "chorus",
+    occurrence: 1,
+    localBar: 1,
+  });
+  expect(sectionAtBeat(128, arrangement)).toMatchObject({
+    sectionType: "bridge",
+    occurrence: 1,
+    localBar: 1,
+  });
+  expect(sectionAtBeat(192, arrangement)).toMatchObject({
+    sectionType: "verse",
+    occurrence: 1,
+    localBar: 1,
+  });
+
+  const song = getSongMaterialForTest("lantern");
+  const melodyPattern = getPatternForPlayer(song.patterns, "melody");
+  const verseNotes = collectArrangedMelody(song, melodyPattern, 0);
+  const chorusNotes = collectArrangedMelody(song, melodyPattern, 32);
+  const scaleLength = DEFAULT_TONAL_CONTEXT.scale.length;
+  const firstRoot = deriveSongRootDegrees(song)[0] ?? 0;
+  const chordToneClasses = new Set([firstRoot, firstRoot + 2, firstRoot + 4].map((degree) =>
+    modulo(degree, scaleLength)
+  ));
+
+  expect(verseNotes.length).toBeGreaterThan(0);
+  expect(chorusNotes.length).toBeGreaterThan(0);
+  expect(chorusNotes.map((note) => note.scaleDegree)).not.toEqual(
+    verseNotes.map((note) => note.scaleDegree),
+  );
+  expect(chorusNotes.every((note) =>
+    DEFAULT_TONAL_CONTEXT.scale[modulo(note.scaleDegree, scaleLength)] !== undefined
+  )).toBe(true);
+  expect(chordToneClasses.has(modulo(chorusNotes[0].scaleDegree, scaleLength))).toBe(true);
+  expect(chorusNotes.some((note) => note.durationBeats >= 1)).toBe(true);
 });
 
 test("manual Ollama thought probe is inspectable with a mocked local endpoint", async ({ page }) => {
@@ -2075,11 +2188,11 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   const canvas = page.getByTestId("terrarium-canvas");
 
   await expect(page.locator(".brand__subtitle")).toHaveText(
-    "Slow thinking loops: melody and bass can take bounded future turns",
+    "Song form: verse, chorus, bridge, and a developed chorus melody",
   );
   await expect(button).toHaveText("Start");
   await expect(status).toContainText(
-    "mode rehearsal | song Lantern | stopped | 90 BPM | bar 1 | beat 0.0 | lookahead stopped 0.0/8 | pending slots 0",
+    "mode rehearsal | song Lantern | section verse 1, bar 1/8 | stopped | 90 BPM | bar 1 | beat 0.0 | lookahead stopped 0.0/8 | pending slots 0",
   );
   await expect(page.getByTestId("session-mode-current")).toHaveText("Rehearsal");
   await expect(page.getByTestId("session-mode-rehearsal")).toBeChecked();
@@ -2159,13 +2272,13 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   await page.getByTestId("session-mode-break-option").click();
   await expect(page.getByTestId("session-mode-current")).toHaveText("Break");
   await expect(page.getByTestId("session-mode-break")).toBeChecked();
-  await expect(status).toContainText("mode break | song Lantern | stopped");
+  await expect(status).toContainText("mode break | song Lantern | section verse 1, bar 1/8 | stopped");
   expect(await getSessionMode(page)).toBe("break");
   expect((await getTransportState(page)).sessionMode).toBe("break");
   await expect.poll(async () => (await getTransportState(page)).lookahead.pendingSlotCount).toBe(0);
   await page.getByTestId("session-mode-performance-option").click();
   await expect(page.getByTestId("session-mode-current")).toHaveText("Performance");
-  await expect(status).toContainText("mode performance | song Lantern | stopped");
+  await expect(status).toContainText("mode performance | song Lantern | section verse 1, bar 1/8 | stopped");
   expect(await getSessionMode(page)).toBe("performance");
   expect(await page.evaluate(() => {
     const appWindow = window as unknown as {
@@ -2287,6 +2400,7 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   await expect(page.getByTestId("lookahead-lead")).toHaveText("0.0 / 8 beats");
   await expect(page.getByTestId("lookahead-through")).toHaveText("beat 0.0");
   await expect(page.getByTestId("lookahead-pending-slots")).toHaveText("0");
+  await expect(page.getByTestId("song-section-current")).toHaveText("Verse 1, bar 1/8");
 
   const frameBox = await canvasFrame.boundingBox();
   const box = await canvas.boundingBox();
@@ -2314,6 +2428,12 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   await expect.poll(async () => (await getTransportState(page)).lookahead.health).toBe("healthy");
   await expect(page.getByTestId("lookahead-health")).toHaveText("healthy");
   const playingState = await getTransportState(page);
+  expect(playingState.songForm).toMatchObject({
+    sectionType: "verse",
+    occurrence: 1,
+    localBar: 1,
+  });
+  await expect(page.getByTestId("song-section-current")).toContainText("Verse 1");
   expect(playingState.lookahead.targetBeats).toBe(8);
   expect(playingState.lookahead.minimumBeats).toBe(4);
   expect(playingState.lookahead.leadBeats).toBeGreaterThanOrEqual(
@@ -2634,7 +2754,7 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   await setSessionMode(page, "break");
   await expect(page.getByTestId("session-mode-current")).toHaveText("Break");
   await expect(page.getByTestId("session-mode-break")).toBeChecked();
-  await expect(status).toContainText("mode break | song Lantern | playing");
+  await expect(status).toContainText("mode break | song Lantern | section verse");
   const breakStartCount = await getRecordedEventCount(page);
   expect(breakStartCount).toBeGreaterThan(0);
   const breakStartBeat = await getLatestRecordedBeat(page);
@@ -2652,7 +2772,7 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
 
   await setSessionMode(page, "rehearsal");
   await expect(page.getByTestId("session-mode-current")).toHaveText("Rehearsal");
-  await expect(status).toContainText("mode rehearsal | song Lantern | playing");
+  await expect(status).toContainText("mode rehearsal | song Lantern | section verse");
   await expect
     .poll(async () => (await getTransportState(page)).lookahead.pendingSlotCount)
     .toBeGreaterThan(0);
@@ -2662,12 +2782,12 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
     .toBeGreaterThan(drainedBeat);
 
   await setSessionMode(page, "performance");
-  await expect(status).toContainText("mode performance | song Lantern | playing");
+  await expect(status).toContainText("mode performance | song Lantern | section verse");
   await expect
     .poll(async () => (await getTransportState(page)).lookahead.pendingSlotCount)
     .toBeGreaterThan(0);
   await setSessionMode(page, "solo-practice");
-  await expect(status).toContainText("mode solo practice | song Lantern | playing");
+  await expect(status).toContainText("mode solo practice | song Lantern | section verse");
   await expect.poll(async () => (await getTransportState(page)).lookahead.health).toBe("healthy");
   await setSessionMode(page, "rehearsal");
 
@@ -2710,7 +2830,7 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   }
 
   await expect(status).toContainText(
-    "mode rehearsal | song Lantern | stopped | 90 BPM | bar 1 | beat 0.0 | lookahead stopped 0.0/8 | pending slots 0",
+    "mode rehearsal | song Lantern | section verse 1, bar 1/8 | stopped | 90 BPM | bar 1 | beat 0.0 | lookahead stopped 0.0/8 | pending slots 0",
   );
   await expect.poll(async () => (await getTransportState(page)).status).toBe("stopped");
   expect(consoleErrors).toEqual([]);

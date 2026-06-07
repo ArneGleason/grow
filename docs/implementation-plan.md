@@ -1592,37 +1592,55 @@ Status:
 
 - Implemented in Byte 13b-c4.
 
-### Byte 14: Producer Marker, No LLM
+### Byte 14: Audible Song Form With Developed Chorus
 
-Add the producer proxy visually and with a rule-based command interpreter.
-
-Scope:
-
-- Text input.
-- Producer marker.
-- A tiny command set such as "go to pulse", "stop", "play softer", "follow bass".
-- World event display.
-
-Review focus:
-
-- whether natural-language input feels like it enters the world,
-- whether the proxy is distinct from a control panel.
-
-### Byte 15: Producer Interpretation
-
-Add one safe prompt-to-action path for the producer, using the existing thought/action protocol where possible.
+Pivot from infrastructure to audible composition. No Byte 14 slice ships unless it changes what the human can hear.
 
 Scope:
 
-- One producer prompt interpreted into a validated world action.
-- Producer requests can land as future cues, not current-frame edits.
-- Keep rule-based fallback.
+- Add a swappable default song form as data: Verse, Chorus, Verse, Chorus, Bridge, Chorus.
+- Add a tiny arrangement timeline, `sectionAtBeat(absoluteBeat)`, that loops the full form and reports section type, occurrence, local beat, and bar-in-section.
+- Drive per-section behavior through the existing note-decision path: verse grounded, chorus fuller/lifted/louder, bridge thinned and shifted.
+- Commit a deterministic developed chorus melody through the lookahead material path, not as a fire-time hack. The chorus is in-scale, starts on a chord tone from the song root plan, and is derived from the source melody motif.
+- Show current section and bar-in-section in the Session inspector and status line.
+
+Out of scope:
+
+- Producer marker or producer prompt interpretation.
+- Model-authored melody or model consensus.
+- Replay/restore, alternate forms, section detection, and more persistence.
 
 Review focus:
 
-- latency handling,
-- safety of action schema,
-- inspectability of prompt interpretation.
+- Listening: whether verse, chorus, and bridge are audibly distinct.
+- Whether the chorus melody feels related to the verse while clearly becoming its own hook.
+- Whether section transitions happen at bar boundaries and the inspector stays synced.
+- Whether the material remains deterministic, in-scale, and committed through the lookahead.
+
+Status:
+
+- Implemented in Byte 14.
+- Live probe confirmed the first chorus starts at beat 32 with section readout `Chorus 1, bar 1/8` and melody events tagged `section:chorus` / `section:developed-chorus`.
+
+### Byte 15: Consensus Selects And Remembers
+
+Let the existing proposal/response surface select among deterministic candidate developments and persist the accepted one as remembered-good material.
+
+Scope:
+
+- Offer a small set of deterministic, in-scale candidate developments for a target section.
+- Let player proposal/response state choose or modify the candidate without parsing model prose as instructions.
+- Persist the accepted structured choice so the band can recall a remembered-good section later.
+
+Review focus:
+
+- Whether player consensus changes what is heard.
+- Whether remembered material is stable across reloads or sessions.
+- Whether model text remains data, not executable instruction.
+
+Deferred producer work:
+
+- Producer marker, rule-based text input, and safe producer prompt interpretation remain useful, but they are no longer Byte 14/15. Bring them back after the band is audibly composing.
 
 ### Byte 16: Minimal Persistence
 
