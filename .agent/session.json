@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Implement Byte 13b-c4 musical event play-span idempotency fix",
-  "status": "byte13b-c4-awaiting-review",
-  "updatedAt": "2026-06-07T13:41:00Z",
+  "lastTask": "Merge Byte 13b-c4 musical event play-span idempotency fix",
+  "status": "byte13b-c4-merged-byte14-ready",
+  "updatedAt": "2026-06-07T13:54:02Z",
   "lastHandoff": "",
-  "branch": "codex/byte-13b-c4",
+  "branch": "main",
   "commit": "HEAD",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 13b-c4 fixes the required Byte 13b-c3 review finding: musical persistence ids now include a play-span serial (`musical-<sessionId>-span-<playSpanSerial>-<sourceEventId>`) because transport-local source event ids reset to `event-0` on every start while the browser session stays stable. The source buffer captures the play-span serial at enqueue time, payload schema v1 stays unchanged, and smoke now plays/stops twice and asserts persisted musical rows equal total drained source events with each span ordered independently."
+    "summary": "Byte 13b-c4 is approved and merged to `main` with Byte 13b-c3 included. Musical persistence ids include a play-span serial (`musical-<sessionId>-span-<playSpanSerial>-<sourceEventId>`) because transport-local source event ids reset to `event-0` on every start while the browser session stays stable. The source buffer captures the play-span serial at enqueue time, payload schema v1 stays unchanged, and smoke plays/stops twice and asserts persisted musical rows equal total drained source events with each span ordered independently. Next planned work is Byte 14: producer marker plus deterministic rule-based text input, no LLM."
   }
 }
