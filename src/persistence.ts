@@ -3,6 +3,7 @@ export type PersistenceRecordType =
   | "session.mode_changed"
   | "song.changed"
   | "timing.feel_changed"
+  | "song.take_feedback"
   | "musical.event_recorded";
 
 export type PersistenceStatus = "idle" | "scheduled" | "flushing" | "retrying" | "error";

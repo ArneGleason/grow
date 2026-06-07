@@ -32,6 +32,13 @@ import {
   type MusicalEventRecordBufferState,
   type MusicalEventRecordSource,
 } from "./musical-event-record";
+import {
+  createMelodyRepairTake,
+  type MelodyDevelopmentMode,
+  type MelodyFeedbackValue,
+  type MelodyPhraseScore,
+  type MelodyRepairTake,
+} from "./melody-scoring";
 import { PLAYER_REGISTRY } from "./players";
 import {
   DEFAULT_SESSION_MODE,
@@ -50,7 +57,7 @@ import {
   type SongId,
   type SongMaterial,
 } from "./song-material";
-import { sectionAtBeat } from "./song-form";
+import { sectionAtBeat, type ChorusDevelopment } from "./song-form";
 import {
   applySongSketchProposalText,
   createInspectOnlySongSketch,
@@ -116,13 +123,20 @@ let ollamaProposalTextTest = createInitialOllamaProposalTextTest(ollamaConfig);
 let ollamaRequestInFlight = false;
 let songId: SongId = DEFAULT_SONG_ID;
 let timingFeelMode: TimingFeelMode = "feel";
+let melodyDevelopmentMode: MelodyDevelopmentMode = "repaired";
 let cachedSongSketchKey = "";
 let cachedSongSketchBase: SongSketch | undefined;
+let cachedMelodyRepairKey = "";
+let cachedMelodyRepairTake: MelodyRepairTake | undefined;
+let melodyRepairFeedbackMessage = "No feedback yet.";
+const rejectedMelodyRepairKeysBySong = new Map<SongId, Set<string>>();
+const rememberedMelodyRepairCountsBySong = new Map<SongId, number>();
+const melodyRepairWeightNudgesByPlayer = new Map<string, number>();
 const persistence = createPersistenceClient({
   name: "Grow browser session",
   metadata: {
     app: "Grow",
-    persistenceByte: "13b-c3",
+    persistenceByte: "15a",
   },
 }, {
   onStateChange: () => {
@@ -207,6 +221,21 @@ const timingFeelControls = TIMING_FEEL_OPTIONS.map((mode) => `
             <span>${mode.label}</span>
           </label>
 `).join("");
+const melodyDevelopmentControls = ([
+  { id: "raw", label: "Raw" },
+  { id: "repaired", label: "Repaired" },
+] as const satisfies Array<{ id: MelodyDevelopmentMode; label: string }>).map((mode) => `
+          <label class="mode-option" data-testid="melody-development-${mode.id}-option">
+            <input
+              data-testid="melody-development-${mode.id}"
+              name="melody-development"
+              type="radio"
+              value="${mode.id}"
+              ${mode.id === melodyDevelopmentMode ? "checked" : ""}
+            />
+            <span>${mode.label}</span>
+          </label>
+`).join("");
 const HELP_TOPICS = {
   session: {
     title: "Session",
@@ -231,6 +260,10 @@ const HELP_TOPICS = {
   "song-sketch": {
     title: "Song Sketch",
     body: "Song Sketch is an inspect-only band-level draft. It records sections, shared tonal plans, player assignments, and open questions before any songwriting idea is allowed to drive playback.",
+  },
+  "melody-score": {
+    title: "Melody Score",
+    body: "Melody Score compares the raw transformed chorus with a deterministic repaired take. Scores are perspectival: each player hears the same phrase against its own tiny influence prior. Up remembers the take; Down rejects it and repairs again.",
   },
   listening: {
     title: "Listening",
@@ -283,11 +316,11 @@ function getSongLabel(nextSongId: SongId): string {
 }
 
 app.innerHTML = `
-  <section class="app-shell" aria-label="Grow Byte 14">
+  <section class="app-shell" aria-label="Grow Byte 15a">
     <header class="topbar">
       <div class="brand">
         <h1 class="brand__title">Grow</h1>
-        <p class="brand__subtitle">Song form: verse, chorus, bridge, and a developed chorus melody</p>
+        <p class="brand__subtitle">Scored and repaired chorus melody, still deterministic</p>
       </div>
       <div class="transport-controls">
         <fieldset class="mode-control">
@@ -486,6 +519,38 @@ ${renderHelpButton("song-sketch", "song sketch")}
           </dl>
         </section>
 
+        <section class="inspector-section" aria-label="Melody score">
+          <div class="section-heading">
+            <h2>Melody Score</h2>
+${renderHelpButton("melody-score", "melody score")}
+          </div>
+          <fieldset class="mode-control melody-score-control">
+            <legend class="visually-hidden">Chorus melody audition mode</legend>
+            <span class="mode-label" aria-hidden="true">Audition</span>
+            <div class="mode-segments" data-testid="melody-development-control">
+${melodyDevelopmentControls}
+            </div>
+          </fieldset>
+          <div class="ollama-actions">
+            <button class="mini-button" data-testid="melody-repair-up" type="button">Up</button>
+            <button class="mini-button" data-testid="melody-repair-down" type="button">Down</button>
+          </div>
+          <dl>
+            <dt>Mode</dt>
+            <dd data-testid="melody-development-current">Repaired</dd>
+            <dt>Total</dt>
+            <dd data-testid="melody-score-total">none</dd>
+            <dt>Subscores</dt>
+            <dd data-testid="melody-score-subscores">none</dd>
+            <dt>Top critique</dt>
+            <dd data-testid="melody-score-critique">none</dd>
+            <dt>Perspectives</dt>
+            <dd data-testid="melody-score-perspectives">none</dd>
+            <dt>Feedback</dt>
+            <dd data-testid="melody-score-feedback">none</dd>
+          </dl>
+        </section>
+
         <section class="inspector-section" aria-label="Listening frame">
           <div class="section-heading">
             <h2>Listening</h2>
@@ -580,6 +645,15 @@ const songSketchAssignments = requireElement<HTMLElement>("[data-testid='song-sk
 const songSketchProposal = requireElement<HTMLElement>("[data-testid='song-sketch-proposal']");
 const songSketchResponses = requireElement<HTMLElement>("[data-testid='song-sketch-responses']");
 const songSketchQuestions = requireElement<HTMLElement>("[data-testid='song-sketch-questions']");
+const melodyDevelopmentControl = requireElement<HTMLDivElement>("[data-testid='melody-development-control']");
+const melodyDevelopmentCurrent = requireElement<HTMLElement>("[data-testid='melody-development-current']");
+const melodyRepairUpButton = requireElement<HTMLButtonElement>("[data-testid='melody-repair-up']");
+const melodyRepairDownButton = requireElement<HTMLButtonElement>("[data-testid='melody-repair-down']");
+const melodyScoreTotal = requireElement<HTMLElement>("[data-testid='melody-score-total']");
+const melodyScoreSubscores = requireElement<HTMLElement>("[data-testid='melody-score-subscores']");
+const melodyScoreCritique = requireElement<HTMLElement>("[data-testid='melody-score-critique']");
+const melodyScorePerspectives = requireElement<HTMLElement>("[data-testid='melody-score-perspectives']");
+const melodyScoreFeedback = requireElement<HTMLElement>("[data-testid='melody-score-feedback']");
 
 let terrarium: TerrariumView | null = null;
 let activeResizePointerId: number | null = null;
@@ -1108,6 +1182,175 @@ function formatSongSketchProposal(proposal: SongSketchProposal): string {
 function formatSongSketchProposalResponse(response: SongSketchProposalResponse): string {
   const change = response.requestedChange ? ` (${response.requestedChange})` : "";
   return `${response.playerId} ${response.stance}: ${response.reason}${change}`;
+}
+
+function getCurrentMelodyRepairTake(state: GrowTransportState = getState()): MelodyRepairTake {
+  const song = getSongMaterial(state.songId);
+  const tonalContext = world.getTonalContext();
+  const players = world.getPlayers().map(({ player }) => player);
+  const rejectedKeys = getRejectedMelodyRepairKeys(state.songId);
+  const cacheKey = createMelodyRepairCacheKey(song, tonalContext, players, rejectedKeys);
+  if (!cachedMelodyRepairTake || cachedMelodyRepairKey !== cacheKey) {
+    cachedMelodyRepairKey = cacheKey;
+    cachedMelodyRepairTake = createMelodyRepairTake({
+      song,
+      tonalContext,
+      players,
+      perspectivePlayerId: "melody",
+      rejectedPhraseKeys: rejectedKeys,
+      rememberedCount: rememberedMelodyRepairCountsBySong.get(state.songId) ?? 0,
+      weightNudges: melodyRepairWeightNudgesByPlayer,
+    });
+  }
+  return cachedMelodyRepairTake;
+}
+
+function createMelodyRepairCacheKey(
+  song: SongMaterial,
+  tonalContext: ListeningFrame["tonalContext"],
+  players: readonly { id: string }[],
+  rejectedKeys: ReadonlySet<string>,
+): string {
+  return [
+    song.id,
+    tonalContext.tonic,
+    tonalContext.mode,
+    tonalContext.scale.join(","),
+    players.map((player) => player.id).join(","),
+    [...rejectedKeys].sort().join(","),
+  ].join("|");
+}
+
+function invalidateMelodyRepairCache(): void {
+  cachedMelodyRepairKey = "";
+  cachedMelodyRepairTake = undefined;
+}
+
+function getRejectedMelodyRepairKeys(nextSongId: SongId = songId): Set<string> {
+  let keys = rejectedMelodyRepairKeysBySong.get(nextSongId);
+  if (!keys) {
+    keys = new Set<string>();
+    rejectedMelodyRepairKeysBySong.set(nextSongId, keys);
+  }
+  return keys;
+}
+
+function getCurrentChorusDevelopment(): ChorusDevelopment {
+  if (melodyDevelopmentMode === "raw") {
+    return { mode: "raw" };
+  }
+  return {
+    mode: "repaired",
+    repairedEvents: getCurrentMelodyRepairTake().repairedEvents,
+  };
+}
+
+function applyMelodyDevelopmentMode(mode: MelodyDevelopmentMode): MelodyDevelopmentMode {
+  if (mode === melodyDevelopmentMode) return melodyDevelopmentMode;
+  melodyDevelopmentMode = mode;
+  refreshLookaheadSchedule();
+  renderWorld();
+  return melodyDevelopmentMode;
+}
+
+function rememberCurrentMelodyRepairTake(): MelodyRepairTake {
+  const take = getCurrentMelodyRepairTake();
+  const nextCount = (rememberedMelodyRepairCountsBySong.get(songId) ?? 0) + 1;
+  rememberedMelodyRepairCountsBySong.set(songId, nextCount);
+  const currentNudge = melodyRepairWeightNudgesByPlayer.get(take.perspectiveId) ?? 0;
+  melodyRepairWeightNudgesByPlayer.set(take.perspectiveId, clamp(currentNudge + 0.025, -0.12, 0.12));
+  melodyRepairFeedbackMessage = `remembered ${take.id}`;
+  recordMelodyRepairFeedback("up", take);
+  queueRender();
+  return take;
+}
+
+function rejectCurrentMelodyRepairTake(): MelodyRepairTake {
+  const take = getCurrentMelodyRepairTake();
+  getRejectedMelodyRepairKeys(songId).add(take.phraseKey);
+  melodyRepairFeedbackMessage = `rejected ${take.id}; repaired again`;
+  recordMelodyRepairFeedback("down", take);
+  invalidateMelodyRepairCache();
+  refreshLookaheadSchedule();
+  renderWorld();
+  return getCurrentMelodyRepairTake();
+}
+
+function recordMelodyRepairFeedback(
+  feedback: MelodyFeedbackValue,
+  take: MelodyRepairTake,
+): void {
+  persistence.record({
+    type: "song.take_feedback",
+    actorId: "human-producer",
+    sessionMode: world.getSessionMode(),
+    beat: getPersistenceBeat(),
+    payload: {
+      source: "melody-score",
+      feedback,
+      memoryStatus: feedback === "up" ? "remembered-good" : "rejected",
+      songId,
+      sectionType: "chorus",
+      takeId: take.id,
+      perspectiveId: take.perspectiveId,
+      phraseKey: take.phraseKey,
+      rawScore: snapshotMelodyScore(take.primaryRawScore),
+      repairedScore: snapshotMelodyScore(take.primaryRepairedScore),
+      rejectedCount: getRejectedMelodyRepairKeys(songId).size,
+      rememberedCount: rememberedMelodyRepairCountsBySong.get(songId) ?? 0,
+    },
+  });
+}
+
+function snapshotMelodyScore(score: MelodyPhraseScore): Record<string, unknown> {
+  return {
+    perspectiveId: score.perspectiveId,
+    total: score.total,
+    landing: score.landing,
+    monotony: score.monotony,
+    surprise: score.surprise,
+    averageSurprise: score.averageSurprise,
+    topCritique: score.critiques[0]?.message ?? "none",
+  };
+}
+
+function renderMelodyRepair(take: MelodyRepairTake): void {
+  melodyDevelopmentCurrent.textContent = melodyDevelopmentMode === "raw" ? "Raw transform" : "Repaired";
+  for (
+    const input of melodyDevelopmentControl.querySelectorAll<HTMLInputElement>("input[name='melody-development']")
+  ) {
+    input.checked = input.value === melodyDevelopmentMode;
+  }
+
+  const activeScore = melodyDevelopmentMode === "raw"
+    ? take.primaryRawScore
+    : take.primaryRepairedScore;
+  melodyScoreTotal.textContent = [
+    `${melodyDevelopmentMode} ${activeScore.total.toFixed(3)}`,
+    `raw ${take.primaryRawScore.total.toFixed(3)}`,
+    `repaired ${take.primaryRepairedScore.total.toFixed(3)}`,
+    take.improved ? "improved" : "not improved",
+  ].join(" | ");
+  melodyScoreSubscores.textContent = formatMelodyScoreSubscores(activeScore);
+  melodyScoreCritique.textContent = take.topCritique;
+  melodyScorePerspectives.textContent = take.repairedScores.map(formatPerspectiveScore).join(" | ");
+  melodyScoreFeedback.textContent = [
+    `${rememberedMelodyRepairCountsBySong.get(songId) ?? 0} remembered`,
+    `${getRejectedMelodyRepairKeys(songId).size} rejected`,
+    melodyRepairFeedbackMessage,
+  ].join(" | ");
+}
+
+function formatMelodyScoreSubscores(score: MelodyPhraseScore): string {
+  return `land ${score.landing.toFixed(2)}, monotony ${score.monotony.toFixed(2)}, surprise ${score.surprise.toFixed(2)} avg ${score.averageSurprise.toFixed(2)} target ${score.surpriseTarget.toFixed(2)}`;
+}
+
+function formatPerspectiveScore(score: MelodyPhraseScore): string {
+  return `${score.perspectiveLabel} ${score.total.toFixed(2)} (L${score.landing.toFixed(2)} M${score.monotony.toFixed(2)} S${score.surprise.toFixed(2)})`;
+}
+
+function isMelodyDevelopmentMode(value: string): value is MelodyDevelopmentMode {
+  return value === "raw" || value === "repaired";
 }
 
 function roundDisplayBeat(value: number): number {
@@ -1744,6 +1987,7 @@ function renderWorld(state: GrowTransportState = getState()): void {
   );
   renderThoughts(thoughtRequests, thoughtIntents);
   renderSongSketch(getCurrentSongSketch(state));
+  renderMelodyRepair(getCurrentMelodyRepairTake(state));
   renderListening(frame);
   renderOllama();
   terrarium?.setHeat(createTerrariumHeatState(frame));
@@ -1873,6 +2117,8 @@ function applySongId(nextSongId: SongId): SongId {
   const previousSongId = songId;
   if (previousSongId === nextSongId) return songId;
   songId = nextSongId;
+  melodyRepairFeedbackMessage = "No feedback yet.";
+  invalidateMelodyRepairCache();
   ollamaProposalTextTest = createInitialOllamaProposalTextTest(ollamaConfig);
   cancelSlowThinkingControllers("song changed before the thought could land");
   clearSlowThoughtPlayback();
@@ -1970,6 +2216,7 @@ initTransport({
   shouldRefillLookahead: () => shouldSessionModeRefillLookahead(world.getSessionMode()),
   songId: () => songId,
   timingFeelMode: () => timingFeelMode,
+  chorusDevelopment: () => getCurrentChorusDevelopment(),
 }, {
   tonalContext: world.getTonalContext(),
 });
@@ -2020,6 +2267,22 @@ timingFeelControl.addEventListener("change", (event) => {
   if (!isTimingFeelMode(input.value)) return;
 
   applyTimingFeelMode(input.value);
+});
+
+melodyDevelopmentControl.addEventListener("change", (event) => {
+  const input = event.target;
+  if (!(input instanceof HTMLInputElement) || input.name !== "melody-development") return;
+  if (!isMelodyDevelopmentMode(input.value)) return;
+
+  applyMelodyDevelopmentMode(input.value);
+});
+
+melodyRepairUpButton.addEventListener("click", () => {
+  rememberCurrentMelodyRepairTake();
+});
+
+melodyRepairDownButton.addEventListener("click", () => {
+  rejectCurrentMelodyRepairTake();
 });
 
 ollamaBaseUrlInput.addEventListener("change", () => {
@@ -2143,6 +2406,13 @@ declare global {
     timing?: {
       getMode(): TimingFeelMode;
       setMode(mode: string): TimingFeelMode;
+    };
+    melodyRepair?: {
+      getMode(): MelodyDevelopmentMode;
+      setMode(mode: string): MelodyDevelopmentMode;
+      getTake(): MelodyRepairTake;
+      remember(): MelodyRepairTake;
+      reject(): MelodyRepairTake;
     };
     persistence?: {
       getState(): PersistenceClientState;
@@ -2268,6 +2538,19 @@ window.timing = {
   },
 };
 
+window.melodyRepair = {
+  getMode: () => melodyDevelopmentMode,
+  setMode: (mode) => {
+    if (isMelodyDevelopmentMode(mode)) {
+      return applyMelodyDevelopmentMode(mode);
+    }
+    return melodyDevelopmentMode;
+  },
+  getTake: () => getCurrentMelodyRepairTake(),
+  remember: () => rememberCurrentMelodyRepairTake(),
+  reject: () => rejectCurrentMelodyRepairTake(),
+};
+
 window.persistence = {
   getState: () => persistence.getState(),
   getMusicalEventBufferState: () => musicalEventRecordBuffer.getState(),
@@ -2318,6 +2601,7 @@ if (import.meta.hot) {
     window.session = undefined;
     window.song = undefined;
     window.timing = undefined;
+    window.melodyRepair = undefined;
     window.persistence = undefined;
     window.ollama = undefined;
     window.terrarium = undefined;

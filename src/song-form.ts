@@ -24,6 +24,13 @@ export interface SongSectionContext extends SongArrangementSection {
   totalBeats: number;
 }
 
+export type ChorusDevelopmentMode = "raw" | "repaired";
+
+export interface ChorusDevelopment {
+  mode: ChorusDevelopmentMode;
+  repairedEvents?: readonly (PatternNoteSource | null)[];
+}
+
 export interface SongArrangement {
   beatsPerBar: number;
   totalBeats: number;
@@ -38,6 +45,7 @@ export interface SongFormPatternEventInput {
   absoluteBeat: number;
   tonalContext: TonalContext;
   arrangement?: SongArrangement;
+  chorusDevelopment?: ChorusDevelopment;
 }
 
 export const DEFAULT_SONG_FORM: readonly SongFormSection[] = [
@@ -170,6 +178,17 @@ function createChorusMelodyEvent(
   context: SongSectionContext,
 ): PatternNoteSource | null {
   const phraseStep = getPhraseStep(context.localBeat, input.pattern.subdivisionBeats);
+  if (
+    input.chorusDevelopment?.mode === "repaired" &&
+    input.chorusDevelopment.repairedEvents &&
+    input.chorusDevelopment.repairedEvents.length > 0
+  ) {
+    const repairedEvent = input.chorusDevelopment.repairedEvents[
+      phraseStep % input.chorusDevelopment.repairedEvents.length
+    ] ?? null;
+    return repairedEvent ? { ...repairedEvent } : null;
+  }
+
   const hook = CHORUS_HOOK_SLOTS[phraseStep % CHORUS_HOOK_SLOTS.length];
   if (!hook) return null;
 

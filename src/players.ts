@@ -39,10 +39,16 @@ export interface PlayerMemoryFragment {
   tags: string[];
 }
 
+export interface PlayerInfluencePhrase {
+  id: string;
+  scaleDegrees: readonly number[];
+}
+
 export interface PlayerThinkingProfile {
   // Prompt-facing identity only for now; taste remains the behavior-facing rule profile.
   disposition: PlayerDisposition;
   memoryFragments: PlayerMemoryFragment[];
+  influencePhrases: readonly PlayerInfluencePhrase[];
 }
 
 export interface Player {
@@ -106,6 +112,11 @@ export const PULSE_PLAYER: Player = {
         tags: ["rest", "caution", "space"],
       },
     ],
+    influencePhrases: [
+      { id: "pulse-root-stillness", scaleDegrees: [0, 0, 0, 0, 4, 0, 0, 0] },
+      { id: "pulse-low-return", scaleDegrees: [0, 4, 0, 4, 0, 6, 0, 0] },
+      { id: "pulse-small-steps", scaleDegrees: [0, 1, 0, 0, 6, 0, 0, 0] },
+    ],
   },
   tags: ["low", "steady", "quarter-note"],
 };
@@ -158,6 +169,11 @@ export const BASS_PLAYER: Player = {
         tags: ["support", "space", "contrast"],
       },
     ],
+    influencePhrases: [
+      { id: "bass-valve-count", scaleDegrees: [0, 4, 6, 4, 0, 4, 0, 0] },
+      { id: "bass-shadow-turn", scaleDegrees: [0, 6, 4, 5, 4, 0, 6, 0] },
+      { id: "bass-corner-answer", scaleDegrees: [0, 3, 4, 0, 6, 5, 4, 0] },
+    ],
   },
   tags: ["low", "support", "modal"],
 };
@@ -209,6 +225,11 @@ export const MELODY_PLAYER: Player = {
         text: "keeps a paper-lantern tune for moments when the band gets too crowded",
         tags: ["rest", "space", "high"],
       },
+    ],
+    influencePhrases: [
+      { id: "melody-elevator-contour", scaleDegrees: [2, 4, 5, 4, 1, 0, 2, 4] },
+      { id: "melody-lantern-hook", scaleDegrees: [4, 6, 4, 2, 0, 2, 5, 4] },
+      { id: "melody-storm-answer", scaleDegrees: [5, 4, 2, 3, 5, 6, 4, 2] },
     ],
   },
   tags: ["mid", "motif", "modal"],

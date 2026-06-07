@@ -1622,21 +1622,44 @@ Status:
 - Implemented in Byte 14.
 - Live probe confirmed the first chorus starts at beat 32 with section readout `Chorus 1, bar 1/8` and melody events tagged `section:chorus` / `section:developed-chorus`.
 
-### Byte 15: Consensus Selects And Remembers
+### Byte 15a: Deterministic Chorus Scoring And Repair
 
-Let the existing proposal/response surface select among deterministic candidate developments and persist the accepted one as remembered-good material.
+Treat the Byte 14 developed chorus as a draft. Score it from each player's deterministic perspective, repair it toward a sweet spot, and let the human remember or reject takes before any model critic enters.
 
 Scope:
 
-- Offer a small set of deterministic, in-scale candidate developments for a target section.
-- Let player proposal/response state choose or modify the candidate without parsing model prose as instructions.
-- Persist the accepted structured choice so the band can recall a remembered-good section later.
+- Add a melody scorer with landing, monotony, and surprise-vs-target sub-scores plus per-note critique flags.
+- Give each player a tiny deterministic influence corpus and derive per-player scoring weights/targets from existing disposition.
+- Repair the raw chorus with bounded in-scale candidate substitutions and commit the repaired result through the lookahead material path.
+- Add an inspector readout for raw versus repaired score, sub-scores, top critique, and per-player perspective scores.
+- Add Raw/Repaired A/B audition and Up/Down feedback; Up persists a remembered-good `song.take_feedback` record, Down rejects the current phrase key and repairs again.
 
 Review focus:
 
-- Whether player consensus changes what is heard.
-- Whether remembered material is stable across reloads or sessions.
-- Whether model text remains data, not executable instruction.
+- Listening: whether the repaired chorus sounds less mechanical than the raw transform.
+- Whether raw and repaired are easy to A/B and the repaired line remains deterministic and in-scale.
+- Whether per-player perspectives visibly disagree on the same phrase.
+- Whether human feedback persists as data and affects only future deterministic repair, not model behavior.
+
+Status:
+
+- Implemented in Byte 15a.
+
+### Byte 15b: Model Critic On The Scoring Substrate
+
+Let a local model critique only by selecting among already-scored, already-validated candidate repairs. The deterministic scorer remains the fallback and comparison harness.
+
+Scope:
+
+- Present bounded candidate repair choices and deterministic scores to the model.
+- Validate the model's structured choice; invalid or unavailable output falls back to the deterministic best.
+- Store model rationale as prose data only, never as executable instruction.
+
+Review focus:
+
+- Whether the model's selected candidate beats or usefully differs from the deterministic pick by ear and score.
+- Whether the validator/fallback path prevents wrong notes or unbounded edits.
+- Whether model critique improves the compositional loop without hiding the deterministic ground truth.
 
 Deferred producer work:
 

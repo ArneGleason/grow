@@ -21,6 +21,7 @@ import {
   DEFAULT_SONG_ARRANGEMENT,
   arrangeSongFormPatternEvent,
   sectionAtBeat,
+  type ChorusDevelopment,
   type SongSectionContext,
 } from "./song-form";
 import type { TasteNoteDecision, TasteNoteDecisionInput } from "./taste";
@@ -78,6 +79,7 @@ export interface TransportHandlers {
   shouldRefillLookahead?: () => boolean;
   songId?: () => SongId;
   timingFeelMode?: () => TimingFeelMode;
+  chorusDevelopment?: () => ChorusDevelopment | undefined;
 }
 
 export interface TransportOptions {
@@ -456,6 +458,7 @@ function getPatternStep(pattern: PlayerPattern, absoluteBeat: number): Scheduled
     absoluteBeat,
     tonalContext: activeTonalContext,
     arrangement: DEFAULT_SONG_ARRANGEMENT,
+    chorusDevelopment: handlers.chorusDevelopment?.(),
   });
   return arrangedEvent ? materializeNote(activeTonalContext, arrangedEvent) : arrangedEvent;
 }

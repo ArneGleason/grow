@@ -5,7 +5,11 @@ import {
   createMusicalEventPersistenceRecord,
 } from "../src/musical-event-record";
 import { calculatePerformedTiming } from "../src/performed-time";
-import { MELODY_PLAYER } from "../src/players";
+import { MELODY_PLAYER, PLAYER_REGISTRY } from "../src/players";
+import {
+  createMelodyRepairTake,
+  type MelodyRepairTake,
+} from "../src/melody-scoring";
 import {
   SESSION_MODES,
   shouldSessionModeRefillLookahead,
@@ -631,6 +635,21 @@ async function getSongProposal(page: Page): Promise<SongSketchProposal> {
   return proposal;
 }
 
+async function getMelodyRepairTake(page: Page): Promise<MelodyRepairTake> {
+  const take = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      melodyRepair?: { getTake(): MelodyRepairTake };
+    };
+    return appWindow.melodyRepair?.getTake();
+  });
+
+  if (!take) {
+    throw new Error("window.melodyRepair.getTake() was not available");
+  }
+
+  return take;
+}
+
 function getSongSketchAssignmentDensity(sketch: SongSketch, playerId: string): number {
   const assignment = sketch.assignments.find((nextAssignment) => nextAssignment.playerId === playerId);
   if (!assignment) {
@@ -1148,6 +1167,80 @@ test("song form timeline develops an in-scale chorus melody", () => {
   expect(chorusNotes.some((note) => note.durationBeats >= 1)).toBe(true);
   expect(bridgeNotes.length).toBeGreaterThan(0);
   expect(Math.max(...bridgeNotes.map((note) => note.octave))).toBe(5);
+});
+
+test("melody scoring repairs the chorus and scores player perspectives differently", () => {
+  const song = getSongMaterialForTest("lantern");
+  const take = createMelodyRepairTake({
+    song,
+    tonalContext: DEFAULT_TONAL_CONTEXT,
+    players: PLAYER_REGISTRY,
+    perspectivePlayerId: "melody",
+  });
+  const scaleLength = DEFAULT_TONAL_CONTEXT.scale.length;
+  const rawKey = take.rawPhrase.map((note) => `${note.stepIndex}:${note.scaleDegree}:${note.octave}`).join("|");
+  const repairedKey = take.repairedPhrase.map((note) =>
+    `${note.stepIndex}:${note.scaleDegree}:${note.octave}`
+  ).join("|");
+  const pulseScore = take.repairedScores.find((score) => score.perspectiveId === "pulse");
+  const melodyScore = take.repairedScores.find((score) => score.perspectiveId === "melody");
+
+  expect(take.improved).toBe(true);
+  expect(take.primaryRepairedScore.total).toBeGreaterThan(take.primaryRawScore.total);
+  expect(repairedKey).not.toEqual(rawKey);
+  expect(pulseScore).toBeTruthy();
+  expect(melodyScore).toBeTruthy();
+  expect(pulseScore?.total).not.toBe(melodyScore?.total);
+  expect(take.repairedPhrase.every((note) =>
+    DEFAULT_TONAL_CONTEXT.scale[modulo(note.scaleDegree, scaleLength)] !== undefined
+  )).toBe(true);
+  expect(take.primaryRepairedScore.critiques.length).toBeLessThanOrEqual(
+    take.primaryRawScore.critiques.length,
+  );
+});
+
+test("melody repair readout supports A/B audition and remembered feedback", async ({ page }) => {
+  await page.goto("/");
+  await flushPersistence(page);
+  await expect(page.getByTestId("melody-development-current")).toHaveText("Repaired");
+  await expect(page.getByTestId("melody-score-total")).toContainText("repaired");
+  await expect(page.getByTestId("melody-score-perspectives")).toContainText("pulse");
+
+  const initialTake = await getMelodyRepairTake(page);
+  expect(initialTake.improved).toBe(true);
+
+  await page.getByTestId("melody-development-raw-option").click();
+  await expect(page.getByTestId("melody-development-current")).toHaveText("Raw transform");
+  await expect(page.getByTestId("melody-development-raw")).toBeChecked();
+
+  await page.getByTestId("melody-development-repaired-option").click();
+  await expect(page.getByTestId("melody-development-current")).toHaveText("Repaired");
+  await expect(page.getByTestId("melody-development-repaired")).toBeChecked();
+
+  await page.getByTestId("melody-repair-down").click();
+  await expect(page.getByTestId("melody-score-feedback")).toContainText("1 rejected");
+  const rerolledTake = await getMelodyRepairTake(page);
+  expect(rerolledTake.phraseKey).not.toEqual(initialTake.phraseKey);
+
+  await page.getByTestId("melody-repair-up").click();
+  await expect(page.getByTestId("melody-score-feedback")).toContainText("1 remembered");
+  await flushPersistence(page);
+
+  const persistenceState = await getPersistenceState(page);
+  const dump = await dumpPersistence(page, 200);
+  const feedbackEvents = dump.events
+    .filter((event) =>
+      event.sessionId === persistenceState.sessionId &&
+      event.type === "song.take_feedback"
+    )
+    .sort((left, right) => left.seq - right.seq);
+
+  expect(feedbackEvents.map((event) => event.payload.feedback)).toEqual(["down", "up"]);
+  expect(feedbackEvents.at(-1)?.payload).toMatchObject({
+    memoryStatus: "remembered-good",
+    songId: "lantern",
+    sectionType: "chorus",
+  });
 });
 
 test("manual Ollama thought probe is inspectable with a mocked local endpoint", async ({ page }) => {
@@ -2191,7 +2284,7 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   const canvas = page.getByTestId("terrarium-canvas");
 
   await expect(page.locator(".brand__subtitle")).toHaveText(
-    "Song form: verse, chorus, bridge, and a developed chorus melody",
+    "Scored and repaired chorus melody, still deterministic",
   );
   await expect(button).toHaveText("Start");
   await expect(status).toContainText(
@@ -2210,6 +2303,9 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   await expect(page.getByTestId("song-sketch-proposal")).toContainText("mock/");
   await expect(page.getByTestId("song-sketch-responses")).toContainText("bass");
   await expect(page.getByTestId("song-sketch-questions")).not.toHaveText("none");
+  await expect(page.getByTestId("melody-development-current")).toHaveText("Repaired");
+  await expect(page.getByTestId("melody-score-total")).toContainText("improved");
+  await expect(page.getByTestId("melody-score-perspectives")).toContainText("melody");
   const songSketch = await getSongSketch(page);
   expect(songSketch.id).toBe("sketch-lantern-c-mixolydian");
   expect(songSketch.status).toBe("draft");

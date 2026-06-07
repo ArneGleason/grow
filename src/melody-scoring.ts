@@ -1,0 +1,773 @@
+import type { TonalContext } from "./listening";
+import type { Player } from "./players";
+import type { PatternNoteSource, PlayerPatternSource, SongMaterial } from "./song-material";
+import {
+  DEFAULT_SONG_ARRANGEMENT,
+  arrangeSongFormPatternEvent,
+  deriveSongRootDegrees,
+} from "./song-form";
+
+export type MelodyDevelopmentMode = "raw" | "repaired";
+export type MelodyFeedbackValue = "up" | "down";
+
+export interface MelodyPhraseNote {
+  stepIndex: number;
+  positionBeats: number;
+  scaleDegree: number;
+  octave: number;
+  durationBeats: number;
+  velocity: number;
+}
+
+export interface MelodyCritique {
+  noteIndex: number;
+  range?: [number, number];
+  code:
+    | "off-chord-landing"
+    | "unresolved-leap"
+    | "weak-cadence"
+    | "repeated-run"
+    | "narrow-variety"
+    | "one-way-stretch"
+    | "exact-repeat-cell"
+    | "too-expected"
+    | "too-jarring";
+  message: string;
+}
+
+export interface MelodyPerspective {
+  playerId: string;
+  label: string;
+  weights: {
+    landing: number;
+    monotony: number;
+    surprise: number;
+  };
+  surpriseTarget: number;
+  surpriseTolerance: number;
+  prior: {
+    degreeCounts: ReadonlyMap<number, number>;
+    intervalCounts: ReadonlyMap<number, number>;
+    totalDegrees: number;
+    totalIntervals: number;
+  };
+}
+
+export interface MelodyPhraseScore {
+  perspectiveId: string;
+  perspectiveLabel: string;
+  total: number;
+  landing: number;
+  monotony: number;
+  surprise: number;
+  averageSurprise: number;
+  weights: MelodyPerspective["weights"];
+  surpriseTarget: number;
+  critiques: readonly MelodyCritique[];
+}
+
+export interface MelodyRepairTake {
+  id: string;
+  songId: SongMaterial["id"];
+  perspectiveId: string;
+  mode: MelodyDevelopmentMode;
+  rawPhrase: readonly MelodyPhraseNote[];
+  repairedPhrase: readonly MelodyPhraseNote[];
+  rawEvents: readonly (PatternNoteSource | null)[];
+  repairedEvents: readonly (PatternNoteSource | null)[];
+  rawScores: readonly MelodyPhraseScore[];
+  repairedScores: readonly MelodyPhraseScore[];
+  primaryRawScore: MelodyPhraseScore;
+  primaryRepairedScore: MelodyPhraseScore;
+  improved: boolean;
+  phraseKey: string;
+  rejectedCount: number;
+  rememberedCount: number;
+  topCritique: string;
+}
+
+export interface MelodyRepairOptions {
+  song: SongMaterial;
+  tonalContext: TonalContext;
+  players: readonly Player[];
+  perspectivePlayerId?: string;
+  rejectedPhraseKeys?: ReadonlySet<string>;
+  rememberedCount?: number;
+  weightNudges?: ReadonlyMap<string, number>;
+}
+
+export const MELODY_CHORUS_PHRASE_BEATS = 8;
+const CHORUS_START_BEAT = 32;
+const CHORD_TONE_OFFSETS = [0, 2, 4] as const;
+const LEAP_INTERVAL_THRESHOLD = 3;
+const REPAIR_PASSES = 2;
+const SCORE_EPSILON = 0.0001;
+
+export function createMelodyRepairTake(options: MelodyRepairOptions): MelodyRepairTake {
+  const melodyPattern = getPatternForPlayer(options.song, "melody");
+  const rawEvents = collectRawChorusEvents(options.song, melodyPattern, options.tonalContext);
+  const rawPhrase = phraseFromEvents(rawEvents, melodyPattern.subdivisionBeats);
+  const rootDegrees = deriveSongRootDegrees(options.song);
+  const perspectives = options.players.map((player) =>
+    createMelodyPerspective(player, options.song, options.weightNudges?.get(player.id) ?? 0)
+  );
+  const primaryPerspective = perspectives.find((perspective) =>
+    perspective.playerId === (options.perspectivePlayerId ?? "melody")
+  ) ?? perspectives[0];
+
+  const primaryRawScore = scoreMelodyPhrase(rawPhrase, {
+    phraseBeats: MELODY_CHORUS_PHRASE_BEATS,
+    rootDegrees,
+    scaleLength: options.tonalContext.scale.length,
+  }, primaryPerspective);
+  const repairedPhrase = repairMelodyPhrase(rawPhrase, {
+    phraseBeats: MELODY_CHORUS_PHRASE_BEATS,
+    rootDegrees,
+    scaleLength: options.tonalContext.scale.length,
+  }, primaryPerspective, options.rejectedPhraseKeys ?? new Set());
+  const repairedEvents = eventsFromPhrase(rawEvents, repairedPhrase);
+  const rawScores = perspectives.map((perspective) =>
+    scoreMelodyPhrase(rawPhrase, {
+      phraseBeats: MELODY_CHORUS_PHRASE_BEATS,
+      rootDegrees,
+      scaleLength: options.tonalContext.scale.length,
+    }, perspective)
+  );
+  const repairedScores = perspectives.map((perspective) =>
+    scoreMelodyPhrase(repairedPhrase, {
+      phraseBeats: MELODY_CHORUS_PHRASE_BEATS,
+      rootDegrees,
+      scaleLength: options.tonalContext.scale.length,
+    }, perspective)
+  );
+  const primaryRepairedScore = repairedScores.find((score) =>
+    score.perspectiveId === primaryPerspective.playerId
+  ) ?? scoreMelodyPhrase(repairedPhrase, {
+    phraseBeats: MELODY_CHORUS_PHRASE_BEATS,
+    rootDegrees,
+    scaleLength: options.tonalContext.scale.length,
+  }, primaryPerspective);
+  const phraseKey = createPhraseKey(repairedPhrase);
+
+  return {
+    id: [
+      "chorus-repair",
+      options.song.id,
+      primaryPerspective.playerId,
+      phraseKey.replaceAll("|", "."),
+    ].join("-"),
+    songId: options.song.id,
+    perspectiveId: primaryPerspective.playerId,
+    mode: "repaired",
+    rawPhrase,
+    repairedPhrase,
+    rawEvents,
+    repairedEvents,
+    rawScores,
+    repairedScores,
+    primaryRawScore,
+    primaryRepairedScore,
+    improved: primaryRepairedScore.total > primaryRawScore.total + SCORE_EPSILON,
+    phraseKey,
+    rejectedCount: options.rejectedPhraseKeys?.size ?? 0,
+    rememberedCount: options.rememberedCount ?? 0,
+    topCritique: primaryRepairedScore.critiques[0]?.message ??
+      (primaryRawScore.critiques[0]
+        ? `repaired cleared raw flag: ${primaryRawScore.critiques[0].message}`
+        : "No urgent repair flags."),
+  };
+}
+
+export function scoreMelodyPhrase(
+  phrase: readonly MelodyPhraseNote[],
+  context: {
+    phraseBeats: number;
+    rootDegrees: readonly number[];
+    scaleLength: number;
+  },
+  perspective: MelodyPerspective,
+): MelodyPhraseScore {
+  const critiques: MelodyCritique[] = [];
+  const landing = scoreLanding(phrase, context, critiques);
+  const monotony = scoreMonotony(phrase, context.scaleLength, critiques);
+  const { score: surprise, averageSurprise } = scoreSurprise(phrase, perspective, critiques);
+  const total = roundScore(
+    landing * perspective.weights.landing +
+    monotony * perspective.weights.monotony +
+    surprise * perspective.weights.surprise,
+  );
+
+  return {
+    perspectiveId: perspective.playerId,
+    perspectiveLabel: perspective.label,
+    total,
+    landing,
+    monotony,
+    surprise,
+    averageSurprise,
+    weights: perspective.weights,
+    surpriseTarget: perspective.surpriseTarget,
+    critiques,
+  };
+}
+
+export function createPhraseKey(phrase: readonly MelodyPhraseNote[]): string {
+  return phrase.map((note) =>
+    `${note.stepIndex}:${normalizeDegree(note.scaleDegree)}:${note.octave}:${note.durationBeats}`
+  ).join("|");
+}
+
+function repairMelodyPhrase(
+  phrase: readonly MelodyPhraseNote[],
+  context: {
+    phraseBeats: number;
+    rootDegrees: readonly number[];
+    scaleLength: number;
+  },
+  perspective: MelodyPerspective,
+  rejectedPhraseKeys: ReadonlySet<string>,
+): readonly MelodyPhraseNote[] {
+  let repaired = phrase.map((note) => ({ ...note }));
+  for (let pass = 0; pass < REPAIR_PASSES; pass += 1) {
+    const score = scoreMelodyPhrase(repaired, context, perspective);
+    const flaggedIndexes = getFlaggedNoteIndexes(score.critiques, repaired.length);
+    if (flaggedIndexes.length === 0) break;
+
+    for (const noteIndex of flaggedIndexes) {
+      const currentScore = scoreMelodyPhrase(repaired, context, perspective);
+      const candidates = createRepairCandidates(repaired, noteIndex, context);
+      let bestPhrase: readonly MelodyPhraseNote[] = repaired;
+      let bestScore = currentScore.total;
+      let bestKey = createPhraseKey(repaired);
+      for (const candidate of candidates) {
+        const candidatePhrase = replacePhraseNote(repaired, noteIndex, candidate);
+        const candidateKey = createPhraseKey(candidatePhrase);
+        if (rejectedPhraseKeys.has(candidateKey)) continue;
+        const candidateScore = scoreMelodyPhrase(candidatePhrase, context, perspective).total;
+        if (
+          candidateScore > bestScore + SCORE_EPSILON ||
+          (Math.abs(candidateScore - bestScore) <= SCORE_EPSILON && candidateKey < bestKey)
+        ) {
+          bestPhrase = candidatePhrase;
+          bestScore = candidateScore;
+          bestKey = candidateKey;
+        }
+      }
+      repaired = bestPhrase.map((note) => ({ ...note }));
+    }
+  }
+
+  if (!rejectedPhraseKeys.has(createPhraseKey(repaired))) return repaired;
+  return chooseAlternatePhrase(repaired, context, perspective, rejectedPhraseKeys);
+}
+
+function chooseAlternatePhrase(
+  phrase: readonly MelodyPhraseNote[],
+  context: {
+    phraseBeats: number;
+    rootDegrees: readonly number[];
+    scaleLength: number;
+  },
+  perspective: MelodyPerspective,
+  rejectedPhraseKeys: ReadonlySet<string>,
+): readonly MelodyPhraseNote[] {
+  const alternatives: Array<{ key: string; score: number; phrase: readonly MelodyPhraseNote[] }> = [];
+  for (let noteIndex = 0; noteIndex < phrase.length; noteIndex += 1) {
+    for (const candidate of createRepairCandidates(phrase, noteIndex, context)) {
+      const candidatePhrase = replacePhraseNote(phrase, noteIndex, candidate);
+      const key = createPhraseKey(candidatePhrase);
+      if (rejectedPhraseKeys.has(key)) continue;
+      alternatives.push({
+        key,
+        score: scoreMelodyPhrase(candidatePhrase, context, perspective).total,
+        phrase: candidatePhrase,
+      });
+    }
+  }
+
+  alternatives.sort((left, right) =>
+    right.score - left.score || left.key.localeCompare(right.key)
+  );
+  return alternatives[0]?.phrase ?? phrase;
+}
+
+function createRepairCandidates(
+  phrase: readonly MelodyPhraseNote[],
+  noteIndex: number,
+  context: {
+    rootDegrees: readonly number[];
+    scaleLength: number;
+  },
+): readonly MelodyPhraseNote[] {
+  const note = phrase[noteIndex];
+  if (!note) return [];
+  const root = rootForPosition(note.positionBeats, context.rootDegrees);
+  const chordCandidates = CHORD_TONE_OFFSETS.map((offset) =>
+    nearestDegree(note.scaleDegree, root + offset, context.scaleLength)
+  );
+  const previous = phrase[noteIndex - 1];
+  const next = phrase[noteIndex + 1];
+  const contourDegree = previous && next
+    ? Math.round((previous.scaleDegree + next.scaleDegree) / 2)
+    : note.scaleDegree;
+  const degrees = [
+    note.scaleDegree - 1,
+    note.scaleDegree + 1,
+    ...chordCandidates,
+    contourDegree,
+    note.scaleDegree + 2,
+    note.scaleDegree - 2,
+  ];
+  const candidates: MelodyPhraseNote[] = [];
+  const seen = new Set<string>();
+
+  for (const degree of degrees) {
+    const candidate = {
+      ...note,
+      scaleDegree: degree,
+      octave: clampInteger(note.octave + octaveNudge(note.scaleDegree, degree, context.scaleLength), 1, 7),
+    };
+    const key = `${candidate.scaleDegree}:${candidate.octave}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    candidates.push(candidate);
+  }
+
+  for (const octaveDelta of [-1, 1]) {
+    const candidate = {
+      ...note,
+      octave: clampInteger(note.octave + octaveDelta, 1, 7),
+    };
+    const key = `${candidate.scaleDegree}:${candidate.octave}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    candidates.push(candidate);
+  }
+
+  return candidates;
+}
+
+function scoreLanding(
+  phrase: readonly MelodyPhraseNote[],
+  context: {
+    phraseBeats: number;
+    rootDegrees: readonly number[];
+    scaleLength: number;
+  },
+  critiques: MelodyCritique[],
+): number {
+  if (phrase.length === 0) return 0;
+  let checks = 0;
+  let penalties = 0;
+
+  for (let index = 0; index < phrase.length; index += 1) {
+    const note = phrase[index];
+    const important = isAccent(note.positionBeats) || isPhraseFinal(note, context.phraseBeats);
+    if (important) {
+      checks += 1;
+      if (!isChordTone(note.scaleDegree, rootForPosition(note.positionBeats, context.rootDegrees), context.scaleLength)) {
+        penalties += 1;
+        critiques.push({
+          noteIndex: index,
+          code: "off-chord-landing",
+          message: `note ${index + 1}: off-chord landing on an accented or final beat`,
+        });
+      }
+    }
+
+    const previous = phrase[index - 1];
+    const next = phrase[index + 1];
+    if (previous && next) {
+      const leap = note.scaleDegree - previous.scaleDegree;
+      const resolution = next.scaleDegree - note.scaleDegree;
+      if (Math.abs(leap) >= LEAP_INTERVAL_THRESHOLD) {
+        checks += 1;
+        if (!(Math.sign(resolution) === -Math.sign(leap) && Math.abs(resolution) <= 2)) {
+          penalties += 1;
+          critiques.push({
+            noteIndex: index,
+            code: "unresolved-leap",
+            message: `note ${index + 1}: unresolved leap should turn back by step`,
+          });
+        }
+      }
+    }
+  }
+
+  const finalNote = phrase.at(-1);
+  if (finalNote) {
+    checks += 1;
+    const root = rootForPosition(finalNote.positionBeats, context.rootDegrees);
+    const finalClass = normalizeDegree(finalNote.scaleDegree, context.scaleLength);
+    if (
+      finalClass !== normalizeDegree(root, context.scaleLength) &&
+      finalClass !== normalizeDegree(root + 2, context.scaleLength)
+    ) {
+      penalties += 1;
+      critiques.push({
+        noteIndex: phrase.length - 1,
+        code: "weak-cadence",
+        message: `note ${phrase.length}: cadence does not settle on root or third`,
+      });
+    }
+  }
+
+  return roundScore(1 - penalties / Math.max(1, checks));
+}
+
+function scoreMonotony(
+  phrase: readonly MelodyPhraseNote[],
+  scaleLength: number,
+  critiques: MelodyCritique[],
+): number {
+  if (phrase.length <= 2) return 0.5;
+  const intervals = phrase.slice(1).map((note, index) => note.scaleDegree - phrase[index].scaleDegree);
+  let penalty = 0;
+  const uniquePitchClasses = new Set(phrase.map((note) => normalizeDegree(note.scaleDegree, scaleLength))).size;
+  const varietyRatio = uniquePitchClasses / Math.max(1, phrase.length);
+
+  if (varietyRatio < 0.38) {
+    penalty += 0.28;
+    critiques.push({
+      noteIndex: 0,
+      range: [1, phrase.length],
+      code: "narrow-variety",
+      message: `1-${phrase.length}: narrow pitch-class variety`,
+    });
+  }
+
+  const repeatedRunStart = findRepeatedIntervalRun(intervals);
+  if (repeatedRunStart >= 0) {
+    penalty += 0.24;
+    critiques.push({
+      noteIndex: repeatedRunStart,
+      range: [repeatedRunStart + 1, repeatedRunStart + 4],
+      code: "repeated-run",
+      message: `${repeatedRunStart + 1}-${repeatedRunStart + 4}: repeated interval run`,
+    });
+  }
+
+  const oneWayStart = findOneWayStretch(intervals);
+  if (oneWayStart >= 0) {
+    penalty += 0.22;
+    critiques.push({
+      noteIndex: oneWayStart,
+      range: [oneWayStart + 1, oneWayStart + 5],
+      code: "one-way-stretch",
+      message: `${oneWayStart + 1}-${oneWayStart + 5}: long one-direction stretch`,
+    });
+  }
+
+  if (hasExactRepeatCell(phrase, scaleLength)) {
+    penalty += 0.18;
+    critiques.push({
+      noteIndex: 0,
+      range: [1, phrase.length],
+      code: "exact-repeat-cell",
+      message: "phrase repeats a cell too exactly",
+    });
+  }
+
+  return roundScore(Math.max(0, 1 - penalty));
+}
+
+function scoreSurprise(
+  phrase: readonly MelodyPhraseNote[],
+  perspective: MelodyPerspective,
+  critiques: MelodyCritique[],
+): { score: number; averageSurprise: number } {
+  if (phrase.length === 0) return { score: 0, averageSurprise: 0 };
+  const surprises = phrase.map((note, index) => noteSurprise(note, phrase[index - 1], perspective));
+  surprises.forEach((surprise, index) => {
+    if (surprise < perspective.surpriseTarget * 0.42) {
+      critiques.push({
+        noteIndex: index,
+        code: "too-expected",
+        message: `note ${index + 1}: too expected for ${perspective.label}`,
+      });
+    } else if (surprise > Math.min(1, perspective.surpriseTarget + perspective.surpriseTolerance * 1.5)) {
+      critiques.push({
+        noteIndex: index,
+        code: "too-jarring",
+        message: `note ${index + 1}: too abrupt for ${perspective.label}`,
+      });
+    }
+  });
+  const averageSurprise = roundScore(
+    surprises.reduce((sum, surprise) => sum + surprise, 0) / Math.max(1, surprises.length),
+  );
+  const distance = Math.abs(averageSurprise - perspective.surpriseTarget);
+  return {
+    averageSurprise,
+    score: roundScore(Math.max(0, 1 - distance / perspective.surpriseTolerance)),
+  };
+}
+
+function noteSurprise(
+  note: MelodyPhraseNote,
+  previous: MelodyPhraseNote | undefined,
+  perspective: MelodyPerspective,
+): number {
+  const degreeClass = normalizeDegree(note.scaleDegree);
+  const degreeCount = perspective.prior.degreeCounts.get(degreeClass) ?? 0;
+  const degreeProbability = (degreeCount + 1) / (perspective.prior.totalDegrees + 7);
+  const interval = previous ? clampInteger(note.scaleDegree - previous.scaleDegree, -7, 7) : 0;
+  const intervalCount = perspective.prior.intervalCounts.get(interval) ?? 0;
+  const intervalProbability = (intervalCount + 1) / (perspective.prior.totalIntervals + 15);
+  return roundScore(clamp((-Math.log2(degreeProbability * intervalProbability)) / 10, 0, 1));
+}
+
+function createMelodyPerspective(
+  player: Player,
+  song: SongMaterial,
+  feedbackNudge: number,
+): MelodyPerspective {
+  const disposition = player.thinking.disposition;
+  const landingWeight = Math.max(
+    0.1,
+    0.34 + disposition.caution * 0.2 + disposition.steadiness * 0.12 - feedbackNudge * 0.5,
+  );
+  const monotonyWeight = Math.max(
+    0.1,
+    0.24 + disposition.novelty * 0.18 + disposition.responsiveness * 0.08 + feedbackNudge * 0.2,
+  );
+  const surpriseWeight = Math.max(
+    0.1,
+    0.26 + disposition.novelty * 0.18 + disposition.disruption * 0.12 + feedbackNudge * 0.6,
+  );
+  const weightSum = landingWeight + monotonyWeight + surpriseWeight;
+  const surpriseTarget = clamp(
+    0.18 + disposition.novelty * 0.32 + disposition.disruption * 0.18 - disposition.caution * 0.08 +
+      feedbackNudge,
+    0.14,
+    0.72,
+  );
+
+  return {
+    playerId: player.id,
+    label: player.displayName,
+    weights: {
+      landing: roundScore(landingWeight / weightSum),
+      monotony: roundScore(monotonyWeight / weightSum),
+      surprise: roundScore(surpriseWeight / weightSum),
+    },
+    surpriseTarget: roundScore(surpriseTarget),
+    surpriseTolerance: roundScore(0.24 + player.thinking.disposition.disruption * 0.1),
+    prior: buildPrior(player, song),
+  };
+}
+
+function buildPrior(player: Player, song: SongMaterial): MelodyPerspective["prior"] {
+  const degreeCounts = new Map<number, number>();
+  const intervalCounts = new Map<number, number>();
+  let totalDegrees = 0;
+  let totalIntervals = 0;
+
+  for (const phrase of player.thinking.influencePhrases) {
+    addPriorDegrees(phrase.scaleDegrees);
+  }
+
+  for (const pattern of song.patterns) {
+    addPriorDegrees(pattern.events.flatMap((event) => event ? [event.scaleDegree] : []));
+  }
+
+  function addPriorDegrees(degrees: readonly number[]): void {
+    for (let index = 0; index < degrees.length; index += 1) {
+      const degree = normalizeDegree(degrees[index]);
+      degreeCounts.set(degree, (degreeCounts.get(degree) ?? 0) + 1);
+      totalDegrees += 1;
+      if (index <= 0) continue;
+      const interval = clampInteger(degrees[index] - degrees[index - 1], -7, 7);
+      intervalCounts.set(interval, (intervalCounts.get(interval) ?? 0) + 1);
+      totalIntervals += 1;
+    }
+  }
+
+  return {
+    degreeCounts,
+    intervalCounts,
+    totalDegrees,
+    totalIntervals,
+  };
+}
+
+function collectRawChorusEvents(
+  song: SongMaterial,
+  melodyPattern: PlayerPatternSource,
+  tonalContext: TonalContext,
+): readonly (PatternNoteSource | null)[] {
+  const events: Array<PatternNoteSource | null> = [];
+  const stepCount = Math.round(MELODY_CHORUS_PHRASE_BEATS / melodyPattern.subdivisionBeats);
+  for (let stepIndex = 0; stepIndex < stepCount; stepIndex += 1) {
+    const localBeat = stepIndex * melodyPattern.subdivisionBeats;
+    const absoluteBeat = CHORUS_START_BEAT + localBeat;
+    const sourceIndex = Math.round(absoluteBeat / melodyPattern.subdivisionBeats) % melodyPattern.events.length;
+    events.push(arrangeSongFormPatternEvent({
+      song,
+      pattern: melodyPattern,
+      sourceEvent: melodyPattern.events[sourceIndex] ?? null,
+      stepIndex: sourceIndex,
+      absoluteBeat,
+      tonalContext,
+      arrangement: DEFAULT_SONG_ARRANGEMENT,
+      chorusDevelopment: { mode: "raw" },
+    }));
+  }
+  return events;
+}
+
+function phraseFromEvents(
+  events: readonly (PatternNoteSource | null)[],
+  subdivisionBeats: number,
+): readonly MelodyPhraseNote[] {
+  return events.flatMap((event, index) => event ? [{
+    stepIndex: index,
+    positionBeats: index * subdivisionBeats,
+    scaleDegree: event.scaleDegree,
+    octave: event.octave,
+    durationBeats: event.durationBeats,
+    velocity: event.velocity,
+  }] : []);
+}
+
+function eventsFromPhrase(
+  rawEvents: readonly (PatternNoteSource | null)[],
+  phrase: readonly MelodyPhraseNote[],
+): readonly (PatternNoteSource | null)[] {
+  const events = rawEvents.map((event) => event ? { ...event } : null);
+  for (const note of phrase) {
+    const event = events[note.stepIndex];
+    if (!event) continue;
+    events[note.stepIndex] = {
+      ...event,
+      scaleDegree: note.scaleDegree,
+      octave: note.octave,
+      durationBeats: note.durationBeats,
+      velocity: note.velocity,
+      duration: note.durationBeats >= 1 ? "4n" : event.duration,
+    };
+  }
+  return events;
+}
+
+function getPatternForPlayer(song: SongMaterial, playerId: string): PlayerPatternSource {
+  const pattern = song.patterns.find((candidate) =>
+    candidate.events.some((event) => event?.playerId === playerId)
+  );
+  if (!pattern) {
+    throw new Error(`Missing ${playerId} pattern for song ${song.id}`);
+  }
+  return pattern;
+}
+
+function getFlaggedNoteIndexes(critiques: readonly MelodyCritique[], noteCount: number): readonly number[] {
+  const indexes = new Set<number>();
+  for (const critique of critiques) {
+    if (critique.range) {
+      for (let index = critique.range[0] - 1; index < critique.range[1]; index += 1) {
+        if (index >= 0 && index < noteCount) indexes.add(index);
+      }
+    } else if (critique.noteIndex >= 0 && critique.noteIndex < noteCount) {
+      indexes.add(critique.noteIndex);
+    }
+  }
+  return [...indexes].sort((left, right) => left - right);
+}
+
+function replacePhraseNote(
+  phrase: readonly MelodyPhraseNote[],
+  noteIndex: number,
+  note: MelodyPhraseNote,
+): readonly MelodyPhraseNote[] {
+  return phrase.map((candidate, index) => index === noteIndex ? { ...note } : { ...candidate });
+}
+
+function rootForPosition(positionBeats: number, roots: readonly number[]): number {
+  if (roots.length === 0) return 0;
+  return roots[Math.floor(positionBeats / 4) % roots.length] ?? roots[0] ?? 0;
+}
+
+function isChordTone(scaleDegree: number, rootDegree: number, scaleLength: number): boolean {
+  const noteClass = normalizeDegree(scaleDegree, scaleLength);
+  return CHORD_TONE_OFFSETS.some((offset) =>
+    normalizeDegree(rootDegree + offset, scaleLength) === noteClass
+  );
+}
+
+function nearestDegree(currentDegree: number, targetClass: number, scaleLength: number): number {
+  let bestDegree = currentDegree;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  for (let octaveOffset = -2; octaveOffset <= 2; octaveOffset += 1) {
+    const candidate = normalizeDegree(targetClass, scaleLength) + octaveOffset * scaleLength;
+    const distance = Math.abs(candidate - currentDegree);
+    if (distance < bestDistance || (distance === bestDistance && candidate < bestDegree)) {
+      bestDegree = candidate;
+      bestDistance = distance;
+    }
+  }
+  return bestDegree;
+}
+
+function octaveNudge(fromDegree: number, toDegree: number, scaleLength: number): number {
+  if (scaleLength <= 0) return 0;
+  return Math.trunc(toDegree / scaleLength) - Math.trunc(fromDegree / scaleLength);
+}
+
+function isAccent(positionBeats: number): boolean {
+  return Math.abs(positionBeats - Math.round(positionBeats)) < 0.000001;
+}
+
+function isPhraseFinal(note: MelodyPhraseNote, phraseBeats: number): boolean {
+  return note.positionBeats + note.durationBeats >= phraseBeats - 0.000001;
+}
+
+function findRepeatedIntervalRun(intervals: readonly number[]): number {
+  for (let index = 0; index <= intervals.length - 3; index += 1) {
+    if (
+      intervals[index] !== 0 &&
+      intervals[index] === intervals[index + 1] &&
+      intervals[index] === intervals[index + 2]
+    ) {
+      return index;
+    }
+  }
+  return -1;
+}
+
+function findOneWayStretch(intervals: readonly number[]): number {
+  for (let index = 0; index <= intervals.length - 4; index += 1) {
+    const signs = intervals.slice(index, index + 4).map(Math.sign);
+    if (signs.every((sign) => sign > 0) || signs.every((sign) => sign < 0)) {
+      return index;
+    }
+  }
+  return -1;
+}
+
+function hasExactRepeatCell(phrase: readonly MelodyPhraseNote[], scaleLength: number): boolean {
+  if (phrase.length < 6 || phrase.length % 2 !== 0) return false;
+  const half = phrase.length / 2;
+  const left = phrase.slice(0, half).map((note) => normalizeDegree(note.scaleDegree, scaleLength)).join(",");
+  const right = phrase.slice(half).map((note) => normalizeDegree(note.scaleDegree, scaleLength)).join(",");
+  return left === right;
+}
+
+function normalizeDegree(degree: number, scaleLength = 7): number {
+  return modulo(degree, Math.max(1, scaleLength));
+}
+
+function modulo(value: number, length: number): number {
+  return ((value % length) + length) % length;
+}
+
+function clamp(value: number, minimum: number, maximum: number): number {
+  return Math.min(maximum, Math.max(minimum, value));
+}
+
+function clampInteger(value: number, minimum: number, maximum: number): number {
+  return Math.trunc(clamp(value, minimum, maximum));
+}
+
+function roundScore(value: number): number {
+  return Math.round(clamp(value, 0, 1) * 1_000) / 1_000;
+}
