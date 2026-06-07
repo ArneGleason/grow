@@ -1,11 +1,20 @@
 import { defineConfig } from "vite";
+import {
+  appendEvents,
+  dumpGrowDatabase,
+  ensureSession,
+  getSchemaVersion,
+  openGrowDatabase,
+  resolveDatabasePath,
+} from "./server/persistence.mjs";
 
 const OLLAMA_PROXY_PREFIX = "/api/ollama";
+const PERSISTENCE_PREFIX = "/api/persistence";
 const DEFAULT_OLLAMA_BASE_URL = "http://127.0.0.1:11434";
 const ALLOWED_OLLAMA_HOSTS = new Set(["127.0.0.1", "localhost", "::1"]);
 
 export default defineConfig({
-  plugins: [ollamaProxyPlugin()],
+  plugins: [ollamaProxyPlugin(), persistencePlugin()],
 });
 
 function ollamaProxyPlugin() {
@@ -23,17 +32,114 @@ function ollamaProxyPlugin() {
         } catch (error) {
           if (isAbortError(error) || request.destroyed || response.destroyed) {
             if (!response.destroyed && !response.writableEnded) {
-              sendJson(response, 499, { error: "Ollama proxy request aborted" });
+              sendJson(response, 499, { error: "Ollama proxy request aborted" }, {
+                "X-Grow-Ollama-Proxy": "vite-dev",
+              });
             }
             return;
           }
           sendJson(response, error instanceof ProxyRequestError ? 400 : 500, {
             error: error instanceof Error ? error.message : String(error),
+          }, {
+            "X-Grow-Ollama-Proxy": "vite-dev",
           });
         }
       });
     },
   };
+}
+
+function persistencePlugin() {
+  let database;
+  const getDatabase = () => {
+    database ??= openGrowDatabase();
+    return database;
+  };
+
+  return {
+    name: "grow-persistence-api",
+    configureServer(server) {
+      server.httpServer?.once("close", () => {
+        database?.close();
+        database = undefined;
+      });
+
+      server.middlewares.use(async (request, response, next) => {
+        if (!request.url?.startsWith(PERSISTENCE_PREFIX)) {
+          next();
+          return;
+        }
+
+        const abort = createProxyAbortController(request, response);
+        try {
+          await handlePersistenceRequest(request, response, getDatabase(), abort.signal);
+        } catch (error) {
+          if (isAbortError(error) || request.destroyed || response.destroyed) {
+            if (!response.destroyed && !response.writableEnded) {
+              sendJson(response, 499, { error: "Persistence request aborted" }, {
+                "X-Grow-Persistence": "vite-dev",
+              });
+            }
+            return;
+          }
+          sendJson(response, error instanceof PersistenceRequestError ? 400 : 500, {
+            error: error instanceof Error ? error.message : String(error),
+          }, {
+            "X-Grow-Persistence": "vite-dev",
+          });
+        } finally {
+          abort.cleanup();
+        }
+      });
+    },
+  };
+}
+
+async function handlePersistenceRequest(request, response, database, signal) {
+  const requestUrl = new URL(request.url ?? "", "http://127.0.0.1");
+  const path = requestUrl.pathname;
+
+  if (path === `${PERSISTENCE_PREFIX}/status` && request.method === "GET") {
+    sendPersistenceJson(response, 200, {
+      ok: true,
+      databasePath: resolveDatabasePath(),
+      schemaVersion: getSchemaVersion(database),
+    });
+    return;
+  }
+
+  if (path === `${PERSISTENCE_PREFIX}/dump` && request.method === "GET") {
+    const limit = requestUrl.searchParams.get("limit") ?? undefined;
+    sendPersistenceJson(response, 200, {
+      databasePath: resolveDatabasePath(),
+      ...dumpGrowDatabase(database, { limit }),
+    });
+    return;
+  }
+
+  if (path === `${PERSISTENCE_PREFIX}/append` && request.method === "POST") {
+    const payload = await readJsonBody(request, signal);
+    if (!payload.session) {
+      throw new PersistenceRequestError("Persistence append requires a session");
+    }
+    if (!Array.isArray(payload.events)) {
+      throw new PersistenceRequestError("Persistence append requires events");
+    }
+    const session = ensureSession(database, payload.session);
+    const events = appendEvents(database, payload.events.map((event) => ({
+      ...event,
+      sessionId: event.sessionId ?? session.id,
+      branchId: event.branchId ?? session.branchId,
+    })));
+    sendPersistenceJson(response, 200, {
+      ok: true,
+      session,
+      events,
+    });
+    return;
+  }
+
+  sendPersistenceJson(response, 404, { error: "Unknown persistence route" });
 }
 
 async function handleOllamaProxy(request, response) {
@@ -155,14 +261,23 @@ function readJsonBody(request, signal) {
   });
 }
 
-function sendJson(response, statusCode, payload) {
+function sendJson(response, statusCode, payload, headers = {}) {
   response.statusCode = statusCode;
   response.setHeader("Content-Type", "application/json");
-  response.setHeader("X-Grow-Ollama-Proxy", "vite-dev");
+  for (const [name, value] of Object.entries(headers)) {
+    response.setHeader(name, value);
+  }
   response.end(JSON.stringify(payload));
 }
 
+function sendPersistenceJson(response, statusCode, payload) {
+  sendJson(response, statusCode, payload, {
+    "X-Grow-Persistence": "vite-dev",
+  });
+}
+
 class ProxyRequestError extends Error {}
+class PersistenceRequestError extends Error {}
 
 function isAbortError(error) {
   return error instanceof Error && error.name === "AbortError";

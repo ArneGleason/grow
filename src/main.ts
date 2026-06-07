@@ -22,6 +22,10 @@ import {
   formatPerformedTimingSnapshot,
   type PlayerPerformedTimingSnapshot,
 } from "./performed-time";
+import {
+  createPersistenceClient,
+  type PersistenceClientState,
+} from "./persistence";
 import { PLAYER_REGISTRY } from "./players";
 import {
   DEFAULT_SESSION_MODE,
@@ -107,6 +111,13 @@ let songId: SongId = DEFAULT_SONG_ID;
 let timingFeelMode: TimingFeelMode = "feel";
 let cachedSongSketchKey = "";
 let cachedSongSketchBase: SongSketch | undefined;
+const persistence = createPersistenceClient({
+  name: "Grow browser session",
+  metadata: {
+    app: "Grow",
+    persistenceByte: "13b-b",
+  },
+});
 const SLOW_THINKING_PLAYER_IDS = ["melody", "bass"] as const;
 const SLOW_THINKING_INTERVAL_BEATS = 8;
 const SLOW_THINKING_SECONDARY_INITIAL_DELAY_BEATS = 6;
@@ -1649,16 +1660,21 @@ function queueRender(): void {
 }
 
 function applySessionMode(mode: SessionMode): SessionMode {
+  const previousMode = world.getSessionMode();
+  if (previousMode === mode) return previousMode;
   world.setSessionMode(mode);
   if (mode !== "rehearsal") {
     clearSlowThoughtPlayback();
   }
+  recordSessionModeChanged(previousMode, world.getSessionMode());
   evaluateSlowThinkingControllers();
   renderWorld();
   return world.getSessionMode();
 }
 
 function applySongId(nextSongId: SongId): SongId {
+  const previousSongId = songId;
+  if (previousSongId === nextSongId) return songId;
   songId = nextSongId;
   ollamaProposalTextTest = createInitialOllamaProposalTextTest(ollamaConfig);
   cancelSlowThinkingControllers("song changed before the thought could land");
@@ -1666,17 +1682,86 @@ function applySongId(nextSongId: SongId): SongId {
   world.clearMusicalEvents();
   world.resetTasteEvaluations();
   refreshLookaheadSchedule();
+  recordSongChanged(previousSongId, songId);
   renderWorld();
   return songId;
 }
 
 function applyTimingFeelMode(mode: TimingFeelMode): TimingFeelMode {
+  const previousMode = timingFeelMode;
+  if (previousMode === mode) return timingFeelMode;
   timingFeelMode = mode;
   cancelSlowThinkingControllers("timing feel changed before the thought could land");
   clearSlowThoughtPlayback();
   refreshLookaheadSchedule();
+  recordTimingFeelChanged(previousMode, timingFeelMode);
   renderWorld();
   return timingFeelMode;
+}
+
+function recordSessionStarted(): void {
+  persistence.record({
+    type: "session.started",
+    actorId: "system",
+    sessionMode: world.getSessionMode(),
+    beat: getPersistenceBeat(),
+    payload: {
+      source: "browser:init",
+      sessionMode: world.getSessionMode(),
+      songId,
+      timingFeelMode,
+    },
+  });
+}
+
+function recordSessionModeChanged(fromMode: SessionMode, toMode: SessionMode): void {
+  persistence.record({
+    type: "session.mode_changed",
+    actorId: "human",
+    sessionMode: toMode,
+    beat: getPersistenceBeat(),
+    payload: {
+      fromMode,
+      toMode,
+      source: "session-mode-control",
+    },
+  });
+}
+
+function recordSongChanged(fromSongId: SongId, toSongId: SongId): void {
+  persistence.record({
+    type: "song.changed",
+    actorId: "human",
+    sessionMode: world.getSessionMode(),
+    beat: getPersistenceBeat(),
+    payload: {
+      fromSongId,
+      toSongId,
+      source: "song-control",
+      clearedLedger: true,
+      clearedSlowThinking: true,
+    },
+  });
+}
+
+function recordTimingFeelChanged(fromFeel: TimingFeelMode, toFeel: TimingFeelMode): void {
+  persistence.record({
+    type: "timing.feel_changed",
+    actorId: "human",
+    sessionMode: world.getSessionMode(),
+    beat: getPersistenceBeat(),
+    payload: {
+      fromFeel,
+      toFeel,
+      source: "timing-feel-control",
+      refreshedLookahead: true,
+      clearedSlowThinking: true,
+    },
+  });
+}
+
+function getPersistenceBeat(): number {
+  return roundDisplayBeat(getState().currentBeat);
 }
 
 initTransport({
@@ -1690,6 +1775,7 @@ initTransport({
 }, {
   tonalContext: world.getTonalContext(),
 });
+recordSessionStarted();
 renderWorld();
 
 button.addEventListener("click", async () => {
@@ -1852,6 +1938,11 @@ declare global {
       getMode(): TimingFeelMode;
       setMode(mode: string): TimingFeelMode;
     };
+    persistence?: {
+      getState(): PersistenceClientState;
+      flush(): Promise<void>;
+      dump(limit?: number): Promise<unknown>;
+    };
     ollama?: {
       getConfig(): OllamaConfig;
       setConfig(config: Partial<OllamaConfig>): OllamaConfig;
@@ -1968,6 +2059,12 @@ window.timing = {
   },
 };
 
+window.persistence = {
+  getState: () => persistence.getState(),
+  flush: () => persistence.flush(),
+  dump: (limit) => persistence.dump(limit),
+};
+
 window.ollama = {
   getConfig: () => ({ ...ollamaConfig }),
   setConfig: (config) => setOllamaConfig(config),
@@ -2003,6 +2100,7 @@ if (import.meta.hot) {
     window.session = undefined;
     window.song = undefined;
     window.timing = undefined;
+    window.persistence = undefined;
     window.ollama = undefined;
     window.terrarium = undefined;
     window.removeEventListener("resize", handleWindowResize);

@@ -143,7 +143,7 @@ Indexes to add early:
 - `(session_id, branch_id, seq)`
 - `(branch_id, type, seq)`
 - `(actor_id, type, seq)`
-- `(scheduled_bar)`
+- `(scheduled_beat)`
 - `(json_extract(payload_json, '$.requestId'))` only if thought debugging needs it and SQLite JSON1 is available in the chosen runtime.
 
 ## Ephemeral State

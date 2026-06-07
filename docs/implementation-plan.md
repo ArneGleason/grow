@@ -1442,9 +1442,11 @@ Review outcome:
 
 - Claude approved the shell and the `node:sqlite` choice.
 - A follow-up commit added ignored SQLite WAL/SHM sidecars for `.sqlite` and `.sqlite3` databases, plus a Node engine floor because `node:sqlite` is version-sensitive.
-- Forward notes: add batch `appendEvents` before buffered writers need it, align `bar`/`scheduled_bar` naming with the app's beat vocabulary before replay, make `db:dump` avoid creating an empty database if that becomes annoying, and add real schema migration checks before schema version 2.
+- Forward notes: make `db:dump` avoid creating an empty database if that becomes annoying, and add real schema migration checks before schema version 2. Byte 13b-b resolved the batch `appendEvents` and beat-column naming notes.
 
 #### Byte 13b-b: Low-Frequency Decision Writer
+
+Status: implemented; awaiting review.
 
 Wire the first app-side persistence path without touching the audio scheduler.
 
@@ -1465,6 +1467,13 @@ Review focus:
 - Whether the writer is buffered and clearly off the audio path.
 - Whether low-frequency records are enough to prove app-to-SQLite wiring.
 - Whether the app remains usable when persistence is unavailable.
+
+Implementation notes:
+
+- `src/persistence.ts` owns a browser-side queue that schedules flushes with a timer and can be manually flushed through `window.persistence`.
+- `vite.config.js` exposes `/api/persistence/status`, `/api/persistence/append`, and `/api/persistence/dump` on the dev server.
+- `server/persistence.mjs` now has batch `appendEvents` and uses `beat` / `scheduled_beat` columns rather than `bar` / `scheduled_bar`.
+- Smoke verifies a stopped app records `session.started`, `session.mode_changed`, `song.changed`, and `timing.feel_changed` in order with the queue drained.
 
 ### Byte 14: Producer Marker, No LLM
 
@@ -1500,13 +1509,13 @@ Review focus:
 
 ### Byte 16: Minimal Persistence
 
-Add SQLite only after there is something worth preserving.
+Superseded by Byte 13b after the song-sketch and proposal-text surfaces became worth preserving.
 
 Scope:
 
 - `sessions`.
 - `events`.
-- `space_id`, `branch_id`, `session_mode`, `bar`, `scheduled_bar`.
+- `space_id`, `branch_id`, `session_mode`, `beat`, `scheduled_beat`.
 - No snapshots or forks yet.
 
 Review focus:

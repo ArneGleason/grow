@@ -118,6 +118,30 @@ type SlowThoughtPlayback = {
   summary: string;
 };
 
+type PersistenceClientState = {
+  sessionId: string;
+  branchId: string;
+  status: "idle" | "scheduled" | "flushing" | "error";
+  pendingCount: number;
+  appendedCount: number;
+  lastError?: string;
+  lastEventTypes: readonly string[];
+};
+
+type PersistenceDump = {
+  sessions: Array<{ id: string; branchId: string; name: string }>;
+  events: Array<{
+    sessionId: string;
+    branchId: string;
+    seq: number;
+    beat: number | null;
+    type: string;
+    actorId: string | null;
+    sessionMode: string | null;
+    payload: Record<string, unknown>;
+  }>;
+};
+
 type ListeningFrame = {
   eventCount: number;
   tonalContext: { tonic: string; mode: string; scale: readonly string[] };
@@ -249,6 +273,45 @@ async function getTransportState(page: Page): Promise<TransportState> {
   }
 
   return state;
+}
+
+async function getPersistenceState(page: Page): Promise<PersistenceClientState> {
+  const state = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      persistence?: { getState(): PersistenceClientState };
+    };
+    return appWindow.persistence?.getState();
+  });
+
+  if (!state) {
+    throw new Error("window.persistence.getState() was not available");
+  }
+
+  return state;
+}
+
+async function flushPersistence(page: Page): Promise<void> {
+  await page.evaluate(async () => {
+    const appWindow = window as unknown as {
+      persistence?: { flush(): Promise<void> };
+    };
+    await appWindow.persistence?.flush();
+  });
+}
+
+async function dumpPersistence(page: Page, limit = 100): Promise<PersistenceDump> {
+  const dump = await page.evaluate(async (nextLimit) => {
+    const appWindow = window as unknown as {
+      persistence?: { dump(limit?: number): Promise<PersistenceDump> };
+    };
+    return appWindow.persistence?.dump(nextLimit);
+  }, limit);
+
+  if (!dump) {
+    throw new Error("window.persistence.dump() was not available");
+  }
+
+  return dump;
 }
 
 async function getTimingDiagnostics(page: Page): Promise<readonly AudioFireTimingDiagnostic[]> {
@@ -1514,6 +1577,65 @@ test("local Ollama proxy rejects non-local targets", async ({ request }) => {
   expect(response.headers()["x-grow-ollama-proxy"]).toBe("vite-dev");
   const payload = await response.json() as { error?: string };
   expect(payload.error).toBe("Ollama proxy only supports localhost targets");
+});
+
+test("persistence records low-frequency decisions off the audio path", async ({ page, request }) => {
+  await page.goto("/");
+  await flushPersistence(page);
+  await expect.poll(async () => (await getPersistenceState(page)).appendedCount).toBeGreaterThanOrEqual(1);
+
+  await setSessionMode(page, "break");
+  await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      song?: { setId(nextSongId: string): string };
+      timing?: { setMode(mode: string): string };
+    };
+    appWindow.song?.setId("glass");
+    appWindow.timing?.setMode("grid");
+  });
+  await flushPersistence(page);
+
+  const persistenceState = await getPersistenceState(page);
+  expect(persistenceState.status).toBe("idle");
+  expect(persistenceState.pendingCount).toBe(0);
+  expect(persistenceState.appendedCount).toBeGreaterThanOrEqual(4);
+  expect(persistenceState.lastError).toBeUndefined();
+
+  const statusResponse = await request.get("/api/persistence/status");
+  expect(statusResponse.status()).toBe(200);
+  expect(statusResponse.headers()["x-grow-persistence"]).toBe("vite-dev");
+
+  const dump = await dumpPersistence(page, 200);
+  const sessionEvents = dump.events
+    .filter((event) => event.sessionId === persistenceState.sessionId)
+    .sort((left, right) => left.seq - right.seq);
+  expect(sessionEvents.map((event) => event.type)).toEqual([
+    "session.started",
+    "session.mode_changed",
+    "song.changed",
+    "timing.feel_changed",
+  ]);
+  expect(sessionEvents.every((event) => event.beat !== null)).toBe(true);
+  expect(sessionEvents[0].payload).toMatchObject({
+    source: "browser:init",
+    sessionMode: "rehearsal",
+    songId: "lantern",
+    timingFeelMode: "feel",
+  });
+  expect(sessionEvents[1].payload).toMatchObject({
+    fromMode: "rehearsal",
+    toMode: "break",
+  });
+  expect(sessionEvents[2].payload).toMatchObject({
+    fromSongId: "lantern",
+    toSongId: "glass",
+    clearedLedger: true,
+  });
+  expect(sessionEvents[3].payload).toMatchObject({
+    fromFeel: "feel",
+    toFeel: "grid",
+    refreshedLookahead: true,
+  });
 });
 
 test("inspector help icons explain current controls", async ({ page }) => {

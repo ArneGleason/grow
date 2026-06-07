@@ -80,9 +80,11 @@ When persistence begins, start with a smaller version:
 create table sessions (
   id text primary key,
   space_id text not null default 'main',
+  branch_id text not null default 'main',
   name text not null,
   created_at text not null,
-  updated_at text not null
+  updated_at text not null,
+  metadata_json text not null default '{}'
 );
 
 create table events (
@@ -92,8 +94,8 @@ create table events (
   session_mode text,
   seq integer not null,
   tick integer not null,
-  bar real,
-  scheduled_bar real,
+  beat real,
+  scheduled_beat real,
   actor_id text,
   type text not null,
   payload_json text not null,
@@ -102,7 +104,7 @@ create table events (
 );
 ```
 
-This keeps the fork extension point (`branch_id`) without requiring branch management, snapshots, or moments on day one. `space_id` leaves a cheap future path for multiple terrariums or bands without implementing that feature now. `session_mode` can record whether an event belongs to break, solo practice, rehearsal, performance, or reflection. `bar` can record when an event was created or observed; `scheduled_bar` can record when committed musical material should actually perform.
+This keeps the fork extension point (`branch_id`) without requiring branch management, snapshots, or moments on day one. `space_id` leaves a cheap future path for multiple terrariums or bands without implementing that feature now. `session_mode` can record whether an event belongs to break, solo practice, rehearsal, performance, or reflection. `beat` can record when an event was created or observed; `scheduled_beat` can record when committed musical material should actually perform.
 
 Add `moments` when manual marking exists. Add `snapshots` when replay from long histories becomes slow or when checkpoints become an actual user workflow. Add `worlds` and full `branches` when forks need names, parentage, and UI.
 
@@ -132,8 +134,8 @@ create table events (
   branch_id text not null references branches(id),
   seq integer not null,
   tick integer not null,
-  bar real,
-  scheduled_bar real,
+  beat real,
+  scheduled_beat real,
   actor_id text,
   type text not null,
   payload_json text not null,
@@ -146,7 +148,7 @@ create table snapshots (
   branch_id text not null references branches(id),
   event_seq integer not null,
   tick integer not null,
-  bar real,
+  beat real,
   state_json text not null,
   state_hash text,
   created_at text not null,
