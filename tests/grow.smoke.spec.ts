@@ -7,9 +7,11 @@ import {
 import { calculatePerformedTiming } from "../src/performed-time";
 import { MELODY_PLAYER, PLAYER_REGISTRY } from "../src/players";
 import {
+  createMelodyConsensusDecision,
   createMockMelodyCriticSelection,
   createMelodyRepairTake,
   validateMelodyCriticSelection,
+  type MelodyConsensusDecision,
   type MelodyRepairTake,
 } from "../src/melody-scoring";
 import {
@@ -689,6 +691,21 @@ async function getMelodyRepairCandidate(page: Page): Promise<MelodyRepairTake["c
   return candidate;
 }
 
+async function getMelodyConsensus(page: Page): Promise<MelodyConsensusDecision> {
+  const consensus = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      melodyRepair?: { getConsensus(): MelodyConsensusDecision };
+    };
+    return appWindow.melodyRepair?.getConsensus();
+  });
+
+  if (!consensus) {
+    throw new Error("window.melodyRepair.getConsensus() was not available");
+  }
+
+  return consensus;
+}
+
 function getSongSketchAssignmentDensity(sketch: SongSketch, playerId: string): number {
   const assignment = sketch.assignments.find((nextAssignment) => nextAssignment.playerId === playerId);
   if (!assignment) {
@@ -1238,6 +1255,13 @@ test("melody scoring repairs the chorus and scores player perspectives different
   const spaciousCandidate = take.candidates.find((candidate) => candidate.strategy === "spacious-hook");
   const liftedCandidate = take.candidates.find((candidate) => candidate.strategy === "lifted-hook");
   const mockCriticSelection = createMockMelodyCriticSelection(take);
+  const deterministicConsensus = createMelodyConsensusDecision(take, take.deterministicCandidateId);
+  const spaciousConsensus = spaciousCandidate
+    ? createMelodyConsensusDecision(take, spaciousCandidate.id, "model-critic")
+    : undefined;
+  const liftedConsensus = liftedCandidate
+    ? createMelodyConsensusDecision(take, liftedCandidate.id, "model-critic")
+    : undefined;
 
   expect(take.improved).toBe(true);
   expect(take.primaryRepairedScore.total).toBeGreaterThan(take.primaryRawScore.total);
@@ -1273,6 +1297,17 @@ test("melody scoring repairs the chorus and scores player perspectives different
     Number.isFinite(candidate.scoreDeltaFromDeterministic)
   )).toBe(true);
   expect(spaciousCandidate?.noteCount).toBeLessThan(deterministicCandidate?.noteCount ?? 0);
+  expect(deterministicConsensus.responses.map((response) => response.playerId)).toEqual([
+    "pulse",
+    "bass",
+    "melody",
+  ]);
+  expect(deterministicConsensus.selectedCandidateId).toBe(take.deterministicCandidateId);
+  expect(spaciousConsensus?.proposedBy).toBe("model-critic");
+  expect(spaciousConsensus?.selectedCandidateId).toBe(spaciousCandidate?.id);
+  expect(spaciousConsensus?.responses.some((response) => response.stance === "accept")).toBe(true);
+  expect(liftedConsensus?.proposedCandidateId).toBe(liftedCandidate?.id);
+  expect(liftedConsensus?.selectedCandidateId).not.toBe(liftedCandidate?.id);
   expect(liftedCandidate?.phrase.some((note, index) => {
     const deterministicNote = deterministicCandidate?.phrase[index];
     if (!deterministicNote) return false;
@@ -1382,6 +1417,9 @@ test("manual Ollama melody critic selects a validated local chorus candidate", a
   await expect(page.getByTestId("melody-candidate-current")).toContainText("chorus-candidate");
   const take = await getMelodyRepairTake(page);
   const alternate = take.candidates.find((candidate) =>
+    candidate.strategy === "spacious-hook" &&
+    candidate.id !== take.deterministicCandidateId
+  ) ?? take.candidates.find((candidate) =>
     candidate.source === "repair-alternate" &&
     candidate.strategy !== "local-alternate" &&
     candidate.id !== take.deterministicCandidateId &&
@@ -1395,15 +1433,24 @@ test("manual Ollama melody critic selects a validated local chorus candidate", a
   const initialCandidate = await getMelodyRepairCandidate(page);
   expect(initialCandidate.id).toBe(take.deterministicCandidateId);
   await page.getByTestId("melody-critic-send").click();
-  await expect(page.getByTestId("melody-critic-status")).toContainText("model selected");
+  await expect(page.getByTestId("melody-critic-status")).toContainText("model proposed");
   await expect(page.getByTestId("melody-candidate-current")).toContainText(selectedCandidateId);
   await expect(page.getByTestId("melody-score-choice")).toContainText(alternate?.strategy ?? "");
+  await expect(page.getByTestId("melody-consensus-status")).toContainText("selected");
+  await expect(page.getByTestId("melody-consensus-responses")).toContainText("bass");
 
   const activeCandidate = await getMelodyRepairCandidate(page);
+  const consensus = await getMelodyConsensus(page);
+  expect(consensus.proposedBy).toBe("model-critic");
+  expect(consensus.proposedCandidateId).toBe(selectedCandidateId);
+  expect(consensus.selectedBy).toBe("band-consensus");
+  expect(consensus.selectedCandidateId).toBe(selectedCandidateId);
+  expect(consensus.responses.map((response) => response.playerId)).toEqual(["pulse", "bass", "melody"]);
+  expect(consensus.responses.some((response) => response.stance === "accept")).toBe(true);
   expect(activeCandidate.id).toBe(selectedCandidateId);
   expect(activeCandidate.events).toEqual(alternate?.events);
   expect(activeCandidate.id).not.toBe(take.deterministicCandidateId);
-  expect(activeCandidate.strategy).not.toBe("balanced-repair");
+  expect(activeCandidate.strategy).toBe(alternate?.strategy);
 
   const probe = await page.evaluate(() => {
     const appWindow = window as unknown as {
@@ -1480,7 +1527,10 @@ test("manual Ollama melody critic keeps deterministic fallback for invalid candi
   await expect(page.getByTestId("melody-candidate-current")).toContainText(take.deterministicCandidateId);
 
   const activeCandidate = await getMelodyRepairCandidate(page);
+  const consensus = await getMelodyConsensus(page);
   expect(activeCandidate.id).toBe(take.deterministicCandidateId);
+  expect(consensus.proposedBy).toBe("deterministic-scorer");
+  expect(consensus.selectedCandidateId).toBe(take.deterministicCandidateId);
 
   const probe = await page.evaluate(() => {
     const appWindow = window as unknown as {
@@ -2538,7 +2588,7 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   const canvas = page.getByTestId("terrarium-canvas");
 
   await expect(page.locator(".brand__subtitle")).toHaveText(
-    "Model critic chooses among distinct chorus takes",
+    "Band consensus weighs chorus proposals",
   );
   await expect(button).toHaveText("Start");
   await expect(status).toContainText(
@@ -2558,9 +2608,10 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   await expect(page.getByTestId("song-sketch-responses")).toContainText("bass");
   await expect(page.getByTestId("song-sketch-questions")).not.toHaveText("none");
   await expect(page.getByTestId("melody-development-current")).toHaveText("Repaired");
-  await expect(page.getByTestId("melody-candidate-current")).toContainText("heuristic-repair");
+  await expect(page.getByTestId("melody-candidate-current")).toContainText("balanced-repair");
   await expect(page.getByTestId("melody-score-total")).toContainText("deterministic");
   await expect(page.getByTestId("melody-critic-status")).toContainText("idle");
+  await expect(page.getByTestId("melody-consensus-status")).toContainText("deterministic-scorer");
   await expect(page.getByTestId("melody-score-perspectives")).toContainText("melody");
   const songSketch = await getSongSketch(page);
   expect(songSketch.id).toBe("sketch-lantern-c-mixolydian");

@@ -39,8 +39,10 @@ import {
   type MusicalEventRecordSource,
 } from "./musical-event-record";
 import {
+  createMelodyConsensusDecision,
   createMelodyRepairTake,
   getMelodyRepairCandidate,
+  type MelodyConsensusDecision,
   type MelodyDevelopmentMode,
   type MelodyFeedbackValue,
   type MelodyRepairCandidate,
@@ -147,7 +149,7 @@ const persistence = createPersistenceClient({
   name: "Grow browser session",
   metadata: {
     app: "Grow",
-    persistenceByte: "15b-a",
+    persistenceByte: "15c-a",
   },
 }, {
   onStateChange: () => {
@@ -327,11 +329,11 @@ function getSongLabel(nextSongId: SongId): string {
 }
 
 app.innerHTML = `
-  <section class="app-shell" aria-label="Grow Byte 15b-b">
+  <section class="app-shell" aria-label="Grow Byte 15c-a">
     <header class="topbar">
       <div class="brand">
         <h1 class="brand__title">Grow</h1>
-        <p class="brand__subtitle">Model critic chooses among distinct chorus takes</p>
+        <p class="brand__subtitle">Band consensus weighs chorus proposals</p>
       </div>
       <div class="transport-controls">
         <fieldset class="mode-control">
@@ -562,6 +564,10 @@ ${melodyDevelopmentControls}
             <dd data-testid="melody-score-critique">none</dd>
             <dt>Critic</dt>
             <dd data-testid="melody-critic-status">idle</dd>
+            <dt>Consensus</dt>
+            <dd data-testid="melody-consensus-status">none</dd>
+            <dt>Responses</dt>
+            <dd data-testid="melody-consensus-responses">none</dd>
             <dt>Perspectives</dt>
             <dd data-testid="melody-score-perspectives">none</dd>
             <dt>Feedback</dt>
@@ -674,6 +680,8 @@ const melodyScoreChoice = requireElement<HTMLElement>("[data-testid='melody-scor
 const melodyScoreSubscores = requireElement<HTMLElement>("[data-testid='melody-score-subscores']");
 const melodyScoreCritique = requireElement<HTMLElement>("[data-testid='melody-score-critique']");
 const melodyCriticStatus = requireElement<HTMLElement>("[data-testid='melody-critic-status']");
+const melodyConsensusStatus = requireElement<HTMLElement>("[data-testid='melody-consensus-status']");
+const melodyConsensusResponses = requireElement<HTMLElement>("[data-testid='melody-consensus-responses']");
 const melodyScorePerspectives = requireElement<HTMLElement>("[data-testid='melody-score-perspectives']");
 const melodyScoreFeedback = requireElement<HTMLElement>("[data-testid='melody-score-feedback']");
 
@@ -1271,11 +1279,19 @@ function getCurrentChorusDevelopment(): ChorusDevelopment {
 function getCurrentMelodyRepairDecision(state: GrowTransportState = getState()): {
   take: MelodyRepairTake;
   candidate: MelodyRepairCandidate;
+  proposedCandidate: MelodyRepairCandidate;
+  consensus: MelodyConsensusDecision;
   selection?: MelodyCriticSelection;
 } {
   const take = getCurrentMelodyRepairTake(state);
   const selection = getActiveMelodyCriticSelection(take);
-  const candidate = getMelodyRepairCandidate(take, selection?.selectedCandidateId) ??
+  const proposedBy = selection ? "model-critic" : "deterministic-scorer";
+  const proposedCandidate = getMelodyRepairCandidate(take, selection?.selectedCandidateId) ??
+    getMelodyRepairCandidate(take, take.deterministicCandidateId) ??
+    take.candidates[0];
+  const consensus = createMelodyConsensusDecision(take, proposedCandidate?.id, proposedBy);
+  const candidate = getMelodyRepairCandidate(take, consensus.selectedCandidateId) ??
+    proposedCandidate ??
     getMelodyRepairCandidate(take, take.deterministicCandidateId) ??
     take.candidates[0];
   if (!candidate) {
@@ -1284,6 +1300,8 @@ function getCurrentMelodyRepairDecision(state: GrowTransportState = getState()):
   return {
     take,
     candidate,
+    proposedCandidate: proposedCandidate ?? candidate,
+    consensus,
     selection,
   };
 }
@@ -1329,22 +1347,22 @@ function applyMelodyDevelopmentMode(mode: MelodyDevelopmentMode): MelodyDevelopm
 }
 
 function rememberCurrentMelodyRepairTake(): MelodyRepairTake {
-  const { take, candidate, selection } = getCurrentMelodyRepairDecision();
+  const { take, candidate, consensus, selection } = getCurrentMelodyRepairDecision();
   const nextCount = (rememberedMelodyRepairCountsBySong.get(songId) ?? 0) + 1;
   rememberedMelodyRepairCountsBySong.set(songId, nextCount);
   const currentNudge = melodyRepairWeightNudgesByPlayer.get(take.perspectiveId) ?? 0;
   melodyRepairWeightNudgesByPlayer.set(take.perspectiveId, clamp(currentNudge + 0.025, -0.12, 0.12));
   melodyRepairFeedbackMessage = `remembered ${candidate.id}`;
-  recordMelodyRepairFeedback("up", take, candidate, selection);
+  recordMelodyRepairFeedback("up", take, candidate, consensus, selection);
   queueRender();
   return take;
 }
 
 function rejectCurrentMelodyRepairTake(): MelodyRepairTake {
-  const { take, candidate, selection } = getCurrentMelodyRepairDecision();
+  const { take, candidate, consensus, selection } = getCurrentMelodyRepairDecision();
   getRejectedMelodyRepairKeys(songId).add(candidate.phraseKey);
   melodyRepairFeedbackMessage = `rejected ${candidate.id}; repaired again`;
-  recordMelodyRepairFeedback("down", take, candidate, selection);
+  recordMelodyRepairFeedback("down", take, candidate, consensus, selection);
   resetMelodyCriticTest("Rejected candidate; melody critic reset");
   invalidateMelodyRepairCache();
   refreshLookaheadSchedule();
@@ -1356,6 +1374,7 @@ function recordMelodyRepairFeedback(
   feedback: MelodyFeedbackValue,
   take: MelodyRepairTake,
   candidate: MelodyRepairCandidate,
+  consensus: MelodyConsensusDecision,
   selection: MelodyCriticSelection | undefined,
 ): void {
   persistence.record({
@@ -1374,10 +1393,21 @@ function recordMelodyRepairFeedback(
       candidateSource: candidate.source,
       candidateStrategy: candidate.strategy,
       candidateStrategySummary: candidate.strategySummary,
-      selectedBy: selection ? "model-critic" : "deterministic-scorer",
+      proposedBy: consensus.proposedBy,
+      proposedCandidateId: consensus.proposedCandidateId,
+      selectedBy: consensus.selectedBy,
       bestCandidateId: take.bestCandidateId,
       scoreDeltaFromBest: candidate.scoreDeltaFromBest,
       scoreDeltaFromDeterministic: candidate.scoreDeltaFromDeterministic,
+      consensusAgreementScore: consensus.agreementScore,
+      consensusSummary: consensus.summary,
+      consensusResponses: consensus.responses.map((response) => ({
+        playerId: response.playerId,
+        stance: response.stance,
+        preferredCandidateId: response.preferredCandidateId,
+        preferredStrategy: response.preferredStrategy,
+        preferenceMargin: response.preferenceMargin,
+      })),
       perspectiveId: take.perspectiveId,
       phraseKey: candidate.phraseKey,
       rawScore: snapshotMelodyScore(take.primaryRawScore),
@@ -1415,13 +1445,13 @@ function renderMelodyRepair(take: MelodyRepairTake): void {
 
   const activeScore = activeCandidate.primaryScore;
   const deterministicCandidate = getMelodyRepairCandidate(take, take.deterministicCandidateId) ?? decision.candidate;
-  melodyCandidateCurrent.textContent = formatMelodyCandidate(activeCandidate, decision.selection);
+  melodyCandidateCurrent.textContent = formatMelodyCandidate(activeCandidate, decision.consensus, decision.selection);
   melodyScoreTotal.textContent = [
     `${melodyDevelopmentMode} ${activeScore.total.toFixed(3)}`,
     `raw ${take.primaryRawScore.total.toFixed(3)}`,
     `heuristic ${deterministicCandidate.primaryScore.total.toFixed(3)}`,
     `best ${take.bestCandidateId}`,
-    activeCandidate.id === deterministicCandidate.id ? "deterministic" : "critic-selected",
+    activeCandidate.id === deterministicCandidate.id ? "deterministic" : "consensus-selected",
   ].join(" | ");
   melodyScoreChoice.textContent = formatMelodyCandidateChoice(activeCandidate, take);
   melodyScoreSubscores.textContent = formatMelodyScoreSubscores(activeScore);
@@ -1429,7 +1459,9 @@ function renderMelodyRepair(take: MelodyRepairTake): void {
     (take.primaryRawScore.critiques[0]
       ? `repaired cleared raw flag: ${take.primaryRawScore.critiques[0].message}`
       : "No urgent repair flags.");
-  melodyCriticStatus.textContent = formatMelodyCriticStatus(take, decision.candidate, decision.selection);
+  melodyCriticStatus.textContent = formatMelodyCriticStatus(take, decision.proposedCandidate, decision.selection);
+  melodyConsensusStatus.textContent = formatMelodyConsensusStatus(decision.consensus);
+  melodyConsensusResponses.textContent = decision.consensus.responses.map(formatMelodyConsensusResponse).join(" | ");
   melodyScorePerspectives.textContent = activeCandidate.scores.map(formatPerspectiveScore).join(" | ");
   melodyScoreFeedback.textContent = [
     `${rememberedMelodyRepairCountsBySong.get(songId) ?? 0} remembered`,
@@ -1440,11 +1472,12 @@ function renderMelodyRepair(take: MelodyRepairTake): void {
 
 function formatMelodyCandidate(
   candidate: MelodyRepairCandidate,
+  consensus: MelodyConsensusDecision,
   selection: MelodyCriticSelection | undefined,
 ): string {
-  const source = selection ? "model" : candidate.source;
+  const source = selection ? "consensus/model-proposed" : "consensus/deterministic-proposed";
   return `${source}: ${candidate.label} / ${candidate.strategy} (${candidate.id}, ${candidate.changedNotes} changed, score ${
-    candidate.primaryScore.total.toFixed(3)
+    candidate.primaryScore.total.toFixed(3)}, agreement ${consensus.agreementScore.toFixed(3)
   })`;
 }
 
@@ -1469,7 +1502,7 @@ function formatMelodyCandidateChoice(
 
 function formatMelodyCriticStatus(
   take: MelodyRepairTake,
-  activeCandidate: MelodyRepairCandidate,
+  proposedCandidate: MelodyRepairCandidate,
   selection: MelodyCriticSelection | undefined,
 ): string {
   if (ollamaMelodyCriticTest.status === "idle") {
@@ -1479,7 +1512,7 @@ function formatMelodyCriticStatus(
     return `running ${take.id}`;
   }
   if (selection && ollamaMelodyCriticTest.status === "valid") {
-    return `model selected ${activeCandidate.label}: ${selection.rationale}`;
+    return `model proposed ${proposedCandidate.label}: ${selection.rationale}`;
   }
   if (ollamaMelodyCriticTest.status === "invalid") {
     return `invalid (${ollamaMelodyCriticTest.validation.errors.length}); deterministic repair active`;
@@ -1488,6 +1521,20 @@ function formatMelodyCriticStatus(
     return `failed; deterministic repair active`;
   }
   return ollamaMelodyCriticTest.message;
+}
+
+function formatMelodyConsensusStatus(consensus: MelodyConsensusDecision): string {
+  return [
+    consensus.summary,
+    `agreement ${consensus.agreementScore.toFixed(3)}`,
+    `vs proposal ${formatSignedScore(consensus.scoreDeltaFromProposed)}`,
+  ].join(" | ");
+}
+
+function formatMelodyConsensusResponse(response: MelodyConsensusDecision["responses"][number]): string {
+  return `${response.playerId} ${response.stance} ${response.preferredStrategy} (${formatSignedScore(
+    response.preferenceMargin,
+  )})`;
 }
 
 function formatMelodyScoreSubscores(score: MelodyPhraseScore): string {
@@ -2077,11 +2124,12 @@ async function runManualOllamaMelodyCriticTest(): Promise<OllamaMelodyCriticTest
       activeMelodyCriticSelection = undefined;
     }
 
-    const nextCandidateId = getCurrentMelodyRepairDecision().candidate.id;
+    const nextDecision = getCurrentMelodyRepairDecision();
+    const nextCandidateId = nextDecision.candidate.id;
     if (nextCandidateId !== previousCandidateId) {
       refreshLookaheadSchedule();
     }
-    recordMelodyCriticOutcome(take, ollamaMelodyCriticTest);
+    recordMelodyCriticOutcome(take, ollamaMelodyCriticTest, nextDecision.consensus);
     return ollamaMelodyCriticTest;
   } finally {
     ollamaRequestInFlight = false;
@@ -2092,8 +2140,9 @@ async function runManualOllamaMelodyCriticTest(): Promise<OllamaMelodyCriticTest
 function recordMelodyCriticOutcome(
   take: MelodyRepairTake,
   result: OllamaMelodyCriticTestResult,
+  consensus: MelodyConsensusDecision,
 ): void {
-  const selectedCandidate = getMelodyRepairCandidate(take, result.selectedCandidateId) ??
+  const selectedCandidate = getMelodyRepairCandidate(take, consensus.selectedCandidateId) ??
     getMelodyRepairCandidate(take, take.deterministicCandidateId);
   persistence.record({
     type: "song.melody_critic_selection",
@@ -2110,11 +2159,23 @@ function recordMelodyCriticOutcome(
       takeId: take.id,
       deterministicCandidateId: take.deterministicCandidateId,
       bestCandidateId: take.bestCandidateId,
+      proposedBy: consensus.proposedBy,
+      proposedCandidateId: consensus.proposedCandidateId,
+      modelSelectedCandidateId: result.selectedCandidateId,
       selectedCandidateId: selectedCandidate?.id ?? result.selectedCandidateId,
       selectedCandidateStrategy: selectedCandidate?.strategy,
-      selectedBy: result.status === "valid" ? "model-critic" : "deterministic-scorer",
+      selectedBy: consensus.selectedBy,
       scoreDeltaFromBest: selectedCandidate?.scoreDeltaFromBest,
       scoreDeltaFromDeterministic: selectedCandidate?.scoreDeltaFromDeterministic,
+      consensusAgreementScore: consensus.agreementScore,
+      consensusSummary: consensus.summary,
+      consensusResponses: consensus.responses.map((response) => ({
+        playerId: response.playerId,
+        stance: response.stance,
+        preferredCandidateId: response.preferredCandidateId,
+        preferredStrategy: response.preferredStrategy,
+        preferenceMargin: response.preferenceMargin,
+      })),
       validationErrors: result.validation.errors,
     },
   });
@@ -2648,6 +2709,7 @@ declare global {
       setMode(mode: string): MelodyDevelopmentMode;
       getTake(): MelodyRepairTake;
       getCandidate(): MelodyRepairCandidate;
+      getConsensus(): MelodyConsensusDecision;
       getCritic(): OllamaMelodyCriticTestResult;
       remember(): MelodyRepairTake;
       reject(): MelodyRepairTake;
@@ -2790,6 +2852,7 @@ window.melodyRepair = {
   },
   getTake: () => getCurrentMelodyRepairTake(),
   getCandidate: () => getCurrentMelodyRepairDecision().candidate,
+  getConsensus: () => getCurrentMelodyRepairDecision().consensus,
   getCritic: () => ollamaMelodyCriticTest,
   remember: () => rememberCurrentMelodyRepairTake(),
   reject: () => rejectCurrentMelodyRepairTake(),

@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Merge approved Byte 15b-b strategy-diverse chorus critic candidates",
-  "status": "byte15b-b-approved-on-main-next-consensus",
-  "updatedAt": "2026-06-07T23:20:03Z",
+  "lastTask": "Implement Byte 15c-a deterministic band consensus for chorus candidates",
+  "status": "byte15c-a-ready-for-review",
+  "updatedAt": "2026-06-08T01:04:20Z",
   "lastHandoff": "",
-  "branch": "main",
-  "commit": "57e7ecf",
+  "branch": "codex/byte-15c-a",
+  "commit": "",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 15b-b is approved and merged on main. The model critic menu is now strategy-diverse while preserving the Byte 15b-a safety boundary: candidates are app-owned, in-scale, scored, and selected only by id. Claude verified the menu gives meaningful musical choices, a live qwen run picked `spacious-hook` with grounded rationale, and `song.melody_critic_selection` records model-vs-heuristic comparison data. Next direction is multi-player consensus on these real choices, especially rhythm-section pushback and remember-good use of the critic-selection log."
+    "summary": "Byte 15c-a is ready for Claude review on codex/byte-15c-a. A model/deterministic chorus proposal now goes through deterministic band consensus before becoming the active audible candidate. Pulse, bass, and melody produce accept/defer/push responses over the app-owned candidate menu; the inspector exposes Consensus/Responses; and persistence records proposed id/source separately from the consensus-selected candidate. Validation is green: npm audit, npm run build, npm run db:smoke, git diff --check, and npm run smoke (28/28)."
   }
 }

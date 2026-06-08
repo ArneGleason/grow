@@ -109,6 +109,34 @@ export interface MelodyCriticValidation {
   errors: string[];
 }
 
+export type MelodyConsensusProposedBy = "deterministic-scorer" | "model-critic";
+export type MelodyConsensusStance = "accept" | "defer" | "push";
+
+export interface MelodyConsensusResponse {
+  playerId: string;
+  label: string;
+  stance: MelodyConsensusStance;
+  proposedCandidateId: string;
+  preferredCandidateId: string;
+  preferredStrategy: MelodyRepairCandidateStrategy;
+  proposedScore: number;
+  preferredScore: number;
+  preferenceMargin: number;
+  reason: string;
+}
+
+export interface MelodyConsensusDecision {
+  proposedBy: MelodyConsensusProposedBy;
+  proposedCandidateId: string;
+  selectedBy: "band-consensus";
+  selectedCandidateId: string;
+  selectedStrategy: MelodyRepairCandidateStrategy;
+  agreementScore: number;
+  scoreDeltaFromProposed: number;
+  responses: readonly MelodyConsensusResponse[];
+  summary: string;
+}
+
 export interface MelodyRepairTake {
   id: string;
   songId: SongMaterial["id"];
@@ -150,6 +178,31 @@ const REPAIR_PASSES = 2;
 const SCORE_EPSILON = 0.0001;
 const REPAIR_REGISTER_PADDING = 1;
 const MAX_REPAIR_CANDIDATES = 7;
+const CONSENSUS_PROPOSAL_BIAS = 0.08;
+const CONSENSUS_DEFER_MARGIN = 0.035;
+const STRATEGY_AFFINITY_BY_PLAYER: Record<string, Partial<Record<MelodyRepairCandidateStrategy, number>>> = {
+  pulse: {
+    "balanced-repair": 0.035,
+    "cadence-hook": 0.045,
+    "spacious-hook": 0.075,
+    "energetic-hook": -0.05,
+    "lifted-hook": -0.035,
+  },
+  bass: {
+    "spacious-hook": 0.085,
+    "cadence-hook": 0.035,
+    "balanced-repair": 0.02,
+    "energetic-hook": -0.04,
+    "lifted-hook": -0.025,
+  },
+  melody: {
+    "lifted-hook": 0.045,
+    "energetic-hook": 0.04,
+    "stepwise-hook": 0.035,
+    "spacious-hook": 0.035,
+    "cadence-hook": 0.015,
+  },
+};
 
 export const MELODY_CRITIC_TEXT_LIMITS = {
   rationale: 220,
@@ -319,6 +372,180 @@ export function getBestMelodyRepairCandidate(
     }
     return best;
   }, undefined);
+}
+
+export function createMelodyConsensusDecision(
+  take: MelodyRepairTake,
+  proposedCandidateId: string | undefined,
+  proposedBy: MelodyConsensusProposedBy = "deterministic-scorer",
+): MelodyConsensusDecision {
+  const candidates = take.candidates.filter((candidate) =>
+    candidate.source !== "raw-transform" ||
+    candidate.id === proposedCandidateId ||
+    candidate.id === take.deterministicCandidateId
+  );
+  const fallbackCandidate = getMelodyRepairCandidate(take, take.deterministicCandidateId) ??
+    take.candidates[0];
+  if (!fallbackCandidate) {
+    throw new Error(`Melody repair take ${take.id} has no candidates`);
+  }
+  const proposedCandidate = getMelodyRepairCandidate(take, proposedCandidateId) ?? fallbackCandidate;
+  const playerIds = getConsensusPlayerIds(take);
+  const responses = playerIds.map((playerId) =>
+    createMelodyConsensusResponse(playerId, candidates, proposedCandidate)
+  );
+  const selectedCandidate = candidates.reduce((best, candidate) => {
+    const candidateScore = scoreCandidateForConsensus(candidate, playerIds, proposedCandidate.id);
+    const bestScore = scoreCandidateForConsensus(best, playerIds, proposedCandidate.id);
+    if (candidateScore > bestScore + SCORE_EPSILON) return candidate;
+    if (Math.abs(candidateScore - bestScore) <= SCORE_EPSILON && candidate.id < best.id) return candidate;
+    return best;
+  }, proposedCandidate);
+  const selectedAgreementScore = scoreCandidateForConsensus(selectedCandidate, playerIds, proposedCandidate.id);
+  const acceptCount = responses.filter((response) => response.stance === "accept").length;
+  const pushCount = responses.filter((response) => response.stance === "push").length;
+  const deferCount = responses.filter((response) => response.stance === "defer").length;
+
+  return {
+    proposedBy,
+    proposedCandidateId: proposedCandidate.id,
+    selectedBy: "band-consensus",
+    selectedCandidateId: selectedCandidate.id,
+    selectedStrategy: selectedCandidate.strategy,
+    agreementScore: selectedAgreementScore,
+    scoreDeltaFromProposed: roundSignedScore(
+      selectedCandidate.primaryScore.total - proposedCandidate.primaryScore.total,
+    ),
+    responses,
+    summary: [
+      `selected ${selectedCandidate.strategy}`,
+      `from ${proposedBy} proposal ${proposedCandidate.strategy}`,
+      `${acceptCount} accept`,
+      `${deferCount} defer`,
+      `${pushCount} push`,
+    ].join(" | "),
+  };
+}
+
+function getConsensusPlayerIds(take: MelodyRepairTake): readonly string[] {
+  const ids = new Set<string>();
+  for (const candidate of take.candidates) {
+    for (const score of candidate.scores) {
+      ids.add(score.perspectiveId);
+    }
+  }
+  if (ids.size === 0) ids.add(take.perspectiveId);
+  return [...ids].sort((left, right) =>
+    consensusPlayerOrder(left) - consensusPlayerOrder(right) || left.localeCompare(right)
+  );
+}
+
+function createMelodyConsensusResponse(
+  playerId: string,
+  candidates: readonly MelodyRepairCandidate[],
+  proposedCandidate: MelodyRepairCandidate,
+): MelodyConsensusResponse {
+  const preferredCandidate = candidates.reduce((best, candidate) => {
+    const candidateScore = scoreCandidateForPlayerConsensus(candidate, playerId, proposedCandidate.id);
+    const bestScore = scoreCandidateForPlayerConsensus(best, playerId, proposedCandidate.id);
+    if (candidateScore > bestScore + SCORE_EPSILON) return candidate;
+    if (Math.abs(candidateScore - bestScore) <= SCORE_EPSILON && candidate.id < best.id) return candidate;
+    return best;
+  }, proposedCandidate);
+  const proposedScore = scoreCandidateForPlayerConsensus(proposedCandidate, playerId, proposedCandidate.id);
+  const preferredScore = scoreCandidateForPlayerConsensus(preferredCandidate, playerId, proposedCandidate.id);
+  const preferenceMargin = roundSignedScore(preferredScore - proposedScore);
+  const stance: MelodyConsensusStance = preferredCandidate.id === proposedCandidate.id
+    ? "accept"
+    : preferenceMargin <= CONSENSUS_DEFER_MARGIN
+    ? "defer"
+    : "push";
+  const label = getCandidateScoreForPlayer(proposedCandidate, playerId)?.perspectiveLabel ?? playerId;
+
+  return {
+    playerId,
+    label,
+    stance,
+    proposedCandidateId: proposedCandidate.id,
+    preferredCandidateId: preferredCandidate.id,
+    preferredStrategy: preferredCandidate.strategy,
+    proposedScore,
+    preferredScore,
+    preferenceMargin,
+    reason: createConsensusReason({
+      label,
+      stance,
+      proposedCandidate,
+      preferredCandidate,
+      preferenceMargin,
+    }),
+  };
+}
+
+function createConsensusReason(input: {
+  label: string;
+  stance: MelodyConsensusStance;
+  proposedCandidate: MelodyRepairCandidate;
+  preferredCandidate: MelodyRepairCandidate;
+  preferenceMargin: number;
+}): string {
+  if (input.stance === "accept") {
+    return `${input.label} accepts ${input.proposedCandidate.strategy}; role score and proposal agree.`;
+  }
+  if (input.stance === "defer") {
+    return `${input.label} hears ${input.preferredCandidate.strategy} slightly ahead (${formatSignedDelta(
+      input.preferenceMargin,
+    )}) but defers to the proposal.`;
+  }
+  return `${input.label} pushes for ${input.preferredCandidate.strategy} over ${input.proposedCandidate.strategy} (${formatSignedDelta(
+    input.preferenceMargin,
+  )}).`;
+}
+
+function scoreCandidateForConsensus(
+  candidate: MelodyRepairCandidate,
+  playerIds: readonly string[],
+  proposedCandidateId: string,
+): number {
+  if (playerIds.length === 0) return roundScore(candidate.primaryScore.total);
+  const total = playerIds.reduce((sum, playerId) =>
+    sum + scoreCandidateForPlayerConsensus(candidate, playerId, proposedCandidateId), 0);
+  return roundScore(total / playerIds.length);
+}
+
+function scoreCandidateForPlayerConsensus(
+  candidate: MelodyRepairCandidate,
+  playerId: string,
+  proposedCandidateId: string,
+): number {
+  const score = getCandidateScoreForPlayer(candidate, playerId)?.total ?? candidate.primaryScore.total;
+  const proposalBias = candidate.id === proposedCandidateId ? CONSENSUS_PROPOSAL_BIAS : 0;
+  return roundScore(clamp(
+    score + getPlayerStrategyAffinity(playerId, candidate.strategy) + proposalBias,
+    0,
+    1,
+  ));
+}
+
+function getCandidateScoreForPlayer(
+  candidate: MelodyRepairCandidate,
+  playerId: string,
+): MelodyPhraseScore | undefined {
+  return candidate.scores.find((score) => score.perspectiveId === playerId);
+}
+
+function getPlayerStrategyAffinity(
+  playerId: string,
+  strategy: MelodyRepairCandidateStrategy,
+): number {
+  return STRATEGY_AFFINITY_BY_PLAYER[playerId]?.[strategy] ?? 0;
+}
+
+function consensusPlayerOrder(playerId: string): number {
+  if (playerId === "pulse") return 0;
+  if (playerId === "bass") return 1;
+  if (playerId === "melody") return 2;
+  return 99;
 }
 
 export function scoreMelodyPhrase(
@@ -1438,6 +1665,10 @@ function roundScore(value: number): number {
 
 function roundSignedScore(value: number): number {
   return Math.round(value * 1_000) / 1_000;
+}
+
+function formatSignedDelta(value: number): string {
+  return `${value >= 0 ? "+" : ""}${value.toFixed(3)}`;
 }
 
 function roundVelocity(value: number): number {

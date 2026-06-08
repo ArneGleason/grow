@@ -31,6 +31,7 @@ Grow currently runs as a browser app with:
 - A deterministic developed chorus melody committed through the lookahead, so the chorus is new material rather than a fire-time pitch trick.
 - A deterministic melody scorer and repair pass that A/Bs the raw transformed chorus against a repaired take from each player's perspective.
 - A manual local Ollama melody critic that can select among strategy-diverse, already-scored chorus candidates without emitting notes.
+- A deterministic band-consensus layer where pulse, bass, and melody respond to the proposed chorus take before one app-owned candidate becomes audible.
 - Per-section behavior: grounded verses, lifted/full choruses, and a sparse shifted bridge.
 - Session modes: break, solo practice, rehearsal, and performance.
 - Player taste rules that can repeat, support, simplify, vary, contrast, or rest.
@@ -43,7 +44,7 @@ Grow currently runs as a browser app with:
 - A local SQLite persistence shell plus browser-side buffered persistence for low-frequency decisions and musical event records.
 - Context help in the inspector so the app can explain its growing set of controls.
 
-The current milestone is Byte 15b-b: after the Byte 14 pivot back to audible composition and Byte 15a's deterministic repair substrate, Grow now lets a local model act as a critic by choosing among scored, app-owned chorus candidates with distinct musical strategies. The model can select and explain; the app still owns the notes, logs the choice, and shows how the selected take compares with the local scorer's best.
+The current milestone is Byte 15c-a: after the Byte 14 pivot back to audible composition and Byte 15a's deterministic repair substrate, Grow now lets a local model propose one scored, app-owned chorus candidate, then runs that proposal through deterministic player consensus. The app still owns every note. The model can suggest and explain; the players can accept, defer, or push back; the selected take is logged with the proposal and response trail.
 
 ## What Is Not Here Yet
 
@@ -54,7 +55,7 @@ These are active directions, not promises that they are already implemented:
 - Best-of capture/export.
 - Player-made instruments and effects routing.
 - Multiple bands or terrariums observing each other.
-- Model/player consensus that selects and remembers preferred song-section developments.
+- Remember-good behavior that lets accepted song-section developments influence future choices.
 
 The project is deliberately moving in small bytes so each piece can be heard, seen, reviewed, and changed before the next layer lands.
 
@@ -123,6 +124,7 @@ When the app is running, these globals are useful for inspection:
 - `window.thinking.getMockIntents()`
 - `window.melodyRepair.getTake()`
 - `window.melodyRepair.getCandidate()`
+- `window.melodyRepair.getConsensus()`
 - `window.ollama.runManualMelodyCriticTest()`
 - `window.ollama.checkHealth()`
 - `window.terrarium.getVisualState()`

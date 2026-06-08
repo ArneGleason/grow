@@ -1671,6 +1671,32 @@ Status:
 - Byte 15b-b diversifies the menu into named deterministic strategies: balanced repair, lifted hook, stepwise hook, spacious hook, energetic hook, cadence hook, plus raw/local fallback choices when distinct. Candidates now expose strategy, note count, best-candidate id, score delta from local best, and score delta from the deterministic fallback.
 - Manual critic outcomes are recorded as `song.melody_critic_selection` so model picks can be compared with the local scorer over time without parsing model prose.
 
+### Byte 15c: Deterministic Band Consensus
+
+Let the model critic propose a chorus candidate, then let the deterministic players respond before anything becomes the active audible take. The model still selects only an app-owned candidate id plus prose; it does not vote, emit notes, or mutate scores.
+
+Scope:
+
+- Add a consensus pass over the existing scored candidate menu.
+- Give each player a deterministic response to the proposed candidate: accept it, defer to a slightly preferred option, or push for a different strategy.
+- Use role-shaped strategy affinities so the rhythm section can favor breath/space while the melodist can favor lift or motion.
+- Select the active chorus candidate from the existing local menu by consensus score, then commit it through the same lookahead material path already used by Byte 14/15.
+- Record proposal id/source, selected id, consensus summary, agreement score, and per-player responses with human feedback and critic-selection persistence.
+
+Review focus:
+
+- Whether consensus makes the model proposal feel like something the band considers rather than a private override.
+- Whether a characterful but lower-scoring proposal, such as `spacious-hook`, can pass when the pulse/bass/melody responses support it.
+- Whether a weak proposal, such as an overly high/repetitive `lifted-hook`, is still rejected by deterministic consensus rather than rubber-stamped.
+- Whether invalid/failed/stale model output still falls back to the deterministic scorer without changing the audible chorus.
+
+Status:
+
+- Byte 15c-a adds the first deterministic consensus layer.
+- `createMelodyConsensusDecision()` scores app-owned candidates from pulse, bass, and melody perspectives with a modest proposal bias and role-specific strategy affinities.
+- The inspector shows `Consensus` and `Responses` rows, and `window.melodyRepair.getConsensus()` exposes the selected candidate, proposal source, agreement score, and player responses.
+- Manual critic outcomes and Up/Down feedback now preserve the model proposal separately from the consensus-selected candidate.
+
 Deferred producer work:
 
 - Producer marker, rule-based text input, and safe producer prompt interpretation remain useful, but they are no longer Byte 14/15. Bring them back after the band is audibly composing.
