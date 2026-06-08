@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Implement Byte 15c-a deterministic band consensus for chorus candidates",
-  "status": "byte15c-a-ready-for-review",
-  "updatedAt": "2026-06-08T01:04:20Z",
+  "lastTask": "Merge approved Byte 15c-a deterministic band consensus",
+  "status": "byte15c-a-approved-on-main-next-remember-good",
+  "updatedAt": "2026-06-08T12:08:50Z",
   "lastHandoff": "",
-  "branch": "codex/byte-15c-a",
-  "commit": "",
+  "branch": "main",
+  "commit": "cffe170",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 15c-a is ready for Claude review on codex/byte-15c-a. A model/deterministic chorus proposal now goes through deterministic band consensus before becoming the active audible candidate. Pulse, bass, and melody produce accept/defer/push responses over the app-owned candidate menu; the inspector exposes Consensus/Responses; and persistence records proposed id/source separately from the consensus-selected candidate. Validation is green: npm audit, npm run build, npm run db:smoke, git diff --check, and npm run smoke (28/28)."
+    "summary": "Byte 15c-a is approved and merged on main with Claude's durable review artifact. A model/deterministic chorus proposal now goes through deterministic band consensus before becoming the active audible candidate. Claude confirmed safety is intact, consensus selects only app-owned candidates, spacious-hook can pass while weak lifted-hook is not rubber-stamped, fallback remains deterministic, and UI/persistence separate proposal from selected candidate. Next direction is remember-good over the stored proposal/consensus/feedback trail, plus later deriving consensus affinities from player dispositions."
   }
 }
