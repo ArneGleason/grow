@@ -20,8 +20,10 @@ import {
 import {
   DEFAULT_SONG_ARRANGEMENT,
   arrangeSongFormPatternEvent,
+  getSongHarmonicContext,
   sectionAtBeat,
   type ChorusDevelopment,
+  type SongHarmonicContext,
   type SongSectionContext,
 } from "./song-form";
 import type { TasteNoteDecision, TasteNoteDecisionInput } from "./taste";
@@ -56,6 +58,7 @@ export interface GrowTransportState {
     latest: readonly PlayerPerformedTimingSnapshot[];
   };
   songForm: SongSectionContext;
+  harmony: SongHarmonicContext;
 }
 
 export interface AudioFireTimingDiagnostic {
@@ -95,6 +98,8 @@ const LOOKAHEAD_MINIMUM_BEATS = 4;
 const LOOKAHEAD_SCHEDULER_INTERVAL_MS = 250;
 const AUDIO_START_TIMEOUT_MS = 3_000;
 const AUDIO_FIRE_EPSILON_SECONDS = 0.003;
+const AUDIO_CLOCK_STALL_GRACE_BEATS = 0.25;
+const AUDIO_CLOCK_FALLBACK_GRACE_MS = 250;
 const MAX_PERFORMED_OFFSET_BEATS = 0.06;
 const WIDE_TIMING_SCALE = 4;
 const WIDE_TIMING_MAXIMUM_OFFSET_BEATS = MAX_PERFORMED_OFFSET_BEATS;
@@ -145,11 +150,13 @@ let activePatterns: readonly PlayerPattern[] = [];
 let lookaheadTimerId = 0;
 let nextScheduleBeat = 0;
 let scheduledThroughBeat = 0;
+let playbackStartedAtMs = 0;
 const committedEventIndexes = new Map<string, number>();
 const latestCommittedPitchByPlayer = new Map<string, string>();
 const latestExpressionByPlayer = new Map<string, PlayerExpressionSnapshot>();
 const latestPerformedTimingByPlayer = new Map<string, PlayerPerformedTimingSnapshot>();
 const latestAudioFireTiming: AudioFireTimingDiagnostic[] = [];
+const wallClockFallbackTimers = new Map<number, number>();
 
 function buildPlayerPatterns(songId: SongId): readonly PlayerPattern[] {
   return getSongMaterial(songId).patterns.map((pattern) => ({
@@ -269,8 +276,9 @@ function snapBeat(value: number): number {
 
 function getCurrentBeat(): number {
   if (status !== "playing" || !Tone) return 0;
-  const transport = Tone.getTransport();
-  return Math.max(0, snapBeat(transport.ticks / transport.PPQ));
+  const toneBeat = getToneTransportBeat(Tone);
+  const wallClockBeat = getWallClockBeat();
+  return Math.max(0, snapBeat(shouldUseWallClockBeat(Tone) ? wallClockBeat : toneBeat));
 }
 
 async function loadTone(): Promise<typeof ToneNS> {
@@ -284,7 +292,11 @@ async function startAudioContext(tone: typeof ToneNS): Promise<void> {
   let timeoutId = 0;
   try {
     await Promise.race([
-      tone.start(),
+      (async () => {
+        await tone.start();
+        await tone.getContext().resume();
+        await waitForAudioContextRunning(tone);
+      })(),
       new Promise<never>((_, reject) => {
         timeoutId = window.setTimeout(() => {
           reject(new Error("Timed out while starting the audio context"));
@@ -293,6 +305,12 @@ async function startAudioContext(tone: typeof ToneNS): Promise<void> {
     ]);
   } finally {
     window.clearTimeout(timeoutId);
+  }
+}
+
+async function waitForAudioContextRunning(tone: typeof ToneNS): Promise<void> {
+  while (tone.getContext().state !== "running") {
+    await new Promise((resolve) => window.setTimeout(resolve, 25));
   }
 }
 
@@ -389,12 +407,18 @@ function triggerScheduledNote(
   };
   latestExpressionByPlayer.set(note.playerId, appliedExpression);
 
-  if (decision.shouldPlay && note.playerId === "pulse") {
-    ensurePulseSynth(tone).triggerAttackRelease(performedPitch, note.duration, audioTime, velocity);
-  } else if (decision.shouldPlay && note.playerId === "bass") {
-    ensureBassSynth(tone).triggerAttackRelease(performedPitch, note.duration, audioTime, velocity);
-  } else if (decision.shouldPlay && note.playerId === "melody") {
-    ensureMelodySynth(tone).triggerAttackRelease(performedPitch, note.duration, audioTime, velocity);
+  try {
+    if (decision.shouldPlay && note.playerId === "pulse") {
+      ensurePulseSynth(tone).triggerAttackRelease(performedPitch, note.duration, audioTime, velocity);
+    } else if (decision.shouldPlay && note.playerId === "bass") {
+      ensureBassSynth(tone).triggerAttackRelease(performedPitch, note.duration, audioTime, velocity);
+    } else if (decision.shouldPlay && note.playerId === "melody") {
+      ensureMelodySynth(tone).triggerAttackRelease(performedPitch, note.duration, audioTime, velocity);
+    }
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      console.warn("[transport] synth trigger failed; recording scheduled event", error);
+    }
   }
 
   emitNoteEvent(committed, decision, appliedExpression, velocity, performedPitch);
@@ -430,6 +454,23 @@ function recordAudioFireTiming(
   if (latestAudioFireTiming.length > 96) {
     latestAudioFireTiming.splice(0, latestAudioFireTiming.length - 96);
   }
+}
+
+function getToneTransportBeat(tone: typeof ToneNS): number {
+  const transport = tone.getTransport();
+  return transport.ticks / transport.PPQ;
+}
+
+function getWallClockBeat(): number {
+  if (playbackStartedAtMs <= 0) return 0;
+  return Math.max(0, ((performance.now() - playbackStartedAtMs) / 1_000) * (BPM / 60));
+}
+
+function shouldUseWallClockBeat(tone: typeof ToneNS): boolean {
+  if (status !== "playing") return false;
+  const transport = tone.getTransport();
+  if (transport.state !== "started") return false;
+  return getWallClockBeat() - getToneTransportBeat(tone) > AUDIO_CLOCK_STALL_GRACE_BEATS;
 }
 
 function getFirstFutureGridBeat(currentBeat: number): number {
@@ -586,6 +627,45 @@ function getPerformedTransportPosition(tone: typeof ToneNS, committed: Committed
   return `${ticks}i`;
 }
 
+function getPerformedBeat(committed: CommittedScheduledNote): number {
+  return Math.max(
+    0,
+    committed.snapshot.absoluteBeat + committed.performedTiming.performedOffsetBeats,
+  );
+}
+
+function clearWallClockFallback(eventId: number): void {
+  const timeoutId = wallClockFallbackTimers.get(eventId);
+  if (timeoutId !== undefined) {
+    window.clearTimeout(timeoutId);
+    wallClockFallbackTimers.delete(eventId);
+  }
+}
+
+function scheduleWallClockFallback(
+  tone: typeof ToneNS,
+  eventId: number,
+  committed: CommittedScheduledNote,
+): void {
+  const performedBeat = getPerformedBeat(committed);
+  const delayMs = Math.max(
+    AUDIO_CLOCK_FALLBACK_GRACE_MS,
+    ((performedBeat - getWallClockBeat()) * 60 / BPM) * 1_000 + AUDIO_CLOCK_FALLBACK_GRACE_MS,
+  );
+  const timeoutId = window.setTimeout(() => {
+    wallClockFallbackTimers.delete(eventId);
+    if (!scheduledEventIds.has(eventId)) return;
+
+    scheduledEventIds.delete(eventId);
+    tone.getTransport().clear(eventId);
+    const audioTime = clampAudioFireTime(tone, tone.immediate());
+    recordAudioFireTiming(tone, committed, Number.NaN, audioTime);
+    triggerScheduledNote(tone, audioTime, committed);
+    emitTick();
+  }, delayMs);
+  wallClockFallbackTimers.set(eventId, timeoutId);
+}
+
 function schedulePatternNote(
   tone: typeof ToneNS,
   committed: CommittedScheduledNote,
@@ -594,6 +674,7 @@ function schedulePatternNote(
   const draw = tone.getDraw();
   let eventId = -1;
   eventId = transport.scheduleOnce((time) => {
+    clearWallClockFallback(eventId);
     scheduledEventIds.delete(eventId);
     if (status !== "playing") return;
     const audioTime = clampAudioFireTime(tone, time);
@@ -602,6 +683,7 @@ function schedulePatternNote(
     draw.schedule(() => emitTick(), audioTime);
   }, getPerformedTransportPosition(tone, committed));
   scheduledEventIds.add(eventId);
+  scheduleWallClockFallback(tone, eventId, committed);
 }
 
 function scheduleLookahead(tone: typeof ToneNS): void {
@@ -643,6 +725,11 @@ function disposeLookaheadSchedule(tone: typeof ToneNS | null = Tone): void {
     window.clearInterval(lookaheadTimerId);
     lookaheadTimerId = 0;
   }
+
+  for (const timeoutId of wallClockFallbackTimers.values()) {
+    window.clearTimeout(timeoutId);
+  }
+  wallClockFallbackTimers.clear();
 
   const transport = tone?.getTransport();
   if (transport) {
@@ -689,27 +776,40 @@ export async function startTransport(): Promise<GrowTransportState> {
   transport.timeSignature = [4, 4];
   transport.loop = false;
   transport.position = "0:0:0";
-  status = "playing";
-  eventSerial = 0;
-  committedEventIndexes.clear();
-  latestCommittedPitchByPlayer.clear();
-  latestExpressionByPlayer.clear();
-  latestPerformedTimingByPlayer.clear();
-  latestAudioFireTiming.length = 0;
-  nextScheduleBeat = 0;
-  scheduledThroughBeat = 0;
-  activePatterns = buildPlayerPatterns(getActiveSongId());
-  startLookaheadScheduler(tone);
 
-  transport.start("+0.05");
-  log("started");
-  emitTick();
-  return getState();
+  try {
+    status = "playing";
+    eventSerial = 0;
+    committedEventIndexes.clear();
+    latestCommittedPitchByPlayer.clear();
+    latestExpressionByPlayer.clear();
+    latestPerformedTimingByPlayer.clear();
+    latestAudioFireTiming.length = 0;
+    nextScheduleBeat = 0;
+    scheduledThroughBeat = 0;
+    playbackStartedAtMs = performance.now();
+    activePatterns = buildPlayerPatterns(getActiveSongId());
+
+    transport.start();
+    startLookaheadScheduler(tone);
+    log("started");
+    emitTick();
+    return getState();
+  } catch (error) {
+    status = "stopped";
+    playbackStartedAtMs = 0;
+    transport.stop(0);
+    disposeLookaheadSchedule(tone);
+    transport.cancel(0);
+    transport.position = "0:0:0";
+    throw error;
+  }
 }
 
 export function stopTransport(): GrowTransportState {
   const transport = Tone?.getTransport();
   status = "stopped";
+  playbackStartedAtMs = 0;
   transport?.stop(0);
   disposeLookaheadSchedule(Tone);
   transport?.cancel(0);
@@ -782,6 +882,7 @@ export function getState(): GrowTransportState {
       latest: [...latestPerformedTimingByPlayer.values()],
     },
     songForm: sectionAtBeat(currentBeat, DEFAULT_SONG_ARRANGEMENT),
+    harmony: getSongHarmonicContext(getSongMaterial(getActiveSongId()), currentBeat, DEFAULT_SONG_ARRANGEMENT),
   };
 }
 

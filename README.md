@@ -28,6 +28,7 @@ Grow currently runs as a browser app with:
 - Three deterministic players: `pulse`, `bass`, and `melody`.
 - A structured musical event ledger and listening frame.
 - A looping song form: Verse, Chorus, Verse, Chorus, Bridge, Chorus.
+- Audible harmonic motion from the song sketch root plan: pulse and bass move through section roots while staying inside the current modal scale.
 - A deterministic developed chorus melody committed through the lookahead, so the chorus is new material rather than a fire-time pitch trick.
 - A deterministic melody scorer and repair pass that A/Bs the raw transformed chorus against a repaired take from each player's perspective.
 - A manual local Ollama melody critic that can select among strategy-diverse, already-scored chorus candidates without emitting notes.
@@ -44,7 +45,7 @@ Grow currently runs as a browser app with:
 - A local SQLite persistence shell plus browser-side buffered persistence for low-frequency decisions and musical event records.
 - Context help in the inspector so the app can explain its growing set of controls.
 
-The current milestone is Byte 15c-a: after the Byte 14 pivot back to audible composition and Byte 15a's deterministic repair substrate, Grow now lets a local model propose one scored, app-owned chorus candidate, then runs that proposal through deterministic player consensus. The app still owns every note. The model can suggest and explain; the players can accept, defer, or push back; the selected take is logged with the proposal and response trail.
+The current milestone is Byte 16a: Grow has pivoted from refining one chorus-take decision toward musical motion. The song sketch's root plan is now audible: verses, choruses, and the bridge can carry different modal roots through the lookahead material path while the app still owns every note and the model stays out of this deterministic byte.
 
 ## What Is Not Here Yet
 

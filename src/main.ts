@@ -87,6 +87,7 @@ import {
   type TerrariumView,
   type TerrariumVisualState,
 } from "./terrarium";
+import { DEFAULT_TONAL_CONTEXT } from "./tonal-context";
 import {
   type PlayerTasteEvaluation,
   type TasteNoteDecision,
@@ -329,11 +330,11 @@ function getSongLabel(nextSongId: SongId): string {
 }
 
 app.innerHTML = `
-  <section class="app-shell" aria-label="Grow Byte 15c-a">
+  <section class="app-shell" aria-label="Grow Byte 16a">
     <header class="topbar">
       <div class="brand">
         <h1 class="brand__title">Grow</h1>
-        <p class="brand__subtitle">Band consensus weighs chorus proposals</p>
+        <p class="brand__subtitle">Song sketch roots become audible</p>
       </div>
       <div class="transport-controls">
         <fieldset class="mode-control">
@@ -436,6 +437,8 @@ ${renderHelpButton("session", "session mode")}
             <dd data-testid="song-current">${getSongLabel(songId)}</dd>
             <dt>Section</dt>
             <dd data-testid="song-section-current">Verse 1, bar 1/8</dd>
+            <dt>Harmony</dt>
+            <dd data-testid="song-harmony-current">Gather C</dd>
             <dt>Timing</dt>
             <dd data-testid="timing-feel-current">Feel</dd>
             <dt>Persistence</dt>
@@ -631,6 +634,7 @@ const sessionModeCurrent = requireElement<HTMLElement>("[data-testid='session-mo
 const songControl = requireElement<HTMLDivElement>("[data-testid='song-control']");
 const songCurrent = requireElement<HTMLElement>("[data-testid='song-current']");
 const songSectionCurrent = requireElement<HTMLElement>("[data-testid='song-section-current']");
+const songHarmonyCurrent = requireElement<HTMLElement>("[data-testid='song-harmony-current']");
 const timingFeelControl = requireElement<HTMLDivElement>("[data-testid='timing-feel-control']");
 const timingFeelCurrent = requireElement<HTMLElement>("[data-testid='timing-feel-current']");
 const persistenceStatus = requireElement<HTMLElement>("[data-testid='persistence-status']");
@@ -1629,6 +1633,7 @@ function renderSessionMode(): void {
   }
   songCurrent.textContent = getSongLabel(songId);
   songSectionCurrent.textContent = formatSongSection(transportState.songForm);
+  songHarmonyCurrent.textContent = formatSongHarmony(transportState);
   for (const input of songControl.querySelectorAll<HTMLInputElement>("input[name='song']")) {
     input.checked = input.value === songId;
   }
@@ -1640,6 +1645,14 @@ function renderSessionMode(): void {
 
 function formatSongSection(section: GrowTransportState["songForm"]): string {
   return `${section.label} ${section.occurrence}, bar ${section.localBar}/${section.bars}`;
+}
+
+function formatSongHarmony(state: GrowTransportState): string {
+  const rootName = rootNoteFromScaleDegree(DEFAULT_TONAL_CONTEXT, state.harmony.rootDegree);
+  const plan = state.harmony.rootDegrees
+    .map((degree) => rootNoteFromScaleDegree(DEFAULT_TONAL_CONTEXT, degree))
+    .join("-");
+  return `${state.harmony.label} ${rootName} (${plan}, ${state.harmony.strategy})`;
 }
 
 function renderPersistence(): void {

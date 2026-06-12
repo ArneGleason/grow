@@ -24,6 +24,22 @@ The project is exploratory. Drift is allowed. The repo should keep enough memory
 - Prompt protocol model: Grow should keep one canonical internal thought contract while allowing swappable model-facing prompt adapters, because different local models tolerate projected JSON, card protocols, and other compact shapes differently.
 - Scope model: solo local instrument first; future architecture may allow multiple terrariums/bands that can observe or react to each other.
 
+## Course Adjustment: Musicality First (2026-06-12)
+
+After Byte 15c-a, Arne redirected the project's center of gravity from take selection to musical motion.
+
+The chorus-candidate pipeline (scoring, repair, critic, consensus) proved the safety architecture, but four consecutive bytes refined the selection of one 8-bar loop. That problem is sorted. The bar Grow is reaching for is not "pleasant generative loop" — it is music that moves: chord changes under sections, a bridge that lifts into a new key, a key change that happens because the bassist suggested it, band conventions that arrive as proposals rather than scripts.
+
+What this means concretely:
+
+- Harmonic motion is the next musical dimension: the `SongSketch` chord/root plan becomes audible rather than inspect-only.
+- Band-level changes (key, mode, chord sequence, section shape) come to life through the existing proposal/response/consensus path from Bytes 12 and 15c.
+- The model graduates from selector/copywriter toward bounded authorship: validator-gated phrases entering the candidate menu, guarded by scoring and consensus.
+- Remember-good targets band-level outcomes — accepted key changes, chord plans, section developments — not just chorus candidate picks.
+- Mark-a-moment lands as the first listener-facing capture feature, since persistence and the decision trail now exist.
+
+The safety boundaries do not move: the app owns every note, model output is data or validator-gated structure with deterministic fallback, and changes commit through the lookahead path at musical boundaries.
+
 ## Product Feel
 
 - A confined top-down terrarium rather than an infinite world.

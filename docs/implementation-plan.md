@@ -1701,7 +1701,64 @@ Deferred producer work:
 
 - Producer marker, rule-based text input, and safe producer prompt interpretation remain useful, but they are no longer Byte 14/15. Bring them back after the band is audibly composing.
 
-### Byte 16: Minimal Persistence
+## Byte 16 Arc: Musicality First (Course Adjustment, 2026-06-12)
+
+Arne redirected the project after Byte 15c-a: stop deepening chorus take selection and move to musical motion. See `.agent/handoffs/2026-06-12-claude-musicality-course-adjustment.md` and the matching section in `docs/vision-and-plan.md`. The planned standalone remember-good byte is folded into this arc.
+
+### Byte 16a: Audible Harmonic Motion
+
+Make the `SongSketch` chord/root plan audible. Bass and accompaniment follow the per-section chord plan instead of a static tonal center, committed through the existing song-form/lookahead material path.
+
+Scope:
+
+- Deterministic only; no model involvement in this byte, so the musical change is isolated from any protocol change.
+- Sections should become harmonically distinct by ear, not just by density/register behavior.
+- Interpret root plans as modal harmonic roots inside the current tonal context. This byte recolors pulse/bass degrees within C mixolydian and does not change key, mode, or the active validator scale.
+
+Review focus:
+
+- Whether chord changes land at section boundaries through the lookahead path without timing or cleanup regressions.
+- Whether melody material stays coherent over a moving root, or needs chord-aware scoring next.
+
+Status:
+
+- Byte 16a implemented audible modal root motion for pulse and bass.
+- `deriveSongSectionRootPlans()` mirrors the SongSketch gather/answer root split, adds a deterministic bridge plan, and `getSongHarmonicContext()` exposes the active root for transport/UI.
+- `arrangeSongFormPatternEvent()` applies harmonic recoloring at schedule/materialization time before pitch resolution, so no fire-time note-decision path or model protocol is involved.
+
+### Byte 16b: Band-Proposed Key/Mode Change
+
+First case: a bridge modulation, since it is already convention. A proposer (bassist first, model critic later) proposes a key/mode change for a target section through the Byte 12 proposal shape; players respond with the Byte 15c stance machinery; an accepted change commits through the lookahead path at the section boundary.
+
+Scope:
+
+- Reuse `SongSketchProposal` and consensus; do not invent a parallel mechanism.
+- Fallback is trivial and always valid: stay in the current key.
+- Fold in the carry-forward: derive consensus affinities from player dispositions instead of the hand-tuned `STRATEGY_AFFINITY_BY_PLAYER` table.
+
+Review focus:
+
+- Whether the modulation feels proposed and agreed rather than scripted.
+- Whether rejection paths stay audible-safe.
+
+### Byte 16c: Model-Authored Phrase As Candidate
+
+Let the model emit one phrase through the existing `MusicalExcerpt` validator as an additional entry in the chorus candidate menu. Scoring and consensus already guard it; the band can outvote a bad phrase.
+
+Review focus:
+
+- Whether validator + scorer + consensus genuinely contain a bad model phrase.
+- Whether a good model phrase can win on merit, by ear and by score.
+
+### Byte 16d: Mark-A-Moment
+
+A "keep that" control that preserves the recent decision/event trail as a named moment, using existing persistence. Small; can land in parallel with 16a-16c.
+
+### Folded Remember-Good
+
+Remember-good now targets band-level outcomes recorded by this arc: accepted key changes, chord plans that worked, section developments, and which strategies players push for — not only chorus candidate picks.
+
+### Byte 16 (superseded): Minimal Persistence
 
 Superseded by Byte 13b after the song-sketch and proposal-text surfaces became worth preserving.
 
