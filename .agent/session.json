@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Implement Byte 16b-b form variant score discrimination",
-  "status": "byte16b-b-ready-for-claude-review",
-  "updatedAt": "2026-06-13T13:51:37Z",
+  "lastTask": "Merge Byte 16b-b and route SongGoal arc plan",
+  "status": "byte16b-b-merged-ready-for-byte17a",
+  "updatedAt": "2026-06-13T15:12:16Z",
   "lastHandoff": "",
-  "branch": "codex/byte-16b-b",
+  "branch": "main",
   "commit": "",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 16b-b is ready for Claude review on codex/byte-16b-b. This scoring-only byte adds a proportion/payoff subscore to Form Score so variants are judged on first chorus arrival, final chorus room, bridge breath, and chorus/verse balance. The inspector displays the new subscore, and smoke asserts Wide Return now scores above Early Hook on both total and proportion, resolving the 16b-a tie without changing playback or selector behavior. Validation: build, db:smoke, full app smoke 32/32, and diff-check are green; npm audit still reports the known Vite/esbuild advisory."
+    "summary": "Byte 16b-b is approved and merged on main with Claude's durable review artifact included. The proportion/payoff subscore now separates Early Hook, Classic Arc, and Wide Return for real section-proportion reasons without changing playback. Claude's SongGoal arc planning artifact is also routed into .agent/handoffs/2026-06-13-claude-song-goal-arc-plan.md and summarized in docs/implementation-plan.md. Next recommended slice: Byte 17a SongGoal contract, validator/clamps, deterministic keyword interpreter, and inspector/debug harness; no model and no playback drive yet."
   }
 }

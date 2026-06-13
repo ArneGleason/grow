@@ -1806,7 +1806,7 @@ Review focus:
 
 Status:
 
-- Byte 16b-a is in progress on `codex/byte-16b-a`.
+- Byte 16b-a is approved and merged.
 
 ### Byte 16b-b: Form Variant Score Discrimination
 
@@ -1826,7 +1826,52 @@ Review focus:
 
 Status:
 
-- Byte 16b-b is in progress on `codex/byte-16b-b`.
+- Byte 16b-b is approved and merged.
+
+### Byte 17 Arc: Song-Goal Front Door
+
+Arne and Claude added a new front door for Grow: a human or another agent can enter a free-text song idea, and the local system interprets it into a validated, bounded `SongGoal` that seeds the band's setup and working brief. See `.agent/handoffs/2026-06-13-claude-song-goal-arc-plan.md`.
+
+Core boundary:
+
+- The prompt resolves into knobs the app already understands, never into notes, scales, or executable instructions.
+- `sourceIdea` prose is provenance only and is never parsed downstream as instruction.
+- The same validator handles human and agent text.
+- Persist the interpreted `SongGoal` so a take is reproducible from the structured goal, not just the prose.
+
+#### Byte 17a: SongGoal Contract And Deterministic Interpreter
+
+Define the broad `SongGoal` contract, validator/clamps, deterministic keyword interpreter, and inspector/debug harness.
+
+Scope:
+
+- Deterministic only; no model involvement.
+- Inspect-only; no playback, tempo, key/mode, or form drive yet.
+- Include broad but bounded vocabulary: setup fields, energy/surprise/mood, form preference, section emphasis, disposition nudges, curated influence hints.
+- Add deterministic fallback behavior that later model interpretation can be measured against.
+
+#### Byte 17b: Goal Drives Setup
+
+First audible payoff. Apply validated setup-time goal fields to key/mode, tempo, and form preference.
+
+Scope:
+
+- Curated `(tonic, mode)` set and clamped tempo range.
+- Setup-time only, not mid-song modulation.
+- Thread active tonal context and tempo through existing bypass paths before playback uses them.
+- Persist `song.goal_set`.
+
+#### Byte 17c: Goal Drives Character
+
+Apply bounded goal character fields to existing knobs: energy/surprise, per-player disposition nudges, curated influence-hint nudges, and section emphasis.
+
+#### Byte 17d: Local ML SongGoal Interpreter
+
+Let Ollama fill the proven `SongGoal` shape via structured output, validator/clamps, and deterministic fallback. The model fills knobs only.
+
+#### Byte 17e+: Goal-Relative Scoring
+
+Add goal-alignment terms to melody/form scorers so the band can compare candidate takes against the interpreted brief.
 
 ### Byte 16b: Band-Proposed Key/Mode Change
 
