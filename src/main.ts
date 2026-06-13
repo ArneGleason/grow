@@ -1712,6 +1712,7 @@ function renderFormScore(score: FormScore): void {
   formScoreSubscores.textContent = [
     `harmony ${score.harmonicMotion.score.toFixed(2)}`,
     `energy ${score.energyArc.score.toFixed(2)}`,
+    `proportion ${score.proportion.score.toFixed(2)}`,
     `motif ${score.melodicCoherence.score.toFixed(2)}`,
     `cadence ${score.cadence.score.toFixed(2)}`,
   ].join(" | ");

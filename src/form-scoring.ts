@@ -25,6 +25,8 @@ export interface FormScoreSection {
   occurrence: number;
   startBeat: number;
   endBeat: number;
+  durationBeats: number;
+  bars: number;
   rootDegrees: readonly number[];
   energy: number;
   melodyPitchClasses: readonly number[];
@@ -37,6 +39,7 @@ export interface FormScore {
   total: number;
   harmonicMotion: FormScoreMetric;
   energyArc: FormScoreMetric;
+  proportion: FormScoreMetric;
   melodicCoherence: FormScoreMetric;
   cadence: FormScoreMetric;
   sections: readonly FormScoreSection[];
@@ -62,10 +65,11 @@ interface ArrangedFormNote extends PatternNoteSource {
 
 const CHORD_TONE_OFFSETS = [0, 2, 4] as const;
 const FORM_SCORE_WEIGHTS = {
-  harmonicMotion: 0.28,
-  energyArc: 0.26,
-  melodicCoherence: 0.24,
-  cadence: 0.22,
+  harmonicMotion: 0.25,
+  energyArc: 0.22,
+  proportion: 0.18,
+  melodicCoherence: 0.19,
+  cadence: 0.16,
 } as const;
 
 export function createFormScore(input: FormScoreInput): FormScore {
@@ -76,17 +80,20 @@ export function createFormScore(input: FormScoreInput): FormScore {
   );
   const harmonicMotion = scoreHarmonicMotion(sections);
   const energyArc = scoreEnergyArc(sections);
+  const proportion = scoreProportion(sections, arrangement);
   const melodicCoherence = scoreMelodicCoherence(sections);
   const cadence = scoreCadence(sections, arrangedNotes, input.song, arrangement, input.tonalContext.scale.length);
   const total = roundScore(
     harmonicMotion.score * FORM_SCORE_WEIGHTS.harmonicMotion +
       energyArc.score * FORM_SCORE_WEIGHTS.energyArc +
+      proportion.score * FORM_SCORE_WEIGHTS.proportion +
       melodicCoherence.score * FORM_SCORE_WEIGHTS.melodicCoherence +
       cadence.score * FORM_SCORE_WEIGHTS.cadence,
   );
   const topCritique = [
     ...harmonicMotion.critiques,
     ...energyArc.critiques,
+    ...proportion.critiques,
     ...melodicCoherence.critiques,
     ...cadence.critiques,
   ][0] ?? "No urgent form flags.";
@@ -104,12 +111,14 @@ export function createFormScore(input: FormScoreInput): FormScore {
     total,
     harmonicMotion,
     energyArc,
+    proportion,
     melodicCoherence,
     cadence,
     sections,
     topCritique,
     summary: `form ${total.toFixed(3)} | harmony ${harmonicMotion.score.toFixed(2)} | energy ${
-      energyArc.score.toFixed(2)} | motif ${melodicCoherence.score.toFixed(2)} | cadence ${cadence.score.toFixed(2)}`,
+      energyArc.score.toFixed(2)} | proportion ${proportion.score.toFixed(2)} | motif ${
+      melodicCoherence.score.toFixed(2)} | cadence ${cadence.score.toFixed(2)}`,
   };
 }
 
@@ -206,10 +215,56 @@ function createFormScoreSection(
     occurrence: section.occurrence,
     startBeat: section.startBeat,
     endBeat: section.endBeat,
+    durationBeats,
+    bars: section.bars,
     rootDegrees,
     energy,
     melodyPitchClasses,
     melodyNoteCount: notes.filter((note) => note.playerId === "melody").length,
+  };
+}
+
+function scoreProportion(
+  sections: readonly FormScoreSection[],
+  arrangement: SongArrangement,
+): FormScoreMetric {
+  const critiques: string[] = [];
+  const firstChorus = sections.find((section) => section.sectionType === "chorus");
+  const bridge = sections.find((section) => section.sectionType === "bridge");
+  const finalChorus = [...sections].reverse().find((section) => section.sectionType === "chorus");
+  const verseBeats = sections
+    .filter((section) => section.sectionType === "verse")
+    .reduce((sum, section) => sum + section.durationBeats, 0);
+  const chorusBeats = sections
+    .filter((section) => section.sectionType === "chorus")
+    .reduce((sum, section) => sum + section.durationBeats, 0);
+  const totalBeats = Math.max(1, arrangement.totalBeats);
+  const firstChorusRatio = firstChorus ? firstChorus.startBeat / totalBeats : 1;
+  const finalChorusRatio = finalChorus ? finalChorus.durationBeats / totalBeats : 0;
+  const bridgeRatio = bridge ? bridge.durationBeats / totalBeats : 0;
+  const chorusVerseRatio = chorusBeats / Math.max(1, verseBeats);
+
+  const hookArrivalScore = bandScore(firstChorusRatio, 0.12, 0.24, 0.18);
+  const finalPayoffScore = bandScore(finalChorusRatio, 0.18, 0.31, 0.25);
+  const bridgeBreathScore = bandScore(bridgeRatio, 0.11, 0.2, 0.15);
+  const chorusBalanceScore = bandScore(chorusVerseRatio, 1.25, 2.6, 1.9);
+
+  if (hookArrivalScore < 0.7) critiques.push("First chorus arrives at a less satisfying proportion of the form.");
+  if (finalPayoffScore < 0.7) critiques.push("Final chorus does not have enough room to feel like payoff.");
+  if (bridgeBreathScore < 0.7) critiques.push("Bridge feels clipped or overextended for this form length.");
+  if (chorusBalanceScore < 0.7) critiques.push("Verse and chorus time are out of balance.");
+
+  return {
+    score: roundScore(
+      hookArrivalScore * 0.25 +
+        finalPayoffScore * 0.34 +
+        bridgeBreathScore * 0.21 +
+        chorusBalanceScore * 0.2,
+    ),
+    summary: `hook ${(firstChorusRatio * 100).toFixed(0)}%, final ${
+      finalChorus?.bars ?? 0} bars, bridge ${bridge?.bars ?? 0} bars, chorus/verse ${
+      chorusVerseRatio.toFixed(2)}x`,
+    critiques,
   };
 }
 

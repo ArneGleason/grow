@@ -1494,11 +1494,16 @@ test("form variants score deterministic audition forms", () => {
       sectionDynamicsProfile: variant.sectionDynamicsProfile,
     }),
   }));
+  const earlyHookScore = variantScores.find((entry) => entry.id === "early-hook")?.score;
+  const wideReturnScore = variantScores.find((entry) => entry.id === "wide-return")?.score;
 
   expect(variantScores).toHaveLength(3);
   expect(new Set(variantScores.map(({ score }) => score.id)).size).toBe(variantScores.length);
   expect(new Set(variantScores.map(({ score }) => score.total)).size).toBeGreaterThan(1);
   expect(variantScores.every(({ score }) => Number.isFinite(score.total))).toBe(true);
+  expect(variantScores.every(({ score }) => score.proportion.score > 0)).toBe(true);
+  expect(wideReturnScore?.total).toBeGreaterThan(earlyHookScore?.total ?? 0);
+  expect(wideReturnScore?.proportion.score).toBeGreaterThan(earlyHookScore?.proportion.score ?? 0);
   expect(sectionAtBeat(16, getFormVariant("classic-arc").arrangement)).toMatchObject({
     sectionType: "verse",
     occurrence: 1,
@@ -1590,6 +1595,7 @@ test("form variant selector scores candidates and drives the transport form", as
   await expect(page.getByTestId("form-variant-candidates")).toContainText("Classic Arc");
   await expect(page.getByTestId("form-variant-candidates")).toContainText("Early Hook");
   await expect(page.getByTestId("form-variant-candidates")).toContainText("Wide Return");
+  await expect(page.getByTestId("form-score-subscores")).toContainText("proportion");
 
   const initialVariants = await page.evaluate(() => {
     const appWindow = window as unknown as {

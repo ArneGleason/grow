@@ -1808,6 +1808,26 @@ Status:
 
 - Byte 16b-a is in progress on `codex/byte-16b-a`.
 
+### Byte 16b-b: Form Variant Score Discrimination
+
+Improve the form-score ruler before any variant winner gets more authority. Byte 16b-a made variants audible, but Early Hook and Wide Return tied; this byte adds proportion/payoff scoring so the score can distinguish form shapes that sound different.
+
+Scope:
+
+- Scoring/display only; no transport, selector, model, persistence-schema, or playback behavior change.
+- Add a proportion/payoff metric that considers first chorus arrival, final chorus room, bridge breath, and chorus/verse balance.
+- Keep the winner informational; do not auto-apply it.
+
+Review focus:
+
+- Confirm Early Hook and Wide Return no longer tie, and the distinction follows the stated proportion/payoff logic.
+- Confirm `Classic Arc` remains a valid default variant.
+- Confirm no selected-variant playback behavior changed from Byte 16b-a.
+
+Status:
+
+- Byte 16b-b is in progress on `codex/byte-16b-b`.
+
 ### Byte 16b: Band-Proposed Key/Mode Change
 
 First case: a bridge modulation, since it is already convention. A proposer (bassist first, model critic later) proposes a key/mode change for a target section through the Byte 12 proposal shape; players respond with the Byte 15c stance machinery; an accepted change commits through the lookahead path at the section boundary.

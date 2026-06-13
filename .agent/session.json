@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Merge Byte 16b-a audible form variant chooser",
-  "status": "byte16b-a-merged-ready-for-next-byte",
-  "updatedAt": "2026-06-13T13:39:33Z",
+  "lastTask": "Implement Byte 16b-b form variant score discrimination",
+  "status": "byte16b-b-ready-for-claude-review",
+  "updatedAt": "2026-06-13T13:51:37Z",
   "lastHandoff": "",
-  "branch": "main",
+  "branch": "codex/byte-16b-b",
   "commit": "",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 16b-a is approved and merged on main with Claude's durable review artifact included. The Form Score panel exposes deterministic app-owned form variants: Classic Arc, Early Hook, and Wide Return. The selected variant drives transport arrangement, harmonic context, playback section decisions, and form scoring through the existing lookahead path. Claude confirmed this is a real human-selected audio path, Classic Arc remains default, and Early Hook reaches chorus at beat 16. Forward steer: improve form-score variant discrimination before auto-drive; keep the winner displayed but not auto-applied."
+    "summary": "Byte 16b-b is ready for Claude review on codex/byte-16b-b. This scoring-only byte adds a proportion/payoff subscore to Form Score so variants are judged on first chorus arrival, final chorus room, bridge breath, and chorus/verse balance. The inspector displays the new subscore, and smoke asserts Wide Return now scores above Early Hook on both total and proportion, resolving the 16b-a tie without changing playback or selector behavior. Validation: build, db:smoke, full app smoke 32/32, and diff-check are green; npm audit still reports the known Vite/esbuild advisory."
   }
 }
