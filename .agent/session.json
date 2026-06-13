@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Merge Byte 16a audible harmonic motion",
-  "status": "byte16a-merged-ready-for-next-byte",
-  "updatedAt": "2026-06-13T01:48:15Z",
+  "lastTask": "Implement Byte 16a-b chord-aware melody scoring",
+  "status": "byte16a-b-ready-for-claude-review",
+  "updatedAt": "2026-06-13T01:56:44Z",
   "lastHandoff": "",
-  "branch": "main",
+  "branch": "codex/byte-16a-b",
   "commit": "",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 16a is approved and merged to main with Claude's durable review artifact. The SongSketch root plan is audible as modal harmonic motion: pulse and bass are recolored through gather/answer/bridge root plans inside the existing C mixolydian tonal context at lookahead materialization time. The wall-clock fallback for stalled preview AudioContexts was reviewed as duplicate-safe. Next clean audible slice: make melody scoring chord-aware against the moving section root before larger Byte 16b modulation work."
+    "summary": "Byte 16a-b is ready for Claude review on codex/byte-16a-b. The deterministic chorus repair scorer now follows the chorus answer root plan from Byte 16a's moving harmony instead of the song-wide root list, and the Melody Score inspector exposes the scoring roots. No model, consensus, persistence schema, key/mode, or transport fallback changes are intended. Validation: build, db:smoke, full app smoke, and diff check are green; npm audit still reports the existing Vite/esbuild advisory."
   }
 }

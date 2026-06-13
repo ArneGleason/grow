@@ -1726,6 +1726,26 @@ Status:
 - `deriveSongSectionRootPlans()` mirrors the SongSketch gather/answer root split, adds a deterministic bridge plan, and `getSongHarmonicContext()` exposes the active root for transport/UI.
 - `arrangeSongFormPatternEvent()` applies harmonic recoloring at schedule/materialization time before pitch resolution, so no fire-time note-decision path or model protocol is involved.
 
+### Byte 16a-b: Chord-Aware Melody Scoring
+
+Make the deterministic chorus scorer listen to Byte 16a's moving roots. The repaired chorus should be judged against the active chorus/answer root plan, not the old song-wide tonal center.
+
+Scope:
+
+- Deterministic only; no model, consensus, persistence-schema, or key/mode behavior change.
+- Keep the active scale as C mixolydian. This is chord-aware landing inside the same modal-root-recolor strategy, not modulation.
+- Use the existing melody repair/scoring path so the audible repaired chorus can shift toward current-section chord tones through committed lookahead material.
+
+Review focus:
+
+- Whether accented/final chorus notes now land on chord tones for the current moving answer roots.
+- Whether the visible Melody Score context makes the scoring target clear enough for listening review.
+- Whether candidate diversity and deterministic consensus still behave after the score target changes.
+
+Status:
+
+- Byte 16a-b is in progress on `codex/byte-16a-b`.
+
 ### Byte 16b: Band-Proposed Key/Mode Change
 
 First case: a bridge modulation, since it is already convention. A proposer (bassist first, model critic later) proposes a key/mode change for a target section through the Byte 12 proposal shape; players respond with the Byte 15c stance machinery; an accepted change commits through the lookahead path at the section boundary.

@@ -10,6 +10,7 @@ import {
   createMelodyConsensusDecision,
   createMockMelodyCriticSelection,
   createMelodyRepairTake,
+  MELODY_CHORUS_PHRASE_BEATS,
   validateMelodyCriticSelection,
   type MelodyConsensusDecision,
   type MelodyRepairTake,
@@ -1312,6 +1313,8 @@ test("melody scoring repairs the chorus and scores player perspectives different
   const strategies = new Set(take.candidates.map((candidate) => candidate.strategy));
   const spaciousCandidate = take.candidates.find((candidate) => candidate.strategy === "spacious-hook");
   const liftedCandidate = take.candidates.find((candidate) => candidate.strategy === "lifted-hook");
+  const rootPlans = deriveSongSectionRootPlans(song);
+  const songWideRoots = deriveSongRootDegrees(song);
   const mockCriticSelection = createMockMelodyCriticSelection(take);
   const deterministicConsensus = createMelodyConsensusDecision(take, take.deterministicCandidateId);
   const spaciousConsensus = spaciousCandidate
@@ -1322,6 +1325,9 @@ test("melody scoring repairs the chorus and scores player perspectives different
     : undefined;
 
   expect(take.improved).toBe(true);
+  expect(take.scoringRootSection).toBe("answer");
+  expect(take.scoringRootDegrees).toEqual(rootPlans.answer);
+  expect(take.scoringRootDegrees).not.toEqual(songWideRoots);
   expect(take.primaryRepairedScore.total).toBeGreaterThan(take.primaryRawScore.total);
   expect(repairedKey).not.toEqual(rawKey);
   expect(pulseScore).toBeTruthy();
@@ -1335,6 +1341,15 @@ test("melody scoring repairs the chorus and scores player perspectives different
   expect(repairedPositions.slice(1).every((position, index) =>
     Math.abs(position - repairedPositions[index]) <= scaleLength
   )).toBe(true);
+  expect(take.repairedPhrase.filter((note, index) =>
+    note.positionBeats % 4 === 0 ||
+    index === take.repairedPhrase.length - 1 ||
+    note.positionBeats + note.durationBeats >= MELODY_CHORUS_PHRASE_BEATS
+  ).every((note) => {
+    const root = rootPlans.answer[Math.floor(note.positionBeats / 4) % rootPlans.answer.length] ?? 0;
+    const chordClasses = [root, root + 2, root + 4].map((degree) => modulo(degree, scaleLength));
+    return chordClasses.includes(modulo(note.scaleDegree, scaleLength));
+  })).toBe(true);
   expect(take.primaryRepairedScore.critiques.length).toBeLessThanOrEqual(
     take.primaryRawScore.critiques.length,
   );
@@ -1394,6 +1409,7 @@ test("melody repair readout supports A/B audition and remembered feedback", asyn
   await expect(page.getByTestId("melody-development-current")).toHaveText("Repaired");
   await expect(page.getByTestId("melody-score-total")).toContainText("repaired");
   await expect(page.getByTestId("melody-score-choice")).toContainText("balanced-repair");
+  await expect(page.getByTestId("melody-score-roots")).toContainText("Answer");
   await expect(page.getByTestId("melody-score-perspectives")).toContainText("pulse");
 
   const initialTake = await getMelodyRepairTake(page);
@@ -2700,7 +2716,7 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   const canvas = page.getByTestId("terrarium-canvas");
 
   await expect(page.locator(".brand__subtitle")).toHaveText(
-    "Song sketch roots become audible",
+    "Chorus scoring follows the moving roots",
   );
   await expect(button).toHaveText("Start");
   await expect(status).toContainText(

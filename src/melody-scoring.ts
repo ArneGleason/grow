@@ -5,6 +5,8 @@ import {
   DEFAULT_SONG_ARRANGEMENT,
   arrangeSongFormPatternEvent,
   deriveSongRootDegrees,
+  deriveSongSectionRootPlans,
+  type SongHarmonicSectionId,
 } from "./song-form";
 
 export type MelodyDevelopmentMode = "raw" | "repaired";
@@ -141,6 +143,8 @@ export interface MelodyRepairTake {
   id: string;
   songId: SongMaterial["id"];
   perspectiveId: string;
+  scoringRootSection: SongHarmonicSectionId;
+  scoringRootDegrees: readonly number[];
   mode: MelodyDevelopmentMode;
   deterministicCandidateId: string;
   bestCandidateId: string;
@@ -210,11 +214,13 @@ export const MELODY_CRITIC_TEXT_LIMITS = {
   concerns: 180,
 } as const;
 
+const MELODY_REPAIR_HARMONIC_SECTION: SongHarmonicSectionId = "answer";
+
 export function createMelodyRepairTake(options: MelodyRepairOptions): MelodyRepairTake {
   const melodyPattern = getPatternForPlayer(options.song, "melody");
   const rawEvents = collectRawChorusEvents(options.song, melodyPattern, options.tonalContext);
   const rawPhrase = phraseFromEvents(rawEvents, melodyPattern.subdivisionBeats);
-  const rootDegrees = deriveSongRootDegrees(options.song);
+  const rootDegrees = getMelodyRepairRootDegrees(options.song);
   const perspectives = options.players.map((player) =>
     createMelodyPerspective(player, options.song, options.weightNudges?.get(player.id) ?? 0)
   );
@@ -294,6 +300,8 @@ export function createMelodyRepairTake(options: MelodyRepairOptions): MelodyRepa
     ].join("-"),
     songId: options.song.id,
     perspectiveId: primaryPerspective.playerId,
+    scoringRootSection: MELODY_REPAIR_HARMONIC_SECTION,
+    scoringRootDegrees: rootDegrees,
     mode: "repaired",
     deterministicCandidateId: deterministicCandidate.id,
     bestCandidateId,
@@ -315,6 +323,11 @@ export function createMelodyRepairTake(options: MelodyRepairOptions): MelodyRepa
         ? `repaired cleared raw flag: ${primaryRawScore.critiques[0].message}`
         : "No urgent repair flags."),
   };
+}
+
+function getMelodyRepairRootDegrees(song: SongMaterial): readonly number[] {
+  const sectionRoots = deriveSongSectionRootPlans(song)[MELODY_REPAIR_HARMONIC_SECTION];
+  return sectionRoots.length > 0 ? sectionRoots : deriveSongRootDegrees(song);
 }
 
 export function createMockMelodyCriticSelection(take: MelodyRepairTake): MelodyCriticSelection {

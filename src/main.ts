@@ -330,11 +330,11 @@ function getSongLabel(nextSongId: SongId): string {
 }
 
 app.innerHTML = `
-  <section class="app-shell" aria-label="Grow Byte 16a">
+  <section class="app-shell" aria-label="Grow Byte 16a-b">
     <header class="topbar">
       <div class="brand">
         <h1 class="brand__title">Grow</h1>
-        <p class="brand__subtitle">Song sketch roots become audible</p>
+        <p class="brand__subtitle">Chorus scoring follows the moving roots</p>
       </div>
       <div class="transport-controls">
         <fieldset class="mode-control">
@@ -561,6 +561,8 @@ ${melodyDevelopmentControls}
             <dd data-testid="melody-score-total">none</dd>
             <dt>Choice</dt>
             <dd data-testid="melody-score-choice">none</dd>
+            <dt>Scored roots</dt>
+            <dd data-testid="melody-score-roots">none</dd>
             <dt>Subscores</dt>
             <dd data-testid="melody-score-subscores">none</dd>
             <dt>Top critique</dt>
@@ -681,6 +683,7 @@ const melodyCriticSendButton = requireElement<HTMLButtonElement>("[data-testid='
 const melodyCandidateCurrent = requireElement<HTMLElement>("[data-testid='melody-candidate-current']");
 const melodyScoreTotal = requireElement<HTMLElement>("[data-testid='melody-score-total']");
 const melodyScoreChoice = requireElement<HTMLElement>("[data-testid='melody-score-choice']");
+const melodyScoreRoots = requireElement<HTMLElement>("[data-testid='melody-score-roots']");
 const melodyScoreSubscores = requireElement<HTMLElement>("[data-testid='melody-score-subscores']");
 const melodyScoreCritique = requireElement<HTMLElement>("[data-testid='melody-score-critique']");
 const melodyCriticStatus = requireElement<HTMLElement>("[data-testid='melody-critic-status']");
@@ -1458,6 +1461,7 @@ function renderMelodyRepair(take: MelodyRepairTake): void {
     activeCandidate.id === deterministicCandidate.id ? "deterministic" : "consensus-selected",
   ].join(" | ");
   melodyScoreChoice.textContent = formatMelodyCandidateChoice(activeCandidate, take);
+  melodyScoreRoots.textContent = formatMelodyScoreRoots(take);
   melodyScoreSubscores.textContent = formatMelodyScoreSubscores(activeScore);
   melodyScoreCritique.textContent = activeScore.critiques[0]?.message ??
     (take.primaryRawScore.critiques[0]
@@ -1502,6 +1506,18 @@ function formatMelodyCandidateChoice(
     bestMarker,
     deterministicMarker,
   ].join(" | ");
+}
+
+function formatMelodyScoreRoots(take: MelodyRepairTake): string {
+  const roots = take.scoringRootDegrees
+    .map((degree) => rootNoteFromScaleDegree(DEFAULT_TONAL_CONTEXT, degree))
+    .join("-");
+  const label = take.scoringRootSection === "answer"
+    ? "Answer"
+    : take.scoringRootSection === "gather"
+    ? "Gather"
+    : "Bridge";
+  return `${label} ${roots || "C"} (${take.scoringRootDegrees.join(",") || "0"})`;
 }
 
 function formatMelodyCriticStatus(
