@@ -39,11 +39,13 @@ export class GrowWorldState {
   private readonly eventLedger = new MusicalEventLedger();
   private readonly thinkingPlayerIds = new Set<string>();
   private sessionMode = DEFAULT_SESSION_MODE;
+  private tonalContext: TonalContext;
 
   constructor(
     private readonly players: readonly Player[],
-    private readonly tonalContext: TonalContext = DEFAULT_TONAL_CONTEXT,
+    tonalContext: TonalContext = DEFAULT_TONAL_CONTEXT,
   ) {
+    this.tonalContext = cloneTonalContext(tonalContext);
     for (const player of players) {
       this.playerStates.set(player.id, "waiting");
       this.tasteEvaluations.set(player.id, createInitialTasteEvaluation(player));
@@ -177,7 +179,11 @@ export class GrowWorldState {
   }
 
   getTonalContext(): TonalContext {
-    return this.tonalContext;
+    return cloneTonalContext(this.tonalContext);
+  }
+
+  setTonalContext(tonalContext: TonalContext): void {
+    this.tonalContext = cloneTonalContext(tonalContext);
   }
 
   getSessionMode(): SessionMode {
@@ -213,4 +219,11 @@ export class GrowWorldState {
     }
     return undefined;
   }
+}
+
+function cloneTonalContext(tonalContext: TonalContext): TonalContext {
+  return {
+    ...tonalContext,
+    scale: [...tonalContext.scale],
+  };
 }

@@ -83,15 +83,18 @@ export interface TransportHandlers {
   shouldRefillLookahead?: () => boolean;
   songId?: () => SongId;
   songArrangement?: () => SongArrangement;
+  tonalContext?: () => TonalContext;
+  tempoBpm?: () => number;
   timingFeelMode?: () => TimingFeelMode;
   chorusDevelopment?: () => ChorusDevelopment | undefined;
 }
 
 export interface TransportOptions {
   tonalContext?: TonalContext;
+  tempoBpm?: number;
 }
 
-const BPM = 90;
+export const DEFAULT_TRANSPORT_BPM = 90;
 const BEATS_PER_BAR = 4;
 const BEAT_SNAP = 16;
 const LOOKAHEAD_GRID_BEATS = 0.5;
@@ -148,6 +151,7 @@ let status: TransportStatus = "stopped";
 let eventSerial = 0;
 let handlers: TransportHandlers = {};
 let activeTonalContext: TonalContext = DEFAULT_TONAL_CONTEXT;
+let activeTempoBpm = DEFAULT_TRANSPORT_BPM;
 let activePatterns: readonly PlayerPattern[] = [];
 let lookaheadTimerId = 0;
 let nextScheduleBeat = 0;
@@ -204,6 +208,15 @@ function getActiveSongId(): SongId {
 
 function getActiveSongArrangement(): SongArrangement {
   return handlers.songArrangement?.() ?? DEFAULT_SONG_ARRANGEMENT;
+}
+
+function getActiveTonalContext(): TonalContext {
+  return handlers.tonalContext?.() ?? activeTonalContext;
+}
+
+function getActiveTempoBpm(): number {
+  const tempoBpm = handlers.tempoBpm?.() ?? activeTempoBpm;
+  return Number.isFinite(tempoBpm) && tempoBpm > 0 ? tempoBpm : DEFAULT_TRANSPORT_BPM;
 }
 
 function getTimingFeelMode(): TimingFeelMode {
@@ -273,7 +286,7 @@ function emitNoteEvent(
 }
 
 function beatsToSeconds(beats: number): number {
-  return Math.round((beats * 60 / BPM) * 10_000) / 10_000;
+  return Math.round((beats * 60 / getActiveTempoBpm()) * 10_000) / 10_000;
 }
 
 function snapBeat(value: number): number {
@@ -469,7 +482,7 @@ function getToneTransportBeat(tone: typeof ToneNS): number {
 
 function getWallClockBeat(): number {
   if (playbackStartedAtMs <= 0) return 0;
-  return Math.max(0, ((performance.now() - playbackStartedAtMs) / 1_000) * (BPM / 60));
+  return Math.max(0, ((performance.now() - playbackStartedAtMs) / 1_000) * (getActiveTempoBpm() / 60));
 }
 
 function shouldUseWallClockBeat(tone: typeof ToneNS): boolean {
@@ -494,6 +507,7 @@ function isPatternStepDue(pattern: PlayerPattern, absoluteBeat: number): boolean
 
 function getPatternStep(pattern: PlayerPattern, absoluteBeat: number): ScheduledNote | null | undefined {
   if (!isPatternStepDue(pattern, absoluteBeat)) return undefined;
+  const tonalContext = getActiveTonalContext();
   const step = Math.round(absoluteBeat / pattern.subdivisionBeats);
   const stepIndex = step % pattern.events.length;
   const sourceEvent = pattern.events[stepIndex] ?? null;
@@ -503,11 +517,11 @@ function getPatternStep(pattern: PlayerPattern, absoluteBeat: number): Scheduled
     sourceEvent,
     stepIndex,
     absoluteBeat,
-    tonalContext: activeTonalContext,
+    tonalContext,
     arrangement: getActiveSongArrangement(),
     chorusDevelopment: handlers.chorusDevelopment?.(),
   });
-  return arrangedEvent ? materializeNote(activeTonalContext, arrangedEvent) : arrangedEvent;
+  return arrangedEvent ? materializeNote(tonalContext, arrangedEvent) : arrangedEvent;
 }
 
 function getNextCommittedEventIndex(playerId: string): number {
@@ -656,7 +670,7 @@ function scheduleWallClockFallback(
   const performedBeat = getPerformedBeat(committed);
   const delayMs = Math.max(
     AUDIO_CLOCK_FALLBACK_GRACE_MS,
-    ((performedBeat - getWallClockBeat()) * 60 / BPM) * 1_000 + AUDIO_CLOCK_FALLBACK_GRACE_MS,
+    ((performedBeat - getWallClockBeat()) * 60 / getActiveTempoBpm()) * 1_000 + AUDIO_CLOCK_FALLBACK_GRACE_MS,
   );
   const timeoutId = window.setTimeout(() => {
     wallClockFallbackTimers.delete(eventId);
@@ -760,6 +774,7 @@ export function initTransport(
 ): GrowTransportState {
   handlers = nextHandlers;
   activeTonalContext = options.tonalContext ?? DEFAULT_TONAL_CONTEXT;
+  activeTempoBpm = options.tempoBpm ?? DEFAULT_TRANSPORT_BPM;
   emitTick();
   return getState();
 }
@@ -778,7 +793,7 @@ export async function startTransport(): Promise<GrowTransportState> {
   ensureMelodySynth(tone);
 
   const transport = tone.getTransport();
-  transport.bpm.value = BPM;
+  transport.bpm.value = getActiveTempoBpm();
   transport.timeSignature = [4, 4];
   transport.loop = false;
   transport.position = "0:0:0";
@@ -834,6 +849,7 @@ export function refreshLookaheadSchedule(): GrowTransportState {
   }
 
   const transport = Tone.getTransport();
+  transport.bpm.value = getActiveTempoBpm();
   for (const eventId of scheduledEventIds) {
     transport.clear(eventId);
   }
@@ -877,7 +893,7 @@ export function getState(): GrowTransportState {
     sessionMode: getActiveSessionMode(),
     songId: getActiveSongId(),
     timingFeelMode: getTimingFeelMode(),
-    bpm: BPM,
+    bpm: getActiveTempoBpm(),
     bar: Math.floor(currentBeat / BEATS_PER_BAR) + 1,
     currentBeat,
     lookahead: getLookaheadState(currentBeat),

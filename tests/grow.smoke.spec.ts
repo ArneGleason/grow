@@ -1612,6 +1612,7 @@ test("section dynamics policy is shared by playback and form scoring", () => {
 test("song goal interpreter produces bounded deterministic knobs", () => {
   const spacious = interpretSongGoal("slow bright spacious wide return with machine pulse in G dorian");
   const urgent = interpretSongGoal("urgent restless hook chorus with glass sparks");
+  const falsePositiveProbe = interpretSongGoal("repair the texture and avoid crunch artifacts");
 
   expect(spacious.validation.valid).toBe(true);
   expect(spacious.goal.tonic).toBe("G");
@@ -1629,6 +1630,13 @@ test("song goal interpreter produces bounded deterministic knobs", () => {
   expect(urgent.goal.energy).toBeGreaterThan(0.7);
   expect(urgent.goal.surpriseTarget).toBeGreaterThan(0.65);
   expect(urgent.goal.influenceHints).toContain("restless-hook");
+
+  expect(falsePositiveProbe.validation.valid).toBe(true);
+  expect(falsePositiveProbe.goal.tempoBpm).toBe(90);
+  expect(falsePositiveProbe.goal.energy).toBe(0.52);
+  expect(falsePositiveProbe.goal.formPreference).toBe("classic-arc");
+  expect(falsePositiveProbe.matchedKeywords).not.toContain("air");
+  expect(falsePositiveProbe.matchedKeywords).not.toContain("run");
 });
 
 test("song goal validation clamps numbers and rejects unknown vocabulary", () => {

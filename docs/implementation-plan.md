@@ -1867,6 +1867,15 @@ Scope:
 - Thread active tonal context and tempo through existing bypass paths before playback uses them.
 - Persist `song.goal_set`.
 
+#### Byte 17b-a: Setup Plumbing And Safe Keyword Matching
+
+Prep slice before SongGoal drives sound:
+
+- Replace substring keyword matching with token/phrase matching so fallback cues such as `air` and `run` cannot fire inside larger words.
+- Make `GrowWorldState` hold a mutable active tonal context while preserving the default C mixolydian behavior.
+- Let transport read active tonal context and tempo through handlers instead of raw static assumptions.
+- Route display/root-name paths through the active context. No SongGoal setup is applied yet.
+
 #### Byte 17c: Goal Drives Character
 
 Apply bounded goal character fields to existing knobs: energy/surprise, per-player disposition nudges, curated influence-hint nudges, and section emphasis.

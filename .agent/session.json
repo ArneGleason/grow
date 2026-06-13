@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Merge approved Byte 17a and route review artifact",
-  "status": "byte17a-approved-merged-ready-for-byte17b",
-  "updatedAt": "2026-06-13T16:47:16Z",
+  "lastTask": "Implement Byte 17b-a setup plumbing and safe keyword matching",
+  "status": "byte17b-a-implemented-awaiting-review",
+  "updatedAt": "2026-06-13T17:07:06Z",
   "lastHandoff": "",
-  "branch": "main",
-  "commit": "878af7d",
+  "branch": "codex/byte-17b-a",
+  "commit": "",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 17a is approved and merged on main, with Claude's durable review artifact included. The SongGoal contract/interpreter remains inspect-only and trust-boundary-safe. Next slice is Byte 17b: make validated setup fields drive key/mode, tempo, and form preference at setup/audition boundaries and persist song.goal_set. Carry forward Claude's pre-17b note: tighten deterministic keyword matching to avoid short substring false positives before the fallback starts driving setup; also route DEFAULT_TONAL_CONTEXT/hardcoded C mixolydian sites through active context and thread tempo instead of raw BPM=90 assumptions."
+    "summary": "Byte 17b-a is implemented on codex/byte-17b-a. It tightens SongGoal keyword matching to token/phrase matching, adds a false-positive regression for repair/crunch, makes GrowWorldState hold a mutable active tonal context, lets transport read active tonal context and tempo through handlers, and routes root-name/display formatting through active context. Behavior should remain 90 BPM / C mixolydian by default; SongGoal still does not apply setup, refresh lookahead, or persist song.goal_set. Validation so far: npm run build and npm run smoke (35/35) are green."
   }
 }

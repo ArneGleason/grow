@@ -386,7 +386,7 @@ function cloneGoal(goal: SongGoal): SongGoal {
 }
 
 function hasAny(text: string, keywords: readonly string[], matchedKeywords: string[]): boolean {
-  const match = keywords.find((keyword) => text.includes(keyword));
+  const match = keywords.find((keyword) => hasKeyword(text, keyword));
   if (match) {
     matchedKeywords.push(match);
     return true;
@@ -402,13 +402,13 @@ function parseTonic(text: string): SongGoalTonic | undefined {
 }
 
 function parseMode(text: string): SongGoalMode | undefined {
-  return SONG_GOAL_MODES.find((mode) => text.includes(mode));
+  return SONG_GOAL_MODES.find((mode) => hasKeyword(text, mode));
 }
 
 function applyInfluenceHints(text: string, draft: SongGoal, matchedKeywords: string[]): void {
   const hints = new Set(draft.influenceHints);
   const addHint = (keyword: string, hint: SongGoalInfluenceHint) => {
-    if (text.includes(keyword)) {
+    if (hasKeyword(text, keyword)) {
       hints.add(hint);
       matchedKeywords.push(keyword);
     }
@@ -420,6 +420,7 @@ function applyInfluenceHints(text: string, draft: SongGoal, matchedKeywords: str
   addHint("dub", "dub-space");
   addHint("echo", "dub-space");
   addHint("space", "dub-space");
+  addHint("spacious", "dub-space");
   addHint("glass", "glass-bright");
   addHint("bright", "glass-bright");
   addHint("folk", "modal-folk");
@@ -451,6 +452,22 @@ function applyDispositionBiases(text: string, draft: SongGoal, matchedKeywords: 
     bias.bass = clampNumber((bias.bass ?? 0) - 0.03, SONG_GOAL_NUDGE_RANGE.minimum, SONG_GOAL_NUDGE_RANGE.maximum);
   }
   draft.dispositionBias = bias;
+}
+
+function hasKeyword(text: string, keyword: string): boolean {
+  const textTokens = tokenize(text);
+  const keywordTokens = tokenize(keyword);
+  if (keywordTokens.length === 0 || textTokens.length < keywordTokens.length) return false;
+
+  for (let index = 0; index <= textTokens.length - keywordTokens.length; index += 1) {
+    const matches = keywordTokens.every((token, tokenIndex) => textTokens[index + tokenIndex] === token);
+    if (matches) return true;
+  }
+  return false;
+}
+
+function tokenize(value: string): readonly string[] {
+  return value.toLowerCase().match(/[a-z0-9#]+/g) ?? [];
 }
 
 function readStatus(value: unknown, fallback: SongGoalStatus, errors: string[]): SongGoalStatus {

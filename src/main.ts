@@ -106,7 +106,6 @@ import {
   type TerrariumView,
   type TerrariumVisualState,
 } from "./terrarium";
-import { DEFAULT_TONAL_CONTEXT } from "./tonal-context";
 import {
   type PlayerTasteEvaluation,
   type TasteNoteDecision,
@@ -131,6 +130,7 @@ import {
   refreshLookaheadSchedule,
   startTransport,
   stopTransport,
+  DEFAULT_TRANSPORT_BPM,
   type GrowLookaheadState,
   type GrowTransportState,
   type TimingFeelMode,
@@ -157,6 +157,7 @@ let songId: SongId = DEFAULT_SONG_ID;
 let timingFeelMode: TimingFeelMode = "feel";
 let melodyDevelopmentMode: MelodyDevelopmentMode = "repaired";
 let formVariantId: FormVariantId = DEFAULT_FORM_VARIANT_ID;
+let activeTempoBpm = DEFAULT_TRANSPORT_BPM;
 let songGoalInterpretation = interpretSongGoal("Build a balanced modal terrarium piece.");
 let cachedSongSketchKey = "";
 let cachedSongSketchBase: SongSketch | undefined;
@@ -695,7 +696,7 @@ ${renderHelpButton("listening", "listening frame")}
           </div>
           <dl>
             <dt>Tonal</dt>
-            <dd data-testid="listening-tonal-context">C mixolydian</dd>
+            <dd data-testid="listening-tonal-context">unknown</dd>
             <dt>Heard</dt>
             <dd data-testid="listening-event-count">0</dd>
             <dt>Window</dt>
@@ -1688,8 +1689,9 @@ function formatMelodyCandidateChoice(
 }
 
 function formatMelodyScoreRoots(take: MelodyRepairTake): string {
+  const tonalContext = world.getTonalContext();
   const roots = take.scoringRootDegrees
-    .map((degree) => rootNoteFromScaleDegree(DEFAULT_TONAL_CONTEXT, degree))
+    .map((degree) => rootNoteFromScaleDegree(tonalContext, degree))
     .join("-");
   const label = take.scoringRootSection === "answer"
     ? "Answer"
@@ -1835,10 +1837,11 @@ function renderFormScore(score: FormScore): void {
 }
 
 function formatFormScoreSection(section: FormScore["sections"][number]): string {
+  const tonalContext = world.getTonalContext();
   const roots = section.rootDegrees
-    .map((degree) => rootNoteFromScaleDegree(DEFAULT_TONAL_CONTEXT, degree))
+    .map((degree) => rootNoteFromScaleDegree(tonalContext, degree))
     .join("-");
-  return `${section.label} ${roots || "C"} E${section.energy.toFixed(2)} M${section.melodyNoteCount}`;
+  return `${section.label} ${roots || tonalContext.tonic} E${section.energy.toFixed(2)} M${section.melodyNoteCount}`;
 }
 
 function isMelodyDevelopmentMode(value: string): value is MelodyDevelopmentMode {
@@ -1936,9 +1939,10 @@ function formatSongSection(section: GrowTransportState["songForm"]): string {
 }
 
 function formatSongHarmony(state: GrowTransportState): string {
-  const rootName = rootNoteFromScaleDegree(DEFAULT_TONAL_CONTEXT, state.harmony.rootDegree);
+  const tonalContext = world.getTonalContext();
+  const rootName = rootNoteFromScaleDegree(tonalContext, state.harmony.rootDegree);
   const plan = state.harmony.rootDegrees
-    .map((degree) => rootNoteFromScaleDegree(DEFAULT_TONAL_CONTEXT, degree))
+    .map((degree) => rootNoteFromScaleDegree(tonalContext, degree))
     .join("-");
   return `${state.harmony.label} ${rootName} (${plan}, ${state.harmony.strategy})`;
 }
@@ -2779,10 +2783,13 @@ initTransport({
   shouldRefillLookahead: () => shouldSessionModeRefillLookahead(world.getSessionMode()),
   songId: () => songId,
   songArrangement: () => getCurrentFormVariant().arrangement,
+  tonalContext: () => world.getTonalContext(),
+  tempoBpm: () => activeTempoBpm,
   timingFeelMode: () => timingFeelMode,
   chorusDevelopment: () => getCurrentChorusDevelopment(),
 }, {
   tonalContext: world.getTonalContext(),
+  tempoBpm: activeTempoBpm,
 });
 recordSessionStarted();
 renderWorld();
