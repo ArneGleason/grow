@@ -1,5 +1,5 @@
 import type { TonalContext } from "./listening";
-import { applySectionDynamics } from "./section-dynamics";
+import { applySectionDynamics, type SectionDynamicsProfile } from "./section-dynamics";
 import type { PatternNoteSource, SongMaterial } from "./song-material";
 import {
   DEFAULT_SONG_ARRANGEMENT,
@@ -49,6 +49,7 @@ export interface FormScoreInput {
   tonalContext: TonalContext;
   arrangement?: SongArrangement;
   chorusDevelopment?: ChorusDevelopment;
+  sectionDynamicsProfile?: SectionDynamicsProfile;
 }
 
 interface ArrangedFormNote extends PatternNoteSource {
@@ -94,6 +95,8 @@ export function createFormScore(input: FormScoreInput): FormScore {
     id: [
       "form-score",
       input.song.id,
+      `beats${arrangement.totalBeats}`,
+      input.sectionDynamicsProfile?.id ?? "balanced",
       sections.map((section) => section.rootDegrees.join(".")).join("-"),
       input.chorusDevelopment?.mode ?? "raw",
     ].join("-"),
@@ -136,7 +139,13 @@ function collectArrangedFormNotes(
           chorusDevelopment: input.chorusDevelopment,
         });
         if (!arrangedEvent) continue;
-        const sectionNote = applySectionEnergyEstimate(arrangedEvent, section, localBeat, absoluteBeat);
+        const sectionNote = applySectionEnergyEstimate(
+          arrangedEvent,
+          section,
+          localBeat,
+          absoluteBeat,
+          input.sectionDynamicsProfile,
+        );
         if (sectionNote) notes.push(sectionNote);
       }
     }
@@ -149,6 +158,7 @@ function applySectionEnergyEstimate(
   section: SongArrangementSection,
   localBeat: number,
   absoluteBeat: number,
+  profile: SectionDynamicsProfile | undefined,
 ): ArrangedFormNote | undefined {
   const dynamics = applySectionDynamics({
     role: note.playerId,
@@ -157,6 +167,7 @@ function applySectionEnergyEstimate(
     localBeat,
     localBar: Math.floor(localBeat / 4) + 1,
     absoluteBeat,
+    profile,
   });
 
   if (!dynamics.shouldPlay) return undefined;

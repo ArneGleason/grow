@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { calculatePlayerExpression } from "../src/expression";
 import { createFormScore } from "../src/form-scoring";
+import { FORM_VARIANTS, getFormVariant } from "../src/form-variants";
 import {
   MusicalEventRecordBuffer,
   createMusicalEventPersistenceRecord,
@@ -1466,6 +1467,55 @@ test("form score summarizes the whole song arc without changing playback", () =>
   );
 });
 
+test("form variants score deterministic audition forms", () => {
+  const song = getSongMaterialForTest("lantern");
+  const take = createMelodyRepairTake({
+    song,
+    tonalContext: DEFAULT_TONAL_CONTEXT,
+    players: PLAYER_REGISTRY,
+    perspectivePlayerId: "melody",
+  });
+  const deterministicCandidate = take.candidates.find((candidate) =>
+    candidate.id === take.deterministicCandidateId
+  );
+  if (!deterministicCandidate) {
+    throw new Error("Expected deterministic melody candidate");
+  }
+  const variantScores = FORM_VARIANTS.map((variant) => ({
+    id: variant.id,
+    score: createFormScore({
+      song,
+      tonalContext: DEFAULT_TONAL_CONTEXT,
+      arrangement: variant.arrangement,
+      chorusDevelopment: {
+        mode: "repaired",
+        repairedEvents: deterministicCandidate.events,
+      },
+      sectionDynamicsProfile: variant.sectionDynamicsProfile,
+    }),
+  }));
+
+  expect(variantScores).toHaveLength(3);
+  expect(new Set(variantScores.map(({ score }) => score.id)).size).toBe(variantScores.length);
+  expect(new Set(variantScores.map(({ score }) => score.total)).size).toBeGreaterThan(1);
+  expect(variantScores.every(({ score }) => Number.isFinite(score.total))).toBe(true);
+  expect(sectionAtBeat(16, getFormVariant("classic-arc").arrangement)).toMatchObject({
+    sectionType: "verse",
+    occurrence: 1,
+    localBar: 5,
+  });
+  expect(sectionAtBeat(16, getFormVariant("early-hook").arrangement)).toMatchObject({
+    sectionType: "chorus",
+    occurrence: 1,
+    localBar: 1,
+  });
+  expect(getFormVariant("wide-return").arrangement.sections.at(-1)).toMatchObject({
+    sectionType: "chorus",
+    occurrence: 3,
+    bars: 12,
+  });
+});
+
 test("section dynamics policy is shared by playback and form scoring", () => {
   expect(applySectionDynamics({
     role: "melody",
@@ -1531,6 +1581,58 @@ test("section dynamics policy is shared by playback and form scoring", () => {
     velocityMultiplier: 0.47,
     tags: ["section:verse", "section:grounded"],
   });
+});
+
+test("form variant selector scores candidates and drives the transport form", async ({ page }) => {
+  await page.goto("/");
+  await flushPersistence(page);
+  await expect(page.getByTestId("form-variant-current")).toContainText("Classic Arc");
+  await expect(page.getByTestId("form-variant-candidates")).toContainText("Classic Arc");
+  await expect(page.getByTestId("form-variant-candidates")).toContainText("Early Hook");
+  await expect(page.getByTestId("form-variant-candidates")).toContainText("Wide Return");
+
+  const initialVariants = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      formScore?: {
+        getVariant(): { id: string };
+        getVariants(): Array<{ variant: { id: string }; score: { total: number }; active: boolean; winner: boolean }>;
+      };
+    };
+    return {
+      active: appWindow.formScore?.getVariant().id,
+      variants: appWindow.formScore?.getVariants() ?? [],
+    };
+  });
+  expect(initialVariants.active).toBe("classic-arc");
+  expect(initialVariants.variants).toHaveLength(3);
+  expect(initialVariants.variants.filter((entry) => entry.active)).toHaveLength(1);
+  expect(initialVariants.variants.filter((entry) => entry.winner)).toHaveLength(1);
+
+  await page.getByTestId("form-variant-early-hook-option").click();
+  await expect(page.getByTestId("form-variant-current")).toContainText("Early Hook");
+  const selectedVariant = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      formScore?: { getVariant(): { id: string } };
+    };
+    return appWindow.formScore?.getVariant().id;
+  });
+  expect(selectedVariant).toBe("early-hook");
+
+  await page.getByTestId("transport-toggle").click();
+  await page.waitForFunction(() => {
+    const appWindow = window as unknown as {
+      transport?: { getState(): TransportState };
+    };
+    return (appWindow.transport?.getState().currentBeat ?? 0) >= 16.5;
+  }, null, { timeout: 16_000 });
+  const playingState = await getTransportState(page);
+  expect(playingState.songForm).toMatchObject({
+    sectionType: "chorus",
+    occurrence: 1,
+  });
+  expect(playingState.songForm.localBar).toBeLessThanOrEqual(2);
+
+  await page.getByTestId("transport-toggle").click();
 });
 
 test("melody repair readout supports A/B audition and remembered feedback", async ({ page }) => {

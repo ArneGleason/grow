@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Merge Byte 16a-d shared section dynamics policy",
-  "status": "byte16a-d-merged-ready-for-next-byte",
-  "updatedAt": "2026-06-13T13:03:36Z",
+  "lastTask": "Implement Byte 16b-a audible form variant chooser",
+  "status": "byte16b-a-ready-for-claude-review",
+  "updatedAt": "2026-06-13T13:18:31Z",
   "lastHandoff": "",
-  "branch": "main",
+  "branch": "codex/byte-16b-a",
   "commit": "",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 16a-d is approved and merged on main with Claude's durable review artifact included. The section dynamics rule is now shared in src/section-dynamics.ts and used by both playback's applySongSectionDecision() and form scoring's energy estimate, preserving the existing verse/chorus/bridge behavior while removing the duplicated policy. Claude confirmed form scoring remains inert/inspect-only and shares the rule without becoming a playback authority. Next slice: audible variant chooser using app-owned deterministic in-scale variants, form score as the ground-truth ruler, measure-before-drive, and inspect-to-audible gating."
+    "summary": "Byte 16b-a is ready for Claude review on codex/byte-16b-a. The Form Score panel now exposes deterministic app-owned form variants: Classic Arc, Early Hook, and Wide Return. Variants combine a song arrangement with a section-dynamics profile; the selected variant drives transport arrangement, harmonic context, playback section decisions, and form scoring through the existing lookahead path. Classic Arc remains the default, Early Hook reaches chorus at beat 16 for an audible A/B, and variant changes refresh lookahead while clearing stale slow-thinking playback. Validation: build, db:smoke, full app smoke 32/32, and diff-check are green; npm audit still reports the known Vite/esbuild advisory."
   }
 }

@@ -2,6 +2,7 @@ export type PersistenceRecordType =
   | "session.started"
   | "session.mode_changed"
   | "song.changed"
+  | "song.form_variant_changed"
   | "timing.feel_changed"
   | "song.melody_critic_selection"
   | "song.take_feedback"

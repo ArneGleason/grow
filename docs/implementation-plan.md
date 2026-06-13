@@ -1784,7 +1784,29 @@ Review focus:
 
 Status:
 
-- Byte 16a-d is in progress on `codex/byte-16a-d`.
+- Byte 16a-d is approved and merged.
+
+### Byte 16b-a: Audible Form Variant Chooser
+
+Use the form score as a ruler for deterministic whole-form audition variants, then let the human choose which variant drives playback. This is the first form-score-to-audio bridge and stays app-owned: variants change section layout and section-dynamics profile, while pitches still come from existing in-scale song-form material and chorus candidates.
+
+Scope:
+
+- Deterministic only; no model-authored phrases, key/mode changes, or consensus changes.
+- Variants are app-owned data: arrangement shape plus section-dynamics profile.
+- Show all variant scores in the Form Score inspector, mark the current score winner, and let a visible selector drive playback through the normal lookahead path.
+- Switching variants refreshes lookahead and clears stale slow-thinking playback windows.
+
+Review focus:
+
+- Confirm variant switching changes what is heard through transport/song-form materialization, not just inspector text.
+- Confirm the default variant preserves the existing Classic Arc until the human chooses another variant.
+- Confirm all variants remain in-scale and rely on existing committed song-form/lookahead paths.
+- Confirm form scoring measures the same selected variant that playback uses.
+
+Status:
+
+- Byte 16b-a is in progress on `codex/byte-16b-a`.
 
 ### Byte 16b: Band-Proposed Key/Mode Change
 

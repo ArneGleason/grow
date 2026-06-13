@@ -20,6 +20,7 @@ These are logical records. They may initially be stored as `events.type + payloa
 | `session.started` | Opens a local run of the terrarium. | `sessionId`, `spaceId`, `branchId`, name, created time, app/schema versions. | Browser viewport, inspector width, help panel state. |
 | `session.mode_changed` | Makes breaks/rehearsal/performance replayable. | `fromMode`, `toMode`, beat, actor/source. | Rendered labels only. |
 | `song.changed` | Makes selected song material replayable and explains generator resets. | `fromSongId`, `toSongId`, beat, actor/source, cleared ledger/thinking flags. | Inspector-only labels. |
+| `song.form_variant_changed` | Makes explicit form-variant auditions replayable when the human switches the song arc. | `fromVariantId`, `toVariantId`, beat, actor/source, refreshed lookahead/thinking flags. | Score readout text and radio selected state. |
 | `timing.feel_changed` | Makes grid/feel/wide timing choices replayable. | `fromFeel`, `toFeel`, beat, actor/source. | Button selected state. |
 | `transport.started` / `transport.stopped` | Optional transport lifecycle audit if start/stop becomes replayable. | beat, actor/source, clear/drain behavior, reason. | AudioContext internals or scheduler handles. |
 | `musical.event_recorded` | Ledger source of truth for heard playback. | `MusicalEventRecordPayload`, `seq`, `actorId`, grid timing/pitch, performed timing/pitch, expression snapshot, performed-timing snapshot, tags. | Recomputed expression/timing values. |
@@ -145,6 +146,7 @@ Suggested event `type` values:
 - `session.started`
 - `session.mode_changed`
 - `song.changed`
+- `song.form_variant_changed`
 - `timing.feel_changed`
 - `transport.started`
 - `transport.stopped`

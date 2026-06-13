@@ -1,6 +1,14 @@
 import "./style.css";
 import { formatExpressionSnapshot, type PlayerExpressionSnapshot } from "./expression";
 import { createFormScore, type FormScore } from "./form-scoring";
+import {
+  DEFAULT_FORM_VARIANT_ID,
+  FORM_VARIANTS,
+  getFormVariant,
+  isFormVariantId,
+  type FormVariant,
+  type FormVariantId,
+} from "./form-variants";
 import type { ListeningFrame, ListeningFramePlayer, MusicalEvent } from "./listening";
 import {
   checkOllamaHealth,
@@ -139,6 +147,7 @@ let ollamaRequestInFlight = false;
 let songId: SongId = DEFAULT_SONG_ID;
 let timingFeelMode: TimingFeelMode = "feel";
 let melodyDevelopmentMode: MelodyDevelopmentMode = "repaired";
+let formVariantId: FormVariantId = DEFAULT_FORM_VARIANT_ID;
 let cachedSongSketchKey = "";
 let cachedSongSketchBase: SongSketch | undefined;
 let cachedMelodyRepairKey = "";
@@ -252,6 +261,18 @@ const melodyDevelopmentControls = ([
             <span>${mode.label}</span>
           </label>
 `).join("");
+const formVariantControls = FORM_VARIANTS.map((variant) => `
+          <label class="mode-option" data-testid="form-variant-${variant.id}-option">
+            <input
+              data-testid="form-variant-${variant.id}"
+              name="form-variant"
+              type="radio"
+              value="${variant.id}"
+              ${variant.id === formVariantId ? "checked" : ""}
+            />
+            <span>${variant.label}</span>
+          </label>
+`).join("");
 const HELP_TOPICS = {
   session: {
     title: "Session",
@@ -283,7 +304,7 @@ const HELP_TOPICS = {
   },
   "form-score": {
     title: "Form Score",
-    body: "Form Score is an inspect-only check of the whole song arc. It grades harmonic motion, energy shape, motif coherence, and arrivals without changing playback.",
+    body: "Form Score grades the whole song arc, then lets you audition deterministic form variants through the normal lookahead path. Variants change section layout and dynamics; pitches still come from app-owned in-scale material.",
   },
   listening: {
     title: "Listening",
@@ -336,7 +357,7 @@ function getSongLabel(nextSongId: SongId): string {
 }
 
 app.innerHTML = `
-  <section class="app-shell" aria-label="Grow Byte 16a-c">
+  <section class="app-shell" aria-label="Grow Byte 16b-a">
     <header class="topbar">
       <div class="brand">
         <h1 class="brand__title">Grow</h1>
@@ -591,7 +612,20 @@ ${melodyDevelopmentControls}
             <h2>Form Score</h2>
 ${renderHelpButton("form-score", "form score")}
           </div>
+          <fieldset class="mode-control form-variant-control">
+            <legend class="visually-hidden">Form variant audition</legend>
+            <span class="mode-label" aria-hidden="true">Variant</span>
+            <div class="mode-segments" data-testid="form-variant-control">
+${formVariantControls}
+            </div>
+          </fieldset>
           <dl>
+            <dt>Variant</dt>
+            <dd data-testid="form-variant-current">Classic Arc</dd>
+            <dt>Winner</dt>
+            <dd data-testid="form-variant-winner">none</dd>
+            <dt>Candidates</dt>
+            <dd data-testid="form-variant-candidates">none</dd>
             <dt>Total</dt>
             <dd data-testid="form-score-total">none</dd>
             <dt>Subscores</dt>
@@ -714,6 +748,10 @@ const melodyConsensusStatus = requireElement<HTMLElement>("[data-testid='melody-
 const melodyConsensusResponses = requireElement<HTMLElement>("[data-testid='melody-consensus-responses']");
 const melodyScorePerspectives = requireElement<HTMLElement>("[data-testid='melody-score-perspectives']");
 const melodyScoreFeedback = requireElement<HTMLElement>("[data-testid='melody-score-feedback']");
+const formVariantControl = requireElement<HTMLDivElement>("[data-testid='form-variant-control']");
+const formVariantCurrent = requireElement<HTMLElement>("[data-testid='form-variant-current']");
+const formVariantWinner = requireElement<HTMLElement>("[data-testid='form-variant-winner']");
+const formVariantCandidates = requireElement<HTMLElement>("[data-testid='form-variant-candidates']");
 const formScoreTotal = requireElement<HTMLElement>("[data-testid='form-score-total']");
 const formScoreSubscores = requireElement<HTMLElement>("[data-testid='form-score-subscores']");
 const formScoreSections = requireElement<HTMLElement>("[data-testid='form-score-sections']");
@@ -1597,14 +1635,79 @@ function formatPerspectiveScore(score: MelodyPhraseScore): string {
 }
 
 function getCurrentFormScore(state: GrowTransportState = getState()): FormScore {
+  const variant = getCurrentFormVariant();
   return createFormScore({
     song: getSongMaterial(state.songId),
     tonalContext: world.getTonalContext(),
+    arrangement: variant.arrangement,
     chorusDevelopment: getCurrentChorusDevelopment(),
+    sectionDynamicsProfile: variant.sectionDynamicsProfile,
   });
 }
 
+interface ScoredFormVariant {
+  variant: FormVariant;
+  score: FormScore;
+  active: boolean;
+  winner: boolean;
+}
+
+function getCurrentFormVariant(): FormVariant {
+  return getFormVariant(formVariantId);
+}
+
+function getCurrentFormVariantScores(state: GrowTransportState = getState()): readonly ScoredFormVariant[] {
+  const song = getSongMaterial(state.songId);
+  const tonalContext = world.getTonalContext();
+  const chorusDevelopment = getCurrentChorusDevelopment();
+  const scored = FORM_VARIANTS.map((variant) => ({
+    variant,
+    score: createFormScore({
+      song,
+      tonalContext,
+      arrangement: variant.arrangement,
+      chorusDevelopment,
+      sectionDynamicsProfile: variant.sectionDynamicsProfile,
+    }),
+    active: variant.id === formVariantId,
+    winner: false,
+  }));
+  const winner = [...scored].sort((left, right) =>
+    right.score.total - left.score.total || left.variant.id.localeCompare(right.variant.id)
+  )[0];
+  return scored.map((entry) => ({
+    ...entry,
+    winner: entry.variant.id === winner?.variant.id,
+  }));
+}
+
+function applyFormVariant(nextVariantId: FormVariantId): FormVariantId {
+  const previousVariantId = formVariantId;
+  if (previousVariantId === nextVariantId) return formVariantId;
+  formVariantId = nextVariantId;
+  cancelSlowThinkingControllers("form variant changed before the thought could land");
+  clearSlowThoughtPlayback();
+  refreshLookaheadSchedule();
+  recordFormVariantChanged(previousVariantId, formVariantId);
+  renderWorld();
+  return formVariantId;
+}
+
 function renderFormScore(score: FormScore): void {
+  const variant = getCurrentFormVariant();
+  const variantScores = getCurrentFormVariantScores();
+  const winner = variantScores.find((entry) => entry.winner) ?? variantScores[0];
+  formVariantCurrent.textContent = `${variant.label} | ${variant.summary}`;
+  formVariantWinner.textContent = winner
+    ? `${winner.variant.label} ${winner.score.total.toFixed(3)}`
+    : "none";
+  formVariantCandidates.textContent = variantScores.map((entry) =>
+    `${entry.active ? "*" : ""}${entry.variant.label} ${entry.score.total.toFixed(3)} ${entry.winner ? "winner" : ""}`
+      .trim()
+  ).join(" | ");
+  for (const input of formVariantControl.querySelectorAll<HTMLInputElement>("input[name='form-variant']")) {
+    input.checked = input.value === formVariantId;
+  }
   formScoreTotal.textContent = `${score.total.toFixed(3)} | ${score.summary}`;
   formScoreSubscores.textContent = [
     `harmony ${score.harmonicMotion.score.toFixed(2)}`,
@@ -1981,7 +2084,8 @@ function applySongSectionDecision(
   input: TasteNoteDecisionInput,
   baseDecision: TasteNoteDecision,
 ): TasteNoteDecision {
-  const section = sectionAtBeat(input.absoluteBeat);
+  const variant = getCurrentFormVariant();
+  const section = sectionAtBeat(input.absoluteBeat, variant.arrangement);
   const dynamics = applySectionDynamics({
     role: input.role,
     sectionType: section.sectionType,
@@ -1989,6 +2093,7 @@ function applySongSectionDecision(
     localBeat: section.localBeat,
     localBar: section.localBar,
     absoluteBeat: input.absoluteBeat,
+    profile: variant.sectionDynamicsProfile,
     baseAction: baseDecision.action,
     baseShouldPlay: baseDecision.shouldPlay,
     baseVelocityMultiplier: baseDecision.velocityMultiplier,
@@ -2478,6 +2583,7 @@ function recordSessionStarted(): void {
       sessionMode: world.getSessionMode(),
       songId,
       timingFeelMode,
+      formVariantId,
     },
   });
 }
@@ -2528,6 +2634,22 @@ function recordTimingFeelChanged(fromFeel: TimingFeelMode, toFeel: TimingFeelMod
   });
 }
 
+function recordFormVariantChanged(fromVariantId: FormVariantId, toVariantId: FormVariantId): void {
+  persistence.record({
+    type: "song.form_variant_changed",
+    actorId: "human",
+    sessionMode: world.getSessionMode(),
+    beat: getPersistenceBeat(),
+    payload: {
+      fromVariantId,
+      toVariantId,
+      source: "form-variant-control",
+      refreshedLookahead: true,
+      clearedSlowThinking: true,
+    },
+  });
+}
+
 function getPersistenceBeat(): number {
   return roundDisplayBeat(getState().currentBeat);
 }
@@ -2540,6 +2662,7 @@ initTransport({
   sessionMode: () => world.getSessionMode(),
   shouldRefillLookahead: () => shouldSessionModeRefillLookahead(world.getSessionMode()),
   songId: () => songId,
+  songArrangement: () => getCurrentFormVariant().arrangement,
   timingFeelMode: () => timingFeelMode,
   chorusDevelopment: () => getCurrentChorusDevelopment(),
 }, {
@@ -2600,6 +2723,14 @@ melodyDevelopmentControl.addEventListener("change", (event) => {
   if (!isMelodyDevelopmentMode(input.value)) return;
 
   applyMelodyDevelopmentMode(input.value);
+});
+
+formVariantControl.addEventListener("change", (event) => {
+  const input = event.target;
+  if (!(input instanceof HTMLInputElement) || input.name !== "form-variant") return;
+  if (!isFormVariantId(input.value)) return;
+
+  applyFormVariant(input.value);
 });
 
 melodyRepairUpButton.addEventListener("click", () => {
@@ -2748,6 +2879,9 @@ declare global {
     };
     formScore?: {
       getScore(): FormScore;
+      getVariant(): FormVariant;
+      getVariants(): readonly ScoredFormVariant[];
+      setVariant(variantId: string): FormVariantId;
     };
     persistence?: {
       getState(): PersistenceClientState;
@@ -2895,6 +3029,14 @@ window.melodyRepair = {
 
 window.formScore = {
   getScore: () => getCurrentFormScore(),
+  getVariant: () => getCurrentFormVariant(),
+  getVariants: () => getCurrentFormVariantScores(),
+  setVariant: (variantId) => {
+    if (isFormVariantId(variantId)) {
+      return applyFormVariant(variantId);
+    }
+    return formVariantId;
+  },
 };
 
 window.persistence = {

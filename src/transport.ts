@@ -23,6 +23,7 @@ import {
   getSongHarmonicContext,
   sectionAtBeat,
   type ChorusDevelopment,
+  type SongArrangement,
   type SongHarmonicContext,
   type SongSectionContext,
 } from "./song-form";
@@ -81,6 +82,7 @@ export interface TransportHandlers {
   sessionMode?: () => SessionMode;
   shouldRefillLookahead?: () => boolean;
   songId?: () => SongId;
+  songArrangement?: () => SongArrangement;
   timingFeelMode?: () => TimingFeelMode;
   chorusDevelopment?: () => ChorusDevelopment | undefined;
 }
@@ -198,6 +200,10 @@ function shouldRefillLookahead(): boolean {
 
 function getActiveSongId(): SongId {
   return handlers.songId?.() ?? DEFAULT_SONG_ID;
+}
+
+function getActiveSongArrangement(): SongArrangement {
+  return handlers.songArrangement?.() ?? DEFAULT_SONG_ARRANGEMENT;
 }
 
 function getTimingFeelMode(): TimingFeelMode {
@@ -498,7 +504,7 @@ function getPatternStep(pattern: PlayerPattern, absoluteBeat: number): Scheduled
     stepIndex,
     absoluteBeat,
     tonalContext: activeTonalContext,
-    arrangement: DEFAULT_SONG_ARRANGEMENT,
+    arrangement: getActiveSongArrangement(),
     chorusDevelopment: handlers.chorusDevelopment?.(),
   });
   return arrangedEvent ? materializeNote(activeTonalContext, arrangedEvent) : arrangedEvent;
@@ -881,8 +887,8 @@ export function getState(): GrowTransportState {
     performedTiming: {
       latest: [...latestPerformedTimingByPlayer.values()],
     },
-    songForm: sectionAtBeat(currentBeat, DEFAULT_SONG_ARRANGEMENT),
-    harmony: getSongHarmonicContext(getSongMaterial(getActiveSongId()), currentBeat, DEFAULT_SONG_ARRANGEMENT),
+    songForm: sectionAtBeat(currentBeat, getActiveSongArrangement()),
+    harmony: getSongHarmonicContext(getSongMaterial(getActiveSongId()), currentBeat, getActiveSongArrangement()),
   };
 }
 
