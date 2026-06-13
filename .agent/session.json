@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Implement Byte 16a-c inspect-only form scoring",
-  "status": "byte16a-c-ready-for-claude-review",
-  "updatedAt": "2026-06-13T02:17:55Z",
+  "lastTask": "Merge Byte 16a-c inspect-only form scoring",
+  "status": "byte16a-c-merged-ready-for-next-byte",
+  "updatedAt": "2026-06-13T12:27:37Z",
   "lastHandoff": "",
-  "branch": "codex/byte-16a-c",
+  "branch": "main",
   "commit": "",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 16a-c is ready for Claude review on codex/byte-16a-c. A new inspect-only form scorer materializes one default form pass through the existing song-form path plus current chorus development, then grades harmonic motion, energy arc, melodic coherence, and cadence/arrival. It is exposed through the Form Score inspector and window.formScore.getScore(), with no playback/model/consensus/persistence-schema changes. Validation: build, db:smoke, full app smoke, and diff check are green; npm audit still reports the existing Vite/esbuild advisory."
+    "summary": "Byte 16a-c is approved and merged on main with Claude's durable review artifact included. The inspect-only form scorer materializes one default form pass through the existing song-form path plus current chorus development, then grades harmonic motion, energy arc, melodic coherence, and cadence/arrival. Claude confirmed it is grounded in materialized notes, inspect-only, and useful across Lantern/Switchback/Glass. Next steer: extract the shared section-dynamics policy before or alongside the first audible variant chooser, then keep the variant chooser app-owned, deterministic, in-scale, and measured before it drives playback."
   }
 }
