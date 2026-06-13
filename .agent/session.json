@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Implement Byte 17b-a setup plumbing and safe keyword matching",
-  "status": "byte17b-a-implemented-awaiting-review",
-  "updatedAt": "2026-06-13T17:07:06Z",
+  "lastTask": "Merge approved Byte 17b-a and route review artifact",
+  "status": "byte17b-a-approved-merged-ready-for-byte17b-b",
+  "updatedAt": "2026-06-13T23:39:49Z",
   "lastHandoff": "",
-  "branch": "codex/byte-17b-a",
-  "commit": "",
+  "branch": "main",
+  "commit": "6aae26b",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 17b-a is implemented on codex/byte-17b-a. It tightens SongGoal keyword matching to token/phrase matching, adds a false-positive regression for repair/crunch, makes GrowWorldState hold a mutable active tonal context, lets transport read active tonal context and tempo through handlers, and routes root-name/display formatting through active context. Behavior should remain 90 BPM / C mixolydian by default; SongGoal still does not apply setup, refresh lookahead, or persist song.goal_set. Validation so far: npm run build and npm run smoke (35/35) are green."
+    "summary": "Byte 17b-a is approved and merged on main with Claude's durable review artifact included. Setup plumbing is behavior-preserving: token/phrase matching prevents short substring false positives, world state can hold active tonal context, transport reads active tempo/context through handlers, and display formatting uses active context. Next slice is Byte 17b-b: explicit Apply/Audition Goal Setup, using validated SongGoal setup fields to set active tonal context, tempo, and form preference, then persist song.goal_set. Apply through refreshLookaheadSchedule or stop/start boundaries and clear wall-clock fallback timers so old committed material does not mix with new setup."
   }
 }
