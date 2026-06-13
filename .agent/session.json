@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Implement Byte 16a-b chord-aware melody scoring",
-  "status": "byte16a-b-ready-for-claude-review",
-  "updatedAt": "2026-06-13T01:56:44Z",
+  "lastTask": "Merge Byte 16a-b chord-aware melody scoring",
+  "status": "byte16a-b-merged-ready-for-next-byte",
+  "updatedAt": "2026-06-13T02:06:09Z",
   "lastHandoff": "",
-  "branch": "codex/byte-16a-b",
+  "branch": "main",
   "commit": "",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 16a-b is ready for Claude review on codex/byte-16a-b. The deterministic chorus repair scorer now follows the chorus answer root plan from Byte 16a's moving harmony instead of the song-wide root list, and the Melody Score inspector exposes the scoring roots. No model, consensus, persistence schema, key/mode, or transport fallback changes are intended. Validation: build, db:smoke, full app smoke, and diff check are green; npm audit still reports the existing Vite/esbuild advisory."
+    "summary": "Byte 16a-b is approved and merged to main with Claude's durable review artifact. The deterministic chorus repair scorer follows Byte 16a's chorus answer roots, important repaired notes land on current moving-root chord tones, and candidate diversity/consensus remain intact. Next options are verse/bridge chord-aware scoring, form-level scoring, or the human/remember-good loop."
   }
 }
