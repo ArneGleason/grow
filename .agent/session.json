@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Implement Byte 16b-a audible form variant chooser",
-  "status": "byte16b-a-ready-for-claude-review",
-  "updatedAt": "2026-06-13T13:18:31Z",
+  "lastTask": "Merge Byte 16b-a audible form variant chooser",
+  "status": "byte16b-a-merged-ready-for-next-byte",
+  "updatedAt": "2026-06-13T13:39:33Z",
   "lastHandoff": "",
-  "branch": "codex/byte-16b-a",
+  "branch": "main",
   "commit": "",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 16b-a is ready for Claude review on codex/byte-16b-a. The Form Score panel now exposes deterministic app-owned form variants: Classic Arc, Early Hook, and Wide Return. Variants combine a song arrangement with a section-dynamics profile; the selected variant drives transport arrangement, harmonic context, playback section decisions, and form scoring through the existing lookahead path. Classic Arc remains the default, Early Hook reaches chorus at beat 16 for an audible A/B, and variant changes refresh lookahead while clearing stale slow-thinking playback. Validation: build, db:smoke, full app smoke 32/32, and diff-check are green; npm audit still reports the known Vite/esbuild advisory."
+    "summary": "Byte 16b-a is approved and merged on main with Claude's durable review artifact included. The Form Score panel exposes deterministic app-owned form variants: Classic Arc, Early Hook, and Wide Return. The selected variant drives transport arrangement, harmonic context, playback section decisions, and form scoring through the existing lookahead path. Claude confirmed this is a real human-selected audio path, Classic Arc remains default, and Early Hook reaches chorus at beat 16. Forward steer: improve form-score variant discrimination before auto-drive; keep the winner displayed but not auto-applied."
   }
 }
