@@ -1,4 +1,5 @@
 import type { TonalContext } from "./listening";
+import { applySectionDynamics } from "./section-dynamics";
 import type { PatternNoteSource, SongMaterial } from "./song-material";
 import {
   DEFAULT_SONG_ARRANGEMENT,
@@ -149,35 +150,23 @@ function applySectionEnergyEstimate(
   localBeat: number,
   absoluteBeat: number,
 ): ArrangedFormNote | undefined {
-  const localBar = Math.floor(localBeat / 4) + 1;
-  let heardVelocity = note.velocity;
-  let shouldPlay = true;
+  const dynamics = applySectionDynamics({
+    role: note.playerId,
+    sectionType: section.sectionType,
+    occurrence: section.occurrence,
+    localBeat,
+    localBar: Math.floor(localBeat / 4) + 1,
+    absoluteBeat,
+  });
 
-  if (section.sectionType === "chorus") {
-    heardVelocity *= note.playerId === "melody" ? 1.18 : note.playerId === "bass" ? 1.14 : 1.08;
-  } else if (section.sectionType === "bridge") {
-    if (note.playerId === "pulse") {
-      shouldPlay = isBarDownbeat(localBeat);
-      heardVelocity *= 0.72;
-    } else if (note.playerId === "bass") {
-      shouldPlay = isWholeBeat(absoluteBeat) && localBar % 2 === 1;
-      heardVelocity *= 0.78;
-    } else if (note.playerId === "melody") {
-      shouldPlay = isWholeBeat(absoluteBeat);
-      heardVelocity *= 0.82;
-    }
-  } else if (note.playerId === "melody") {
-    heardVelocity *= 0.94;
-  }
-
-  if (!shouldPlay) return undefined;
+  if (!dynamics.shouldPlay) return undefined;
   return {
     ...note,
     absoluteBeat,
     localBeat,
     sectionIndex: section.index,
     sectionType: section.sectionType,
-    heardVelocity: roundScore(heardVelocity),
+    heardVelocity: roundScore(note.velocity * dynamics.velocityMultiplier),
   };
 }
 
@@ -399,14 +388,6 @@ function bandScore(value: number, min: number, max: number, ideal: number): numb
   if (value > max) return roundScore(clamp((1 - value) / Math.max(0.0001, 1 - max), 0, 1) * 0.75);
   const spread = Math.max(ideal - min, max - ideal, 0.0001);
   return roundScore(1 - Math.abs(value - ideal) / spread * 0.35);
-}
-
-function isWholeBeat(beat: number): boolean {
-  return Math.abs(beat - Math.round(beat)) < 0.0001;
-}
-
-function isBarDownbeat(localBeat: number): boolean {
-  return Math.abs(localBeat % 4) < 0.0001;
 }
 
 function uniqueNumbers(values: readonly number[]): readonly number[] {

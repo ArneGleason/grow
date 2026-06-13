@@ -61,6 +61,7 @@ import {
   type SessionMode,
   type SessionModeOption,
 } from "./session-mode";
+import { applySectionDynamics } from "./section-dynamics";
 import {
   DEFAULT_SONG_ID,
   getSongMaterial,
@@ -1981,74 +1982,26 @@ function applySongSectionDecision(
   baseDecision: TasteNoteDecision,
 ): TasteNoteDecision {
   const section = sectionAtBeat(input.absoluteBeat);
-  const tags = [
-    ...(baseDecision.tags ?? []),
-    `section:${section.sectionType}`,
-  ];
-
-  if (section.sectionType === "chorus") {
-    if (input.role === "melody") {
-      return {
-        ...baseDecision,
-        action: "vary",
-        shouldPlay: true,
-        velocityMultiplier: Math.max(baseDecision.shouldPlay ? baseDecision.velocityMultiplier : 0.92, 1.18),
-        tags: [...tags, "section:developed-chorus"],
-        reason: `Chorus ${section.occurrence}: lifting the developed hook above taste rests.`,
-      };
-    }
-
-    return {
-      ...baseDecision,
-      shouldPlay: baseDecision.shouldPlay,
-      velocityMultiplier: baseDecision.velocityMultiplier * (input.role === "bass" ? 1.14 : 1.08),
-      tags: [...tags, "section:full"],
-      reason: `Chorus ${section.occurrence}: fuller support under the developed hook.`,
-    };
-  }
-
-  if (section.sectionType === "bridge") {
-    if (input.role === "pulse") {
-      const shouldPlay = isBarDownbeat(section.localBeat);
-      return {
-        action: "simplify",
-        shouldPlay,
-        velocityMultiplier: shouldPlay ? 0.72 : 0,
-        tags: [...tags, "section:sparse"],
-        reason: "Bridge: pulse marks only the bar downbeats.",
-      };
-    }
-
-    if (input.role === "bass") {
-      const shouldPlay = isWholeBeat(input.absoluteBeat) && section.localBar % 2 === 1;
-      return {
-        action: "simplify",
-        shouldPlay,
-        velocityMultiplier: shouldPlay ? 0.78 : 0,
-        tags: [...tags, "section:sparse"],
-        reason: "Bridge: bass leaves alternate bars open.",
-      };
-    }
-
-    if (input.role === "melody") {
-      const shouldPlay = isWholeBeat(input.absoluteBeat);
-      return {
-        action: "contrast",
-        shouldPlay,
-        velocityMultiplier: shouldPlay ? 0.82 : 0,
-        tags: [...tags, "section:bridge-lifted-material"],
-        reason: "Bridge: sparse committed melody lift answers the chorus.",
-      };
-    }
-  }
+  const dynamics = applySectionDynamics({
+    role: input.role,
+    sectionType: section.sectionType,
+    occurrence: section.occurrence,
+    localBeat: section.localBeat,
+    localBar: section.localBar,
+    absoluteBeat: input.absoluteBeat,
+    baseAction: baseDecision.action,
+    baseShouldPlay: baseDecision.shouldPlay,
+    baseVelocityMultiplier: baseDecision.velocityMultiplier,
+    baseReason: baseDecision.reason,
+  });
 
   return {
     ...baseDecision,
-    velocityMultiplier: baseDecision.velocityMultiplier * (input.role === "melody" ? 0.94 : 1),
-    tags: [...tags, "section:grounded"],
-    reason: section.sectionType === "verse"
-      ? `Verse ${section.occurrence}: keeping the source loop grounded.`
-      : baseDecision.reason,
+    action: dynamics.action,
+    shouldPlay: dynamics.shouldPlay,
+    velocityMultiplier: dynamics.velocityMultiplier,
+    tags: [...(baseDecision.tags ?? []), ...dynamics.tags],
+    reason: dynamics.reason,
   };
 }
 
@@ -2068,10 +2021,6 @@ function formatSignedInteger(value: number): string {
 
 function isWholeBeat(value: number): boolean {
   return Math.abs(value - Math.round(value)) < 0.000001;
-}
-
-function isBarDownbeat(localBeat: number): boolean {
-  return Math.abs(localBeat % 4) < 0.000001;
 }
 
 function clamp(value: number, minimum: number, maximum: number): number {

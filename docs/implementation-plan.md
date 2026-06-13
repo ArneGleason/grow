@@ -1764,7 +1764,27 @@ Review focus:
 
 Status:
 
-- Byte 16a-c is in progress on `codex/byte-16a-c`.
+- Byte 16a-c is approved and merged.
+
+### Byte 16a-d: Shared Section Dynamics Policy
+
+Extract the section-dynamics rule that Byte 16a-c duplicated between playback and form scoring. This keeps the inspect-only form score and the audible note-decision path reading the same verse/chorus/bridge policy before a variant chooser makes that policy load-bearing.
+
+Scope:
+
+- Deterministic only; no model, persistence-schema, key/mode, consensus, or melody-candidate behavior change.
+- Preserve the existing audible section behavior exactly: chorus melody can override taste rests, chorus support keeps its taste action while lifting velocity, bridge thins pulse/bass/melody, and verse grounds melody velocity.
+- Use the shared function from both `applySongSectionDecision()` and form scoring's energy estimate.
+
+Review focus:
+
+- Confirm playback and form scoring now share one section-dynamics source.
+- Confirm the extraction does not alter audible section decisions or form-score totals except through the intended shared path.
+- Confirm the weakened-chorus form-score assertion covers the total score as well as cadence.
+
+Status:
+
+- Byte 16a-d is in progress on `codex/byte-16a-d`.
 
 ### Byte 16b: Band-Proposed Key/Mode Change
 

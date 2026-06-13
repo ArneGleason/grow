@@ -21,6 +21,7 @@ import {
   shouldSessionModeRefillLookahead,
   type SessionMode,
 } from "../src/session-mode";
+import { applySectionDynamics } from "../src/section-dynamics";
 import {
   createMockThoughtIntent,
   validateMusicalExcerpt,
@@ -1458,10 +1459,78 @@ test("form score summarizes the whole song arc without changing playback", () =>
   expect(score.harmonicMotion.score).toBeGreaterThan(0.65);
   expect(score.energyArc.score).toBeGreaterThan(0.4);
   expect(score.melodicCoherence.score).toBeGreaterThan(0.4);
+  expect(score.total).toBeGreaterThan(weakChorusScore.total);
   expect(score.cadence.score).toBeGreaterThan(weakChorusScore.cadence.score);
   expect(score.sections.find((section) => section.sectionType === "chorus")?.rootDegrees).toEqual(
     deriveSongSectionRootPlans(song).answer,
   );
+});
+
+test("section dynamics policy is shared by playback and form scoring", () => {
+  expect(applySectionDynamics({
+    role: "melody",
+    sectionType: "chorus",
+    occurrence: 1,
+    localBeat: 2,
+    localBar: 1,
+    absoluteBeat: 34,
+    baseAction: "rest",
+    baseShouldPlay: false,
+    baseVelocityMultiplier: 0,
+  })).toMatchObject({
+    action: "vary",
+    shouldPlay: true,
+    velocityMultiplier: 1.18,
+    tags: ["section:chorus", "section:developed-chorus"],
+  });
+
+  expect(applySectionDynamics({
+    role: "bass",
+    sectionType: "chorus",
+    occurrence: 1,
+    localBeat: 2,
+    localBar: 1,
+    absoluteBeat: 34,
+    baseAction: "contrast",
+    baseShouldPlay: true,
+    baseVelocityMultiplier: 0.5,
+  })).toMatchObject({
+    action: "contrast",
+    shouldPlay: true,
+    velocityMultiplier: 0.57,
+    tags: ["section:chorus", "section:full"],
+  });
+
+  expect(applySectionDynamics({
+    role: "bass",
+    sectionType: "bridge",
+    occurrence: 1,
+    localBeat: 4,
+    localBar: 2,
+    absoluteBeat: 132,
+  })).toMatchObject({
+    action: "simplify",
+    shouldPlay: false,
+    velocityMultiplier: 0,
+    tags: ["section:bridge", "section:sparse"],
+  });
+
+  expect(applySectionDynamics({
+    role: "melody",
+    sectionType: "verse",
+    occurrence: 1,
+    localBeat: 1,
+    localBar: 1,
+    absoluteBeat: 1,
+    baseAction: "support",
+    baseShouldPlay: true,
+    baseVelocityMultiplier: 0.5,
+  })).toMatchObject({
+    action: "support",
+    shouldPlay: true,
+    velocityMultiplier: 0.47,
+    tags: ["section:verse", "section:grounded"],
+  });
 });
 
 test("melody repair readout supports A/B audition and remembered feedback", async ({ page }) => {

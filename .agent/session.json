@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Merge Byte 16a-c inspect-only form scoring",
-  "status": "byte16a-c-merged-ready-for-next-byte",
-  "updatedAt": "2026-06-13T12:27:37Z",
+  "lastTask": "Implement Byte 16a-d shared section dynamics policy",
+  "status": "byte16a-d-ready-for-claude-review",
+  "updatedAt": "2026-06-13T12:55:10Z",
   "lastHandoff": "",
-  "branch": "main",
+  "branch": "codex/byte-16a-d",
   "commit": "",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 16a-c is approved and merged on main with Claude's durable review artifact included. The inspect-only form scorer materializes one default form pass through the existing song-form path plus current chorus development, then grades harmonic motion, energy arc, melodic coherence, and cadence/arrival. Claude confirmed it is grounded in materialized notes, inspect-only, and useful across Lantern/Switchback/Glass. Next steer: extract the shared section-dynamics policy before or alongside the first audible variant chooser, then keep the variant chooser app-owned, deterministic, in-scale, and measured before it drives playback."
+    "summary": "Byte 16a-d is ready for Claude review on codex/byte-16a-d. The section dynamics rule is now shared in src/section-dynamics.ts and used by both playback's applySongSectionDecision() and form scoring's energy estimate, preserving the existing verse/chorus/bridge behavior while removing the duplicated policy. Smoke now pins chorus melody override, chorus support action preservation, bridge thinning, verse grounding, and the weakened-chorus total-score drop. Validation: build, db:smoke, full app smoke 30/30, and diff-check are green; npm audit still reports the known Vite/esbuild advisory."
   }
 }
