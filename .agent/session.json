@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Merge Byte 16b-b and route SongGoal arc plan",
-  "status": "byte16b-b-merged-ready-for-byte17a",
-  "updatedAt": "2026-06-13T15:12:16Z",
+  "lastTask": "Implement Byte 17a SongGoal contract and deterministic interpreter",
+  "status": "byte17a-implemented-awaiting-review",
+  "updatedAt": "2026-06-13T15:43:39Z",
   "lastHandoff": "",
-  "branch": "main",
+  "branch": "codex/byte-17a",
   "commit": "",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 16b-b is approved and merged on main with Claude's durable review artifact included. The proportion/payoff subscore now separates Early Hook, Classic Arc, and Wide Return for real section-proportion reasons without changing playback. Claude's SongGoal arc planning artifact is also routed into .agent/handoffs/2026-06-13-claude-song-goal-arc-plan.md and summarized in docs/implementation-plan.md. Next recommended slice: Byte 17a SongGoal contract, validator/clamps, deterministic keyword interpreter, and inspector/debug harness; no model and no playback drive yet."
+    "summary": "Byte 17a is implemented on codex/byte-17a. The new SongGoal contract lives in src/song-goal.ts with closed vocabularies, clamped numeric ranges, deterministic keyword interpretation, stable ids, and brief generation. The app exposes an inspect-only Song Goal panel and window.songGoal.* harness. It intentionally does not drive tempo, key/mode, form, player behavior, playback, lookahead, or persistence yet; Byte 17b is the first setup-drive slice. Validation so far: npm run build and npm run smoke (35/35) are green."
   }
 }

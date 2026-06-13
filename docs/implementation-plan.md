@@ -1850,6 +1850,12 @@ Scope:
 - Include broad but bounded vocabulary: setup fields, energy/surprise/mood, form preference, section emphasis, disposition nudges, curated influence hints.
 - Add deterministic fallback behavior that later model interpretation can be measured against.
 
+Implementation notes:
+
+- `src/song-goal.ts` owns the closed vocabulary, clamping validator, deterministic keyword interpreter, and deterministic id/brief generation.
+- The inspector exposes a Song Goal panel plus `window.songGoal.*` review harness.
+- 17a intentionally does not call `refreshLookaheadSchedule()`, set tonal context, set tempo, select a form variant, or persist `song.goal_set`; those are 17b responsibilities.
+
 #### Byte 17b: Goal Drives Setup
 
 First audible payoff. Apply validated setup-time goal fields to key/mode, tempo, and form preference.

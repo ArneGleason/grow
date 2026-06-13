@@ -50,6 +50,12 @@ import {
   getSongHarmonicContext,
   sectionAtBeat,
 } from "../src/song-form";
+import {
+  interpretSongGoal,
+  SONG_GOAL_INFLUENCE_HINTS,
+  validateSongGoal,
+  type SongGoalInterpretation,
+} from "../src/song-goal";
 import type { SongSketch, SongSketchProposal } from "../src/song-sketch";
 import type { PlayerThoughtSeed } from "../src/thought-seeds";
 import { DEFAULT_TONAL_CONTEXT } from "../src/tonal-context";
@@ -674,6 +680,21 @@ async function getSongProposal(page: Page): Promise<SongSketchProposal> {
   }
 
   return proposal;
+}
+
+async function getSongGoalResult(page: Page): Promise<SongGoalInterpretation> {
+  const result = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      songGoal?: { getLastResult(): SongGoalInterpretation };
+    };
+    return appWindow.songGoal?.getLastResult();
+  });
+
+  if (!result) {
+    throw new Error("window.songGoal.getLastResult() was not available");
+  }
+
+  return result;
 }
 
 async function getMelodyRepairTake(page: Page): Promise<MelodyRepairTake> {
@@ -1586,6 +1607,112 @@ test("section dynamics policy is shared by playback and form scoring", () => {
     velocityMultiplier: 0.47,
     tags: ["section:verse", "section:grounded"],
   });
+});
+
+test("song goal interpreter produces bounded deterministic knobs", () => {
+  const spacious = interpretSongGoal("slow bright spacious wide return with machine pulse in G dorian");
+  const urgent = interpretSongGoal("urgent restless hook chorus with glass sparks");
+
+  expect(spacious.validation.valid).toBe(true);
+  expect(spacious.goal.tonic).toBe("G");
+  expect(spacious.goal.mode).toBe("dorian");
+  expect(spacious.goal.tempoBpm).toBeLessThan(90);
+  expect(spacious.goal.brightness).toBeGreaterThan(0.6);
+  expect(spacious.goal.formPreference).toBe("wide-return");
+  expect(spacious.goal.influenceHints).toContain("machine-hum");
+  expect(spacious.goal.influenceHints.every((hint) => SONG_GOAL_INFLUENCE_HINTS.includes(hint))).toBe(true);
+  expect(spacious.goal.sectionEmphasis.bridge ?? 0).toBeGreaterThan(0.6);
+  expect(interpretSongGoal(spacious.goal.sourceIdea).goal).toEqual(spacious.goal);
+
+  expect(urgent.validation.valid).toBe(true);
+  expect(urgent.goal.formPreference).toBe("early-hook");
+  expect(urgent.goal.energy).toBeGreaterThan(0.7);
+  expect(urgent.goal.surpriseTarget).toBeGreaterThan(0.65);
+  expect(urgent.goal.influenceHints).toContain("restless-hook");
+});
+
+test("song goal validation clamps numbers and rejects unknown vocabulary", () => {
+  const result = validateSongGoal({
+    status: "model",
+    sourceIdea: "agent text is still only provenance",
+    tonic: "H",
+    mode: "hyperlocrian",
+    tempoBpm: 999,
+    energy: -2,
+    surpriseTarget: 4,
+    brightness: 2,
+    formPreference: "through-composed",
+    dispositionBias: {
+      pulse: 2,
+      alien: 0.1,
+    },
+    influenceHints: ["machine-hum", "freeform-guitar"],
+    sectionEmphasis: {
+      chorus: 2,
+      outro: 0.5,
+    },
+    rationale: "this is display prose, not executable instruction",
+  });
+
+  expect(result.valid).toBe(false);
+  expect(result.goal.tempoBpm).toBe(150);
+  expect(result.goal.energy).toBe(0);
+  expect(result.goal.surpriseTarget).toBe(1);
+  expect(result.goal.brightness).toBe(1);
+  expect(result.goal.dispositionBias.pulse).toBe(0.25);
+  expect(result.goal.influenceHints).toEqual(["machine-hum"]);
+  expect(result.goal.sectionEmphasis.chorus).toBe(1);
+  expect(result.errors).toEqual(expect.arrayContaining([
+    expect.stringContaining("tonic"),
+    expect.stringContaining("mode"),
+    expect.stringContaining("formPreference"),
+    expect.stringContaining("unknown disposition role alien"),
+    expect.stringContaining("unknown influence hint freeform-guitar"),
+    expect.stringContaining("unknown section emphasis outro"),
+  ]));
+  expect(result.clamps.length).toBeGreaterThanOrEqual(5);
+});
+
+test("song goal inspector interprets prose without driving playback", async ({ page }) => {
+  await page.goto("/");
+  await flushPersistence(page);
+  await expect(page.getByTestId("song-goal-status")).toContainText("deterministic | valid");
+  await expect(page.getByTestId("song-goal-setup")).toContainText("C mixolydian");
+
+  const beforeState = await getTransportState(page);
+  await page.getByTestId("song-goal-idea-input").fill("slow bright spacious wide return with machine pulse in G dorian");
+  await page.getByTestId("song-goal-interpret").click();
+
+  await expect(page.getByTestId("song-goal-setup")).toContainText("G dorian");
+  await expect(page.getByTestId("song-goal-setup")).toContainText("wide-return");
+  await expect(page.getByTestId("song-goal-influences")).toContainText("machine-hum");
+  await expect(page.getByTestId("song-goal-validation")).toContainText("valid; no clamps");
+  const goalResult = await getSongGoalResult(page);
+  expect(goalResult.validation.valid).toBe(true);
+  expect(goalResult.goal.formPreference).toBe("wide-return");
+  expect(goalResult.goal.mode).toBe("dorian");
+  expect(goalResult.goal.tempoBpm).toBeLessThan(90);
+
+  const repeated = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      songGoal?: {
+        interpret(sourceIdea: string): SongGoalInterpretation;
+        getVocabulary(): { influenceHints: readonly string[] };
+      };
+    };
+    const first = appWindow.songGoal?.interpret("urgent restless hook chorus with glass sparks");
+    const second = appWindow.songGoal?.interpret("urgent restless hook chorus with glass sparks");
+    return { first, second, vocabulary: appWindow.songGoal?.getVocabulary() };
+  });
+  expect(repeated.first?.goal).toEqual(repeated.second?.goal);
+  expect(repeated.first?.goal.formPreference).toBe("early-hook");
+  expect(repeated.vocabulary?.influenceHints).toContain("restless-hook");
+
+  const afterState = await getTransportState(page);
+  expect(afterState.status).toBe(beforeState.status);
+  expect(afterState.bpm).toBe(beforeState.bpm);
+  expect(afterState.songId).toBe(beforeState.songId);
+  expect(afterState.songForm.sectionType).toBe(beforeState.songForm.sectionType);
 });
 
 test("form variant selector scores candidates and drives the transport form", async ({ page }) => {
@@ -2956,7 +3083,7 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   const canvas = page.getByTestId("terrarium-canvas");
 
   await expect(page.locator(".brand__subtitle")).toHaveText(
-    "The whole form gets a score",
+    "A song idea becomes bounded knobs",
   );
   await expect(button).toHaveText("Start");
   await expect(status).toContainText(
