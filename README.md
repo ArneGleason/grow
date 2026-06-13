@@ -45,7 +45,7 @@ Grow currently runs as a browser app with:
 - A local SQLite persistence shell plus browser-side buffered persistence for low-frequency decisions and musical event records.
 - Context help in the inspector so the app can explain its growing set of controls.
 
-The current milestone is Byte 16a-b: Grow has pivoted from refining one chorus-take decision toward musical motion. The song sketch's root plan is audible, and the deterministic chorus scorer now grades and repairs melody against the same moving section roots the band is playing.
+The current milestone is Byte 16a-c: Grow has pivoted from refining one chorus-take decision toward musical motion. The song sketch's root plan is audible, the chorus scorer follows those moving roots, and a new inspect-only Form Score checks whether the whole Verse/Chorus/Bridge arc feels shaped enough to become a song.
 
 ## What Is Not Here Yet
 

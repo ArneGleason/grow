@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { calculatePlayerExpression } from "../src/expression";
+import { createFormScore } from "../src/form-scoring";
 import {
   MusicalEventRecordBuffer,
   createMusicalEventPersistenceRecord,
@@ -1403,6 +1404,66 @@ test("melody scoring repairs the chorus and scores player perspectives different
   });
 });
 
+test("form score summarizes the whole song arc without changing playback", () => {
+  const song = getSongMaterialForTest("lantern");
+  const take = createMelodyRepairTake({
+    song,
+    tonalContext: DEFAULT_TONAL_CONTEXT,
+    players: PLAYER_REGISTRY,
+    perspectivePlayerId: "melody",
+  });
+  const deterministicCandidate = take.candidates.find((candidate) =>
+    candidate.id === take.deterministicCandidateId
+  );
+  if (!deterministicCandidate) {
+    throw new Error("Expected deterministic melody candidate");
+  }
+  const score = createFormScore({
+    song,
+    tonalContext: DEFAULT_TONAL_CONTEXT,
+    chorusDevelopment: {
+      mode: "repaired",
+      repairedEvents: deterministicCandidate.events,
+    },
+  });
+  const repeatedScore = createFormScore({
+    song,
+    tonalContext: DEFAULT_TONAL_CONTEXT,
+    chorusDevelopment: {
+      mode: "repaired",
+      repairedEvents: deterministicCandidate.events,
+    },
+  });
+  const weakChorusScore = createFormScore({
+    song,
+    tonalContext: DEFAULT_TONAL_CONTEXT,
+    chorusDevelopment: {
+      mode: "repaired",
+      repairedEvents: deterministicCandidate.events.map((event) =>
+        event ? { ...event, scaleDegree: event.scaleDegree + 1 } : null
+      ),
+    },
+  });
+
+  expect(repeatedScore).toEqual(score);
+  expect(score.sections.map((section) => section.sectionType)).toEqual([
+    "verse",
+    "chorus",
+    "verse",
+    "chorus",
+    "bridge",
+    "chorus",
+  ]);
+  expect(score.total).toBeGreaterThan(0.55);
+  expect(score.harmonicMotion.score).toBeGreaterThan(0.65);
+  expect(score.energyArc.score).toBeGreaterThan(0.4);
+  expect(score.melodicCoherence.score).toBeGreaterThan(0.4);
+  expect(score.cadence.score).toBeGreaterThan(weakChorusScore.cadence.score);
+  expect(score.sections.find((section) => section.sectionType === "chorus")?.rootDegrees).toEqual(
+    deriveSongSectionRootPlans(song).answer,
+  );
+});
+
 test("melody repair readout supports A/B audition and remembered feedback", async ({ page }) => {
   await page.goto("/");
   await flushPersistence(page);
@@ -1411,6 +1472,8 @@ test("melody repair readout supports A/B audition and remembered feedback", asyn
   await expect(page.getByTestId("melody-score-choice")).toContainText("balanced-repair");
   await expect(page.getByTestId("melody-score-roots")).toContainText("Answer");
   await expect(page.getByTestId("melody-score-perspectives")).toContainText("pulse");
+  await expect(page.getByTestId("form-score-total")).toContainText("form");
+  await expect(page.getByTestId("form-score-subscores")).toContainText("harmony");
 
   const initialTake = await getMelodyRepairTake(page);
   expect(initialTake.improved).toBe(true);
@@ -2716,7 +2779,7 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   const canvas = page.getByTestId("terrarium-canvas");
 
   await expect(page.locator(".brand__subtitle")).toHaveText(
-    "Chorus scoring follows the moving roots",
+    "The whole form gets a score",
   );
   await expect(button).toHaveText("Start");
   await expect(status).toContainText(

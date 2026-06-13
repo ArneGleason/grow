@@ -1,5 +1,6 @@
 import "./style.css";
 import { formatExpressionSnapshot, type PlayerExpressionSnapshot } from "./expression";
+import { createFormScore, type FormScore } from "./form-scoring";
 import type { ListeningFrame, ListeningFramePlayer, MusicalEvent } from "./listening";
 import {
   checkOllamaHealth,
@@ -279,6 +280,10 @@ const HELP_TOPICS = {
     title: "Melody Score",
     body: "Melody Score compares raw, repaired, and strategy-diverse chorus takes. Scores are perspectival: each player hears the same phrase against its own tiny influence prior. The local critic can only choose an app-owned candidate id.",
   },
+  "form-score": {
+    title: "Form Score",
+    body: "Form Score is an inspect-only check of the whole song arc. It grades harmonic motion, energy shape, motif coherence, and arrivals without changing playback.",
+  },
   listening: {
     title: "Listening",
     body: "Listening summarizes the recent musical event ledger. Agitation is a bounded shared heat signal from density, velocity spikes, microtiming variance, and push/drag pressure.",
@@ -330,11 +335,11 @@ function getSongLabel(nextSongId: SongId): string {
 }
 
 app.innerHTML = `
-  <section class="app-shell" aria-label="Grow Byte 16a-b">
+  <section class="app-shell" aria-label="Grow Byte 16a-c">
     <header class="topbar">
       <div class="brand">
         <h1 class="brand__title">Grow</h1>
-        <p class="brand__subtitle">Chorus scoring follows the moving roots</p>
+        <p class="brand__subtitle">The whole form gets a score</p>
       </div>
       <div class="transport-controls">
         <fieldset class="mode-control">
@@ -580,6 +585,23 @@ ${melodyDevelopmentControls}
           </dl>
         </section>
 
+        <section class="inspector-section" aria-label="Form score">
+          <div class="section-heading">
+            <h2>Form Score</h2>
+${renderHelpButton("form-score", "form score")}
+          </div>
+          <dl>
+            <dt>Total</dt>
+            <dd data-testid="form-score-total">none</dd>
+            <dt>Subscores</dt>
+            <dd data-testid="form-score-subscores">none</dd>
+            <dt>Sections</dt>
+            <dd data-testid="form-score-sections">none</dd>
+            <dt>Top critique</dt>
+            <dd data-testid="form-score-critique">none</dd>
+          </dl>
+        </section>
+
         <section class="inspector-section" aria-label="Listening frame">
           <div class="section-heading">
             <h2>Listening</h2>
@@ -691,6 +713,10 @@ const melodyConsensusStatus = requireElement<HTMLElement>("[data-testid='melody-
 const melodyConsensusResponses = requireElement<HTMLElement>("[data-testid='melody-consensus-responses']");
 const melodyScorePerspectives = requireElement<HTMLElement>("[data-testid='melody-score-perspectives']");
 const melodyScoreFeedback = requireElement<HTMLElement>("[data-testid='melody-score-feedback']");
+const formScoreTotal = requireElement<HTMLElement>("[data-testid='form-score-total']");
+const formScoreSubscores = requireElement<HTMLElement>("[data-testid='form-score-subscores']");
+const formScoreSections = requireElement<HTMLElement>("[data-testid='form-score-sections']");
+const formScoreCritique = requireElement<HTMLElement>("[data-testid='form-score-critique']");
 
 let terrarium: TerrariumView | null = null;
 let activeResizePointerId: number | null = null;
@@ -1569,6 +1595,33 @@ function formatPerspectiveScore(score: MelodyPhraseScore): string {
   return `${score.perspectiveLabel} ${score.total.toFixed(2)} (L${score.landing.toFixed(2)} M${score.monotony.toFixed(2)} S${score.surprise.toFixed(2)})`;
 }
 
+function getCurrentFormScore(state: GrowTransportState = getState()): FormScore {
+  return createFormScore({
+    song: getSongMaterial(state.songId),
+    tonalContext: world.getTonalContext(),
+    chorusDevelopment: getCurrentChorusDevelopment(),
+  });
+}
+
+function renderFormScore(score: FormScore): void {
+  formScoreTotal.textContent = `${score.total.toFixed(3)} | ${score.summary}`;
+  formScoreSubscores.textContent = [
+    `harmony ${score.harmonicMotion.score.toFixed(2)}`,
+    `energy ${score.energyArc.score.toFixed(2)}`,
+    `motif ${score.melodicCoherence.score.toFixed(2)}`,
+    `cadence ${score.cadence.score.toFixed(2)}`,
+  ].join(" | ");
+  formScoreSections.textContent = score.sections.map(formatFormScoreSection).join(" | ");
+  formScoreCritique.textContent = score.topCritique;
+}
+
+function formatFormScoreSection(section: FormScore["sections"][number]): string {
+  const roots = section.rootDegrees
+    .map((degree) => rootNoteFromScaleDegree(DEFAULT_TONAL_CONTEXT, degree))
+    .join("-");
+  return `${section.label} ${roots || "C"} E${section.energy.toFixed(2)} M${section.melodyNoteCount}`;
+}
+
 function isMelodyDevelopmentMode(value: string): value is MelodyDevelopmentMode {
   return value === "raw" || value === "repaired";
 }
@@ -2309,6 +2362,7 @@ function renderWorld(state: GrowTransportState = getState()): void {
   renderThoughts(thoughtRequests, thoughtIntents);
   renderSongSketch(getCurrentSongSketch(state));
   renderMelodyRepair(getCurrentMelodyRepairTake(state));
+  renderFormScore(getCurrentFormScore(state));
   renderListening(frame);
   renderOllama();
   terrarium?.setHeat(createTerrariumHeatState(frame));
@@ -2743,6 +2797,9 @@ declare global {
       remember(): MelodyRepairTake;
       reject(): MelodyRepairTake;
     };
+    formScore?: {
+      getScore(): FormScore;
+    };
     persistence?: {
       getState(): PersistenceClientState;
       getMusicalEventBufferState(): MusicalEventRecordBufferState;
@@ -2887,6 +2944,10 @@ window.melodyRepair = {
   reject: () => rejectCurrentMelodyRepairTake(),
 };
 
+window.formScore = {
+  getScore: () => getCurrentFormScore(),
+};
+
 window.persistence = {
   getState: () => persistence.getState(),
   getMusicalEventBufferState: () => musicalEventRecordBuffer.getState(),
@@ -2942,6 +3003,7 @@ if (import.meta.hot) {
     window.song = undefined;
     window.timing = undefined;
     window.melodyRepair = undefined;
+    window.formScore = undefined;
     window.persistence = undefined;
     window.ollama = undefined;
     window.terrarium = undefined;

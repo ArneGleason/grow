@@ -1744,7 +1744,27 @@ Review focus:
 
 Status:
 
-- Byte 16a-b is in progress on `codex/byte-16a-b`.
+- Byte 16a-b is approved and merged.
+
+### Byte 16a-c: Inspect-Only Form Scoring
+
+Score the current song form before letting the form score drive any decisions. The goal is to answer: does the whole arrangement go somewhere?
+
+Scope:
+
+- Deterministic and inspect-only; no playback, model, consensus, persistence-schema, or key/mode behavior change.
+- Score one full default form pass using the same song-form materialization path and current chorus development.
+- Keep scores readable: harmonic motion, energy arc, melodic coherence, and cadence/arrival.
+
+Review focus:
+
+- Whether the score reflects audible form shape rather than just static metadata.
+- Whether a deliberately weakened chorus variant scores worse, proving the scorer can detect a real musical problem.
+- Whether the inspector readout is clear enough to guide later audible variants.
+
+Status:
+
+- Byte 16a-c is in progress on `codex/byte-16a-c`.
 
 ### Byte 16b: Band-Proposed Key/Mode Change
 
