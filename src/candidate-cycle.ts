@@ -4,13 +4,24 @@ import type {
   CandidateDevelopmentResult,
   CandidateInput,
   CandidateKind,
+  CandidateProsodyDevelopmentOperator,
   CandidateScores,
   CandidateSelectionOptions,
   CandidateSelectionResult,
   StoredCandidate,
 } from "./candidate-store";
 import { aggregateCandidateFitness } from "./candidate-fitness";
+import {
+  alterCadence,
+  reFoot,
+  shiftAnacrusis,
+  varyContour,
+  type AnacrusisVariation,
+  type CadenceVariation,
+  type ContourVariation,
+} from "./prosody-development";
 import { produceProsodyCandidates } from "./prosody-candidates";
+import type { PlayerPatternSource } from "./song-material";
 
 export interface CandidateCycleOptions {
   seed: number;
@@ -105,7 +116,7 @@ export async function runCandidateCycle(
 
   const children: CandidateCycleChildSummary[] = [];
   for (const elite of selection.elite) {
-    const mutation = createPhraseNudgeMutation(elite);
+    const mutation = createProsodyDevelopmentMutation(elite);
     const developed = await persistence.developCandidate({
       parentId: elite.id,
       branchId,
@@ -184,17 +195,88 @@ async function readExistingSelection(
   };
 }
 
-function createPhraseNudgeMutation(elite: StoredCandidate): CandidateDevelopmentMutation {
-  const hash = hashText(`${elite.id}:${elite.seed}:${elite.generation}:d1-phrase-nudge`);
-  const scaleDegreeDeltas = [-2, -1, 1, 2] as const;
-  const velocityMultipliers = [0.88, 0.94, 1.06, 1.12] as const;
-  const rotateSteps = [-1, 0, 1, 2] as const;
+function createProsodyDevelopmentMutation(elite: StoredCandidate): CandidateDevelopmentMutation {
+  const phrase = elite.genome as unknown as PlayerPatternSource;
+  const choices = createProsodyDevelopmentChoices(elite, phrase);
+  const original = stableJson(phrase);
+  for (const choice of choices) {
+    if (stableJson(choice.genome) !== original) {
+      return {
+        type: "phrase.replace",
+        operator: choice.operator,
+        genome: choice.genome,
+      };
+    }
+  }
+
+  const fallback = varyContour(phrase, "transposeUp");
   return {
-    type: "phrase.nudge",
-    scaleDegreeDelta: scaleDegreeDeltas[hash % scaleDegreeDeltas.length],
-    velocityMultiplier: velocityMultipliers[(hash >>> 3) % velocityMultipliers.length],
-    rotateSteps: rotateSteps[(hash >>> 6) % rotateSteps.length],
+    type: "phrase.replace",
+    operator: { type: "varyContour", action: "transposeUp" },
+    genome: fallback,
   };
+}
+
+function createProsodyDevelopmentChoices(
+  elite: StoredCandidate,
+  phrase: PlayerPatternSource,
+): readonly {
+  operator: CandidateProsodyDevelopmentOperator;
+  genome: PlayerPatternSource;
+}[] {
+  const hash = hashText(`${elite.id}:${elite.seed}:${elite.generation}:d1b-prosody`);
+  const contourActions: readonly ContourVariation[] = [
+    "invert",
+    "retrograde",
+    "transposeUp",
+    "transposeDown",
+    "narrow",
+    "widen",
+  ];
+  const cadenceActions: readonly CadenceVariation[] = [
+    "question-to-answer",
+    "answer-to-question",
+    "extend-cadence",
+    "shift-accent",
+  ];
+  const anacrusisActions: readonly AnacrusisVariation[] = [
+    "add",
+    "remove",
+    "lengthen",
+    "shorten",
+  ];
+  const reFootSeed = hashText(`${elite.id}:${elite.seed}:reFoot`);
+  const choices = [
+    {
+      operator: { type: "reFoot", seed: reFootSeed },
+      genome: reFoot(phrase, reFootSeed),
+    },
+    {
+      operator: {
+        type: "varyContour",
+        action: contourActions[(hash >>> 3) % contourActions.length],
+      },
+      genome: varyContour(phrase, contourActions[(hash >>> 3) % contourActions.length]),
+    },
+    {
+      operator: {
+        type: "alterCadence",
+        action: cadenceActions[(hash >>> 7) % cadenceActions.length],
+      },
+      genome: alterCadence(phrase, cadenceActions[(hash >>> 7) % cadenceActions.length]),
+    },
+    {
+      operator: {
+        type: "shiftAnacrusis",
+        action: anacrusisActions[(hash >>> 11) % anacrusisActions.length],
+      },
+      genome: shiftAnacrusis(phrase, anacrusisActions[(hash >>> 11) % anacrusisActions.length]),
+    },
+  ] satisfies readonly {
+    operator: CandidateProsodyDevelopmentOperator;
+    genome: PlayerPatternSource;
+  }[];
+  return rotateArray(choices, hash % choices.length);
 }
 
 function createDevelopmentSeed(
@@ -250,6 +332,16 @@ function normalizePositiveInteger(
 function normalizeBranchId(value: string | undefined): string {
   if (!value) return "main";
   return /^[a-zA-Z0-9:_-]{1,120}$/.test(value) ? value : "main";
+}
+
+function rotateArray<T>(value: readonly T[], steps: number): readonly T[] {
+  if (value.length === 0) return value;
+  const offset = ((steps % value.length) + value.length) % value.length;
+  if (offset === 0) return value;
+  return [
+    ...value.slice(value.length - offset),
+    ...value.slice(0, value.length - offset),
+  ];
 }
 
 function stableJson(value: unknown): string {

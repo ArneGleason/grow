@@ -1,3 +1,8 @@
+import type {
+  AnacrusisVariation,
+  CadenceVariation,
+  ContourVariation,
+} from "./prosody-development";
 import type { PlayerPatternSource } from "./song-material";
 
 export const CANDIDATE_KINDS = [
@@ -95,13 +100,23 @@ export interface CandidateSelectionResult {
   purged: readonly StoredCandidate[];
 }
 
-export interface CandidateDevelopmentMutation {
+export type CandidateProsodyDevelopmentOperator =
+  | { type: "reFoot"; seed: number }
+  | { type: "varyContour"; action: ContourVariation }
+  | { type: "alterCadence"; action: CadenceVariation }
+  | { type: "shiftAnacrusis"; action: AnacrusisVariation };
+
+export type CandidateDevelopmentMutation = {
   type: "phrase.nudge";
   scaleDegreeDelta?: number;
   octaveDelta?: number;
   velocityMultiplier?: number;
   rotateSteps?: number;
-}
+} | {
+  type: "phrase.replace";
+  operator: CandidateProsodyDevelopmentOperator;
+  genome: PlayerPatternSource;
+};
 
 export interface CandidateDevelopmentOptions {
   parentId: string;

@@ -3685,10 +3685,23 @@ test("candidate cycle produces scores selects elites develops children and stays
     expect(child.generation).toBe((parent?.generation ?? 0) + 1);
     expect(child.fitness).toBe(0);
     expect(child.scores).toEqual({});
-    expect(child.mutation.type).toBe("phrase.nudge");
+    expect(child.mutation.type).toBe("phrase.replace");
+    if (child.mutation.type !== "phrase.replace") {
+      throw new Error("Expected D1b child to use phrase.replace");
+    }
+    expect(child.mutation.operator.type).toEqual(expect.stringMatching(
+      /^(reFoot|varyContour|alterCadence|shiftAnacrusis)$/,
+    ));
   }
 
   const firstDump = await dumpPersistence(page, 2_000);
+  for (const child of first.children) {
+    const parent = firstDump.candidates.find((candidate) => candidate.id === child.parentId);
+    const storedChild = firstDump.candidates.find((candidate) => candidate.id === child.id);
+    expect(parent).toBeTruthy();
+    expect(storedChild).toBeTruthy();
+    expect(JSON.stringify(storedChild?.genome)).not.toBe(JSON.stringify(parent?.genome));
+  }
   const firstEvents = firstDump.events.filter((event) =>
     event.branchId === branchId && event.type.startsWith("candidate.")
   );

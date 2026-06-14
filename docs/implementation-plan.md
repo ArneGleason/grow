@@ -1997,7 +1997,26 @@ Current scope:
 
 Open design question:
 
-- D1 uses A4's generic `phrase.nudge` mutation for children. Before D2 performs elites, decide whether development should move to the prosody B2 operators (`varyContour`, `reFoot`, `alterCadence`, `shiftAnacrusis`) so child phrases are musical developments rather than bounded mechanical nudges.
+- D1 originally used A4's generic `phrase.nudge` mutation for children. D1b moves the cycle to prosody B2 operators (`varyContour`, `reFoot`, `alterCadence`, `shiftAnacrusis`) so child phrases are musical developments rather than bounded mechanical nudges.
+
+#### Track D1b: Prosody Development Bridge
+
+Keep D1 inspect-only while changing child development from generic nudges to the existing B2 musical operators.
+
+Status: implemented as a D1 cycle update.
+
+Current scope:
+
+- `runCandidateCycle()` now deterministically derives each elite child through one of the B2 prosody operators.
+- The cycle still routes child creation through the A4 `developCandidate()` endpoint by using a closed `phrase.replace` mutation shape that carries operator metadata plus the B2-developed `PlayerPatternSource`.
+- The server still owns A4 safety boundaries: same-branch elite parent requirement, phrase-genome validation/normalization, child id/lineage/status, and `candidate.created` audit with `reason: "development"`.
+- This remains inspect-only. No audio, transport, model, playback, or automatic loop consumes developed children.
+
+Review focus:
+
+- Confirm the cycle is actually using B2 operator families for child genomes, not `phrase.nudge`.
+- Confirm `phrase.replace` is acceptable as the smallest bridge: the app computes the B2 transform, while the server validates/persists the replacement but does not recompute the transform.
+- Keep carrying D1's two next-loop findings: developed children still need scoring before a true generational loop, and candidate ids need branch scoping before parallel populations.
 
 ### Byte 16b: Band-Proposed Key/Mode Change
 

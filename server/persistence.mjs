@@ -1032,8 +1032,15 @@ function normalizeCandidateDevelopmentMutation(value) {
   if (!isRecord(value)) {
     throw new Error("Candidate development mutation must be an object");
   }
+  if (value.type === "phrase.replace") {
+    return {
+      type: "phrase.replace",
+      operator: normalizeProsodyDevelopmentOperator(value.operator),
+      genome: normalizePhraseGenome(value.genome),
+    };
+  }
   if (value.type !== "phrase.nudge") {
-    throw new Error("Candidate development mutation type must be phrase.nudge");
+    throw new Error("Candidate development mutation type must be phrase.nudge or phrase.replace");
   }
   const mutation = {
     type: "phrase.nudge",
@@ -1054,6 +1061,10 @@ function normalizeCandidateDevelopmentMutation(value) {
 }
 
 function applyCandidateDevelopmentMutation(genome, mutation) {
+  if (mutation.type === "phrase.replace") {
+    return normalizePhraseGenome(deepCloneJson(mutation.genome));
+  }
+
   const childGenome = deepCloneJson(genome);
   if (!isRecord(childGenome) || !Array.isArray(childGenome.events)) {
     throw new Error("Phrase development requires a PlayerPatternSource genome");
@@ -1087,6 +1098,59 @@ function applyCandidateDevelopmentMutation(genome, mutation) {
     mutation.rotateSteps,
   );
   return normalizePhraseGenome(childGenome);
+}
+
+function normalizeProsodyDevelopmentOperator(value) {
+  if (!isRecord(value)) {
+    throw new Error("Prosody development operator must be an object");
+  }
+  if (value.type === "reFoot") {
+    return {
+      type: "reFoot",
+      seed: clampInteger(value.seed ?? 0, 0, 0xffffffff, "operator.seed"),
+    };
+  }
+  if (value.type === "varyContour") {
+    return {
+      type: "varyContour",
+      action: normalizeOneOf(value.action, [
+        "invert",
+        "retrograde",
+        "transposeUp",
+        "transposeDown",
+        "narrow",
+        "widen",
+      ], "operator.action"),
+    };
+  }
+  if (value.type === "alterCadence") {
+    return {
+      type: "alterCadence",
+      action: normalizeOneOf(value.action, [
+        "question-to-answer",
+        "answer-to-question",
+        "extend-cadence",
+        "shift-accent",
+      ], "operator.action"),
+    };
+  }
+  if (value.type === "shiftAnacrusis") {
+    return {
+      type: "shiftAnacrusis",
+      action: normalizeOneOf(value.action, [
+        "add",
+        "remove",
+        "lengthen",
+        "shorten",
+      ], "operator.action"),
+    };
+  }
+  throw new Error("Prosody development operator type must be reFoot, varyContour, alterCadence, or shiftAnacrusis");
+}
+
+function normalizeOneOf(value, allowedValues, label) {
+  if (typeof value === "string" && allowedValues.includes(value)) return value;
+  throw new Error(`${label} must be one of ${allowedValues.join(", ")}`);
 }
 
 function rotateArray(value, steps) {
