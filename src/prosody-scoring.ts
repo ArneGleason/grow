@@ -49,7 +49,8 @@ export function scoreRichness(notes: readonly ExtractedNote[]): number {
   if (notes.length < 2) return 0;
 
   // Gather durations and calculate frequencies for entropy
-  const durations = notes.map((n) => Math.round(n.durationBeats * 100) / 100);
+  // Quantize durations to the nearest 0.25 (musical grid) to avoid inflating entropy with micro-timing
+  const durations = notes.map((n) => Math.round(n.durationBeats * 4) / 4);
   const counts = new Map<number, number>();
   for (const dur of durations) {
     counts.set(dur, (counts.get(dur) ?? 0) + 1);
@@ -139,21 +140,25 @@ export function scoreQuestionAnswer(notes: readonly ExtractedNote[]): number {
   const lastAnte = anteNotes[anteNotes.length - 1];
   const lastCons = consNotes[consNotes.length - 1];
 
-  // Antecedent question cadence check (should NOT end on tonic 0 or 7)
+  const scaleLength = 7;
+  const antePc = ((lastAnte.scaleDegree % scaleLength) + scaleLength) % scaleLength;
+  const consPc = ((lastCons.scaleDegree % scaleLength) + scaleLength) % scaleLength;
+
+  // Antecedent question cadence check (should NOT end on tonic pitch-class 0)
   let anteScore = 0;
-  if (lastAnte.scaleDegree === 4) {
+  if (antePc === 4) {
     anteScore = 1.0; // perfect dominant suspension
-  } else if (lastAnte.scaleDegree === 2 || lastAnte.scaleDegree === 5) {
+  } else if (antePc === 2 || antePc === 5) {
     anteScore = 0.8; // good secondary question degrees
-  } else if (lastAnte.scaleDegree === 0 || lastAnte.scaleDegree === 7) {
+  } else if (antePc === 0) {
     anteScore = 0.1; // resolved too early!
   } else {
     anteScore = 0.5; // neutral
   }
 
-  // Consequent answer cadence check (should end on tonic 0 or 7)
+  // Consequent answer cadence check (should end on tonic pitch-class 0)
   let consScore = 0;
-  if (lastCons.scaleDegree === 0 || lastCons.scaleDegree === 7) {
+  if (consPc === 0) {
     // lands on tonic
     consScore = 1.0;
   } else {
@@ -199,19 +204,47 @@ function getMetricalWeight(beat: number): number {
 export function scoreAnchorContrast(notes: readonly ExtractedNote[]): number {
   if (notes.length === 0) return 0;
 
-  let totalWeight = 0;
-  let totalVelocity = 0;
+  const anteNotes = notes.filter((n) => n.startBeat < 8);
+  const consNotes = notes.filter((n) => n.startBeat >= 8 && n.startBeat < 16);
+
+  const anteCadence = anteNotes.length > 0 ? anteNotes[anteNotes.length - 1] : null;
+  const consCadence = consNotes.length > 0 ? consNotes[consNotes.length - 1] : null;
+
+  let focalWeightSum = 0;
+  let focalAlignmentSum = 0;
+
+  let connectiveWeightSum = 0;
+  let connectiveAlignmentSum = 0;
 
   for (const note of notes) {
-    const weight = getMetricalWeight(note.startBeat);
-    totalWeight += note.velocity * weight;
-    totalVelocity += note.velocity;
+    const isCadence = note === anteCadence || note === consCadence;
+    const importance = note.durationBeats * note.velocity;
+    const metricalW = getMetricalWeight(note.startBeat);
+
+    // Consider note focal if it's a cadence or structurally important (long/loud)
+    if (isCadence || importance > 0.5) {
+      const weight = isCadence ? 2.0 : importance;
+      focalWeightSum += weight;
+      focalAlignmentSum += metricalW * weight;
+    } else {
+      // Connective notes
+      connectiveWeightSum += 1.0;
+      connectiveAlignmentSum += metricalW;
+    }
   }
 
-  const averageAlignment = totalWeight / totalVelocity;
-  // Map averageAlignment (ranging from 0.1 for 16th subdivisions up to 1.0 for downbeats)
-  // linearly from 0 (fully syncopated/contrasting) to 1 (fully anchored on strong beats).
-  const score = Math.max(0, Math.min(1.0, (averageAlignment - 0.1) / 0.9));
+  const focalScore = focalWeightSum > 0 ? focalAlignmentSum / focalWeightSum : 0;
+
+  let connectiveScore = 0;
+  if (connectiveWeightSum > 0) {
+    const connectiveAlignment = connectiveAlignmentSum / connectiveWeightSum;
+    // Target is around 0.4 (a healthy mix of weak beats and subdivisions for drive/contrast)
+    const target = 0.4;
+    connectiveScore = Math.max(0, 1 - Math.abs(connectiveAlignment - target) / 0.5);
+  }
+
+  // Weight anchoring of focal notes slightly higher than the presence of contrast
+  const score = (focalScore * 0.6) + (connectiveScore * 0.4);
 
   return Math.round(score * 1000) / 1000;
 }
@@ -219,7 +252,11 @@ export function scoreAnchorContrast(notes: readonly ExtractedNote[]): number {
 /**
  * Pure function scoring a prosodic melody phrase.
  */
-export function scoreProsody(phrase: PlayerPatternSource, _meter: [number, number]): ProsodyScore {
+export function scoreProsody(phrase: PlayerPatternSource, meter: [number, number]): ProsodyScore {
+  if (meter[0] !== 4 || meter[1] !== 4) {
+    console.warn(`scoreProsody: phrase geometry hardcoded to 16 beats, 4/4 meter. Different meters (${meter[0]}/${meter[1]}) may mis-score silently.`);
+  }
+
   const notes = extractNotes(phrase);
 
   const subscores: ProsodySubscores = {

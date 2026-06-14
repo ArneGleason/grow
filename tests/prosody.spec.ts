@@ -91,48 +91,80 @@ test.describe("Track B1: Prosody Scoring Unit Tests", () => {
     expect(score.subscores.questionAnswer).toBeGreaterThanOrEqual(0.8);
   });
 
-  test("anchorContrast subscore measures alignment with metrical beats", () => {
-    // Create a phrase fully aligned with downbeats (beat 0, 4, 8, 12)
+  test("anchorContrast subscore rewards good focal anchoring with connective contrast", () => {
+    const generatedPhrase = generateProsodicMelody({ seed: 123, baseOctave: 4, bars: 4 });
+    const scoreGenerated = scoreProsody(generatedPhrase, [4, 4]).subscores.anchorContrast;
+
+    // 1. Fully-on-every-beat line
     const lockedPhrase: PlayerPatternSource = {
       subdivisionBeats: 0.25,
       events: Array.from({ length: 64 }, (_, idx) => {
-        if (idx === 0 || idx === 16 || idx === 32 || idx === 48) {
+        if (idx % 4 === 0) { // Every beat
           return {
             playerId: "melody",
             scaleDegree: 0,
             octave: 4,
-            duration: "2n",
-            durationBeats: 2.0,
-            velocity: 0.46,
+            duration: "4n",
+            durationBeats: 1.0,
+            velocity: 0.6,
           };
         }
         return null;
       }),
     };
+    const scoreLocked = scoreProsody(lockedPhrase, [4, 4]).subscores.anchorContrast;
 
-    const scoreLocked = scoreProsody(lockedPhrase, [4, 4]);
-
-    // Create a highly syncopated phrase (notes only on weak subdivisions: 0.25, 4.25, 8.25, 12.25)
-    const syncopatedPhrase: PlayerPatternSource = {
+    // 2. Fully-off-beat line (16th offsets)
+    const offbeatPhrase: PlayerPatternSource = {
       subdivisionBeats: 0.25,
       events: Array.from({ length: 64 }, (_, idx) => {
-        if (idx === 1 || idx === 17 || idx === 33 || idx === 49) {
+        if (idx % 4 === 1) { // 16th offset
           return {
             playerId: "melody",
             scaleDegree: 0,
             octave: 4,
-            duration: "2n",
-            durationBeats: 2.0,
-            velocity: 0.46,
+            duration: "16n",
+            durationBeats: 0.25,
+            velocity: 0.6,
           };
         }
         return null;
       }),
     };
+    const scoreOffbeat = scoreProsody(offbeatPhrase, [4, 4]).subscores.anchorContrast;
 
-    const scoreSyncopated = scoreProsody(syncopatedPhrase, [4, 4]);
-    // The locked phrase should have different anchorContrast score than highly syncopated one
-    expect(scoreLocked.subscores.anchorContrast).not.toBe(scoreSyncopated.subscores.anchorContrast);
+    // Generated mix should beat both extremes
+    expect(scoreGenerated).toBeGreaterThan(scoreLocked);
+    expect(scoreGenerated).toBeGreaterThan(scoreOffbeat);
+
+    // 3. Good anchors + floating connectives vs pushed off-beat anchors
+    const createCustomPhrase = (anteCadenceBeat: number, consCadenceBeat: number): PlayerPatternSource => {
+      const events = Array.from({ length: 64 }, () => null as any);
+      // Connectives floating off-beat (8th note upbeats)
+      events[2] = { durationBeats: 0.5, velocity: 0.3, scaleDegree: 0, octave: 4, playerId: "melody" }; // beat 0.5
+      events[10] = { durationBeats: 0.5, velocity: 0.3, scaleDegree: 0, octave: 4, playerId: "melody" }; // beat 2.5
+      events[18] = { durationBeats: 0.5, velocity: 0.3, scaleDegree: 0, octave: 4, playerId: "melody" }; // beat 4.5
+
+      // Antecedent Cadence
+      events[anteCadenceBeat * 4] = { durationBeats: 2.0, velocity: 0.8, scaleDegree: 4, octave: 4, playerId: "melody" };
+
+      // More connectives
+      events[34] = { durationBeats: 0.5, velocity: 0.3, scaleDegree: 0, octave: 4, playerId: "melody" }; // beat 8.5
+      events[42] = { durationBeats: 0.5, velocity: 0.3, scaleDegree: 0, octave: 4, playerId: "melody" }; // beat 10.5
+
+      // Consequent Cadence
+      events[consCadenceBeat * 4] = { durationBeats: 2.0, velocity: 0.8, scaleDegree: 0, octave: 4, playerId: "melody" };
+
+      return { subdivisionBeats: 0.25, events };
+    };
+
+    const goodAnchors = createCustomPhrase(4, 12);
+    const scoreGood = scoreProsody(goodAnchors, [4, 4]).subscores.anchorContrast;
+
+    const badAnchors = createCustomPhrase(4.25, 12.25);
+    const scoreBad = scoreProsody(badAnchors, [4, 4]).subscores.anchorContrast;
+
+    expect(scoreGood).toBeGreaterThan(scoreBad);
   });
 });
 
