@@ -12,6 +12,7 @@ import {
   retainCandidates,
   resolveDatabasePath,
   scoreCandidate,
+  selectCandidates,
   writeCandidate,
 } from "./server/persistence.mjs";
 
@@ -252,6 +253,24 @@ async function handlePersistenceRequest(request, response, persistence, signal) 
       branchId: payload.branchId ?? session.branchId,
       kind: payload.kind,
       limit: payload.limit,
+    });
+    sendPersistenceJson(response, 200, {
+      ok: true,
+      session,
+      ...result,
+    });
+    return;
+  }
+
+  if (path === `${PERSISTENCE_PREFIX}/candidates/select` && request.method === "POST") {
+    const database = persistence.getDatabase();
+    const payload = await readJsonBody(request, signal);
+    const session = ensureCandidateSession(database, payload);
+    const result = selectCandidates(database, {
+      sessionId: session.id,
+      branchId: payload.branchId ?? session.branchId,
+      kind: payload.kind,
+      eliteLimit: payload.eliteLimit,
     });
     sendPersistenceJson(response, 200, {
       ok: true,

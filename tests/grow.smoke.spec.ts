@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import {
   assertValidCandidate,
   validateCandidate,
+  type CandidateSelectionResult,
   type StoredCandidate,
 } from "../src/candidate-store";
 import {
@@ -3372,6 +3373,108 @@ test("candidate store writes queries scores retains and caps audited phrase cand
   ]);
   expect(dump.candidates.find((candidate) => candidate.id === written.candidate.id)?.status).toBe("elite");
   expect(dump.candidates.find((candidate) => candidate.id === `${sessionId}-beta`)?.status).toBe("purged");
+});
+
+test("candidate selection promotes top candidates per kind and purges overflow", async ({ request }) => {
+  const sessionId = `candidate-selection-${Date.now().toString(36)}`;
+  const branchId = `${sessionId}-branch`;
+  const session = {
+    id: sessionId,
+    name: "Candidate selection smoke",
+    branchId,
+    metadata: { byte: "A3" },
+  };
+  const phraseGenome = SONG_MATERIALS[0].patterns.find((pattern) =>
+    pattern.events.some((event) => event?.playerId === "melody")
+  );
+  if (!phraseGenome) {
+    throw new Error("Expected a melody phrase genome fixture");
+  }
+  const writeCandidate = async (
+    suffix: string,
+    fitness: number,
+    generation: number,
+    status: "alive" | "elite" = "alive",
+  ) => {
+    const response = await request.post("/api/persistence/candidates/write", {
+      data: {
+        session,
+        candidate: {
+          id: `${sessionId}-${suffix}`,
+          kind: "phrase",
+          genome: phraseGenome,
+          scores: { landing: fitness, cadence: fitness },
+          fitness,
+          generation,
+          seed: 200 + generation,
+          status,
+        },
+      },
+    });
+    expect(response.status()).toBe(200);
+  };
+
+  await writeCandidate("best-young", 0.9, 0);
+  await writeCandidate("best-older", 0.9, 2);
+  await writeCandidate("middle", 0.7, 0);
+  await writeCandidate("stale-elite", 0.4, 0, "elite");
+
+  const selectResponse = await request.post("/api/persistence/candidates/select", {
+    data: {
+      session,
+      kind: "phrase",
+      eliteLimit: 2,
+    },
+  });
+  expect(selectResponse.status()).toBe(200);
+  const selection = await selectResponse.json() as CandidateSelectionResult;
+  expect(selection).toMatchObject({
+    kind: "phrase",
+    branchId,
+    eliteLimit: 2,
+    evaluatedCount: 4,
+  });
+  expect(selection.elite.map((candidate) => candidate.id)).toEqual([
+    `${sessionId}-best-young`,
+    `${sessionId}-best-older`,
+  ]);
+  expect(selection.elite.every((candidate) => candidate.status === "elite")).toBe(true);
+  expect(selection.purged.map((candidate) => candidate.id)).toEqual([
+    `${sessionId}-middle`,
+    `${sessionId}-stale-elite`,
+  ]);
+  expect(selection.purged.every((candidate) => candidate.status === "purged")).toBe(true);
+
+  const listResponse = await request.get(`/api/persistence/candidates?kind=phrase&branchId=${branchId}&limit=10`);
+  expect(listResponse.status()).toBe(200);
+  const listed = await listResponse.json() as { candidates: StoredCandidate[] };
+  const statusById = Object.fromEntries(
+    listed.candidates.map((candidate) => [candidate.id, candidate.status]),
+  );
+  expect(statusById[`${sessionId}-best-young`]).toBe("elite");
+  expect(statusById[`${sessionId}-best-older`]).toBe("elite");
+  expect(statusById[`${sessionId}-middle`]).toBe("purged");
+  expect(statusById[`${sessionId}-stale-elite`]).toBe("purged");
+
+  const dumpResponse = await request.get("/api/persistence/dump?limit=800");
+  expect(dumpResponse.status()).toBe(200);
+  const dump = await dumpResponse.json() as PersistenceDump;
+  const selectionEvents = dump.events
+    .filter((event) => event.sessionId === sessionId && ["candidate.retained", "candidate.purged"].includes(event.type))
+    .sort((left, right) => left.seq - right.seq);
+  expect(selectionEvents.map((event) => event.type)).toEqual([
+    "candidate.retained",
+    "candidate.retained",
+    "candidate.purged",
+    "candidate.purged",
+  ]);
+  expect(selectionEvents.map((event) => event.payload.reason)).toEqual([
+    "selection",
+    "selection",
+    "selection",
+    "selection",
+  ]);
+  expect(selectionEvents.map((event) => event.payload.rank)).toEqual([1, 2, 3, 4]);
 });
 
 test("persistence records musical events through an off-callback buffer", async ({ page }) => {

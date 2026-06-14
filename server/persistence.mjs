@@ -445,6 +445,71 @@ export function capCandidates(database, request) {
   });
 }
 
+export function selectCandidates(database, request) {
+  const session = getRequiredSession(database, request.sessionId);
+  const kind = normalizeCandidateKind(request.kind);
+  const branchId = request.branchId ?? session.branchId ?? "main";
+  const eliteLimit = normalizeLimit(request.eliteLimit, 10);
+  const updatedAt = request.updatedAt ?? new Date().toISOString();
+
+  return withImmediateTransaction(database, () => {
+    const candidates = listCandidates(database, {
+      branchId,
+      kind,
+      includePurged: false,
+      limit: MAX_CANDIDATE_LIMIT,
+      order: "fitness",
+    });
+    const eliteTargets = candidates.slice(0, eliteLimit);
+    const overflow = candidates.slice(eliteLimit);
+    const rankById = new Map(candidates.map((candidate, index) => [candidate.id, index + 1]));
+    const retained = updateCandidateStatusesInTransaction(
+      database,
+      eliteTargets
+        .filter((candidate) => candidate.status !== "elite")
+        .map((candidate) => candidate.id),
+      "elite",
+      updatedAt,
+    );
+    const purged = updateCandidateStatusesInTransaction(
+      database,
+      overflow.map((candidate) => candidate.id),
+      "purged",
+      updatedAt,
+    );
+    const auditEvents = [
+      ...retained.map((candidate) =>
+        createCandidateAuditEvent("candidate.retained", session.id, branchId, candidate, updatedAt, {
+          reason: "selection",
+          eliteLimit,
+          rank: rankById.get(candidate.id),
+        })
+      ),
+      ...purged.map((candidate) =>
+        createCandidateAuditEvent("candidate.purged", session.id, branchId, candidate, updatedAt, {
+          reason: "selection",
+          eliteLimit,
+          rank: rankById.get(candidate.id),
+        })
+      ),
+    ];
+    if (auditEvents.length > 0) {
+      appendEventsInTransaction(database, auditEvents);
+    }
+
+    return {
+      kind,
+      branchId,
+      eliteLimit,
+      evaluatedCount: candidates.length,
+      elite: eliteTargets
+        .map((candidate) => readCandidateById(database, candidate.id))
+        .filter(Boolean),
+      purged,
+    };
+  });
+}
+
 export function listCandidates(database, options = {}) {
   const clauses = [];
   const params = [];

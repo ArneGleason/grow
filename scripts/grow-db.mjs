@@ -7,16 +7,15 @@ import { parseArgs } from "node:util";
 import {
   DEFAULT_DATABASE_PATH,
   appendEvent,
-  capCandidates,
   databaseExists,
   dumpGrowDatabase,
   ensureSession,
   getSchemaVersion,
   listCandidates,
   openGrowDatabase,
-  retainCandidates,
   resolveDatabasePath,
   scoreCandidate,
+  selectCandidates,
   writeCandidate,
 } from "../server/persistence.mjs";
 
@@ -128,11 +127,6 @@ function runSmoke() {
       fitness: 0.9,
       updatedAt: "2026-01-01T00:00:03.000Z",
     });
-    const retained = retainCandidates(database, {
-      sessionId: session.id,
-      candidateIds: [candidate.id],
-      updatedAt: "2026-01-01T00:00:04.000Z",
-    });
     writeCandidate(database, {
       sessionId: session.id,
       candidate: {
@@ -147,10 +141,10 @@ function runSmoke() {
       },
       createdAt: "2026-01-01T00:00:05.000Z",
     });
-    const capped = capCandidates(database, {
+    const selected = selectCandidates(database, {
       sessionId: session.id,
       kind: "phrase",
-      limit: 1,
+      eliteLimit: 1,
       updatedAt: "2026-01-01T00:00:06.000Z",
     });
     const dump = dumpGrowDatabase(database);
@@ -162,8 +156,8 @@ function runSmoke() {
     assert(dump.events.length === 7, "dump should include decision and candidate audit events");
     assert(dump.events[0].type === "candidate.purged", "dump should sort newest event first");
     assert(scored.scores.melody === 1, "scores should clamp to 1");
-    assert(retained[0].status === "elite", "retain should mark candidate elite");
-    assert(capped.purged.length === 1, "cap should purge one lower-fitness candidate");
+    assert(selected.elite[0].status === "elite", "selection should mark top candidate elite");
+    assert(selected.purged.length === 1, "selection should purge one lower-fitness candidate");
     assert(phraseCandidates.length === 2, "candidate query should include both phrase candidates");
     assert(dump.candidates.length === 2, "dump should include candidate rows");
     console.log(JSON.stringify({

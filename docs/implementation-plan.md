@@ -1955,6 +1955,16 @@ Current scope:
 
 Select deterministically by kind: top-N become `elite`, overflow becomes `purged`, and population caps are enforced with audit events.
 
+Status: implemented as candidate-store selection.
+
+Current scope:
+
+- `selectCandidates()` operates on one `kind` and one branch at a time; fitness is not treated as an absolute score across kinds.
+- The deterministic order is the A1 store order: `fitness DESC`, `generation ASC`, `created_at ASC`, `id ASC`.
+- Top `eliteLimit` candidates are marked `elite`; overflow candidates are marked `purged`.
+- Selection appends existing `candidate.retained` and `candidate.purged` audit events with `reason: "selection"` and the deterministic rank.
+- The browser exposes `window.persistence.selectCandidates()` through the dev persistence client, but no audio, model, playback, or generator loop consumes selection yet.
+
 #### Track A4: Development Hook
 
 Clone an elite candidate, apply a caller-provided mutation operator, and create a child with `parentId`, `generation + 1`, and a new deterministic seed.

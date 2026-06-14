@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Merge Track A2 candidate fitness aggregation review",
-  "status": "track-a2-approved-merged-ready-for-a3",
-  "updatedAt": "2026-06-14T15:00:13Z",
+  "lastTask": "Implement Track A3 candidate selection",
+  "status": "track-a3-implemented-ready-for-review",
+  "updatedAt": "2026-06-14T15:11:01Z",
   "lastHandoff": "",
-  "branch": "main",
+  "branch": "codex/byte-a3-selection",
   "commit": "branch-head",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Track A2 is approved and merged to main. The durable Claude review artifact from claude/codex-a2-fitness-aggregation-code-review was cherry-picked, and the pure candidate fitness ruler is ready for Track A3. A2 adds src/candidate-fitness.ts with a pure weighted scalar aggregator, contribution breakdown, missing-score penalty, ignored-key reporting, and copy-only candidate fitness preview. The helper is exposed through window.persistence for inspection only; it does not write to SQLite and no audio/model/playback/selection/cap path consumes it. Carry forward: fitness is meaningful only within a candidate kind for now, and A4 must deep-clone genomes before mutation. Next: Track A3 deterministic top-N-per-kind elite selection and overflow purge using existing candidate-store mutation/audit APIs."
+    "summary": "Track A3 is implemented on codex/byte-a3-selection. The branch adds per-kind selectCandidates() to the candidate store, using deterministic fitness/generation/created_at/id ordering to mark top eliteLimit candidates elite and purge overflow with existing candidate.retained/candidate.purged audit events carrying reason:\"selection\" and rank. It is exposed through /api/persistence/candidates/select, the persistence client, and window.persistence.selectCandidates(), but no audio/model/playback/generator loop consumes selection. Validation: build green, db:smoke green, smoke 42/42, diff-check green; npm audit still reports the known Vite/esbuild advisories. Next likely Track A4: clone elite candidates into bounded child candidates, deep-cloning genomes before mutation."
   }
 }

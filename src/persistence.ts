@@ -4,6 +4,8 @@ import type {
   CandidateInput,
   CandidateQueryOptions,
   CandidateScores,
+  CandidateSelectionOptions,
+  CandidateSelectionResult,
   StoredCandidate,
 } from "./candidate-store";
 
@@ -75,6 +77,7 @@ export interface PersistenceClient {
   retainCandidates(candidateIds: readonly string[]): Promise<readonly StoredCandidate[]>;
   purgeCandidates(candidateIds: readonly string[]): Promise<readonly StoredCandidate[]>;
   capCandidates(options: CandidateCapOptions): Promise<CandidateCapResult>;
+  selectCandidates(options: CandidateSelectionOptions): Promise<CandidateSelectionResult>;
   getState(): PersistenceClientState;
 }
 
@@ -348,6 +351,12 @@ export function createPersistenceClient(
     capCandidates: async (options) => {
       return postPersistenceJson<CandidateCapResult>(
         `${CANDIDATES_ENDPOINT}/cap`,
+        { session, ...options },
+      );
+    },
+    selectCandidates: async (options) => {
+      return postPersistenceJson<CandidateSelectionResult>(
+        `${CANDIDATES_ENDPOINT}/select`,
         { session, ...options },
       );
     },

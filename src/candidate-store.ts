@@ -80,6 +80,21 @@ export interface CandidateCapResult {
   purged: readonly StoredCandidate[];
 }
 
+export interface CandidateSelectionOptions {
+  kind: CandidateKind;
+  eliteLimit: number;
+  branchId?: string;
+}
+
+export interface CandidateSelectionResult {
+  kind: CandidateKind;
+  branchId: string;
+  eliteLimit: number;
+  evaluatedCount: number;
+  elite: readonly StoredCandidate[];
+  purged: readonly StoredCandidate[];
+}
+
 const DEFAULT_PHRASE_GENOME: PlayerPatternSource = {
   subdivisionBeats: 1,
   events: [null],

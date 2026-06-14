@@ -5,6 +5,7 @@ import type {
   CandidateInput,
   CandidateQueryOptions,
   CandidateScores,
+  CandidateSelectionOptions,
 } from "./candidate-store";
 import {
   aggregateCandidateFitness,
@@ -3216,6 +3217,7 @@ declare global {
       retainCandidates(candidateIds: readonly string[]): ReturnType<typeof persistence.retainCandidates>;
       purgeCandidates(candidateIds: readonly string[]): ReturnType<typeof persistence.purgeCandidates>;
       capCandidates(options: CandidateCapOptions): ReturnType<typeof persistence.capCandidates>;
+      selectCandidates(options: CandidateSelectionOptions): ReturnType<typeof persistence.selectCandidates>;
     };
     ollama?: {
       getConfig(): OllamaConfig;
@@ -3411,6 +3413,7 @@ window.persistence = {
   retainCandidates: (candidateIds) => persistence.retainCandidates(candidateIds),
   purgeCandidates: (candidateIds) => persistence.purgeCandidates(candidateIds),
   capCandidates: (options) => persistence.capCandidates(options),
+  selectCandidates: (options) => persistence.selectCandidates(options),
 };
 
 window.ollama = {
