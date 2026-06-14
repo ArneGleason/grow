@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import {
   assertValidCandidate,
   validateCandidate,
+  type CandidateDevelopmentResult,
   type CandidateSelectionResult,
   type StoredCandidate,
 } from "../src/candidate-store";
@@ -3475,6 +3476,140 @@ test("candidate selection promotes top candidates per kind and purges overflow",
     "selection",
   ]);
   expect(selectionEvents.map((event) => event.payload.rank)).toEqual([1, 2, 3, 4]);
+});
+
+test("candidate development deep-clones elite phrase genomes into child candidates", async ({ request }) => {
+  const sessionId = `candidate-development-${Date.now().toString(36)}`;
+  const branchId = `${sessionId}-branch`;
+  const session = {
+    id: sessionId,
+    name: "Candidate development smoke",
+    branchId,
+    metadata: { byte: "A4" },
+  };
+  const phraseGenome = SONG_MATERIALS[0].patterns.find((pattern) =>
+    pattern.events.some((event) => event?.playerId === "melody")
+  );
+  if (!phraseGenome) {
+    throw new Error("Expected a melody phrase genome fixture");
+  }
+  const parentId = `${sessionId}-elite-parent`;
+  const writeResponse = await request.post("/api/persistence/candidates/write", {
+    data: {
+      session,
+      candidate: {
+        id: parentId,
+        kind: "phrase",
+        genome: phraseGenome,
+        scores: { landing: 0.9 },
+        fitness: 0.9,
+        generation: 3,
+        seed: 501,
+        status: "elite",
+        createdAtBeat: 48,
+      },
+    },
+  });
+  expect(writeResponse.status()).toBe(200);
+  const written = await writeResponse.json() as { candidate: StoredCandidate };
+  const parentGenomeBefore = JSON.stringify(written.candidate.genome);
+
+  const mutation = {
+    type: "phrase.nudge" as const,
+    scaleDegreeDelta: 2,
+    velocityMultiplier: 1.25,
+  };
+  const developResponse = await request.post("/api/persistence/candidates/develop", {
+    data: {
+      session,
+      parentId,
+      mutation,
+      seed: 777,
+    },
+  });
+  expect(developResponse.status()).toBe(200);
+  const developed = await developResponse.json() as CandidateDevelopmentResult;
+  expect(developed.parent.id).toBe(parentId);
+  expect(developed.child).toMatchObject({
+    kind: "phrase",
+    parentId,
+    generation: 4,
+    seed: 777,
+    status: "alive",
+    fitness: 0,
+    scores: {},
+    createdAtBeat: 48,
+  });
+  expect(developed.child.id).not.toBe(parentId);
+  expect(JSON.stringify(developed.child.genome)).not.toBe(parentGenomeBefore);
+  expect(developed.mutation).toMatchObject(mutation);
+
+  const childEvents = (developed.child.genome as PlayerPatternSource).events;
+  const parentEvents = (written.candidate.genome as PlayerPatternSource).events;
+  const firstChildNote = childEvents.find((event): event is NonNullable<typeof event> => event !== null);
+  const firstParentNote = parentEvents.find((event): event is NonNullable<typeof event> => event !== null);
+  expect(firstChildNote).toBeTruthy();
+  expect(firstParentNote).toBeTruthy();
+  expect(firstChildNote?.scaleDegree).toBe((firstParentNote?.scaleDegree ?? 0) + 2);
+  expect(firstChildNote?.velocity).toBeGreaterThan(firstParentNote?.velocity ?? 0);
+
+  const repeatDevelopResponse = await request.post("/api/persistence/candidates/develop", {
+    data: {
+      session,
+      parentId,
+      mutation,
+      seed: 777,
+    },
+  });
+  expect(repeatDevelopResponse.status()).toBe(200);
+  const repeated = await repeatDevelopResponse.json() as CandidateDevelopmentResult;
+  expect(repeated.child.id).toBe(developed.child.id);
+
+  const listResponse = await request.get(`/api/persistence/candidates?kind=phrase&branchId=${branchId}&limit=10`);
+  expect(listResponse.status()).toBe(200);
+  const listed = await listResponse.json() as { candidates: StoredCandidate[] };
+  const listedParent = listed.candidates.find((candidate) => candidate.id === parentId);
+  const listedChild = listed.candidates.find((candidate) => candidate.id === developed.child.id);
+  expect(JSON.stringify(listedParent?.genome)).toBe(parentGenomeBefore);
+  expect(listedChild?.parentId).toBe(parentId);
+
+  const dumpResponse = await request.get("/api/persistence/dump?limit=800");
+  expect(dumpResponse.status()).toBe(200);
+  const dump = await dumpResponse.json() as PersistenceDump;
+  const childCreatedEvents = dump.events.filter((event) =>
+    event.sessionId === sessionId &&
+    event.type === "candidate.created" &&
+    event.payload.candidateId === developed.child.id
+  );
+  expect(childCreatedEvents).toHaveLength(1);
+  expect(childCreatedEvents[0].payload).toMatchObject({
+    reason: "development",
+    parentId,
+    mutation,
+  });
+
+  const nonEliteWrite = await request.post("/api/persistence/candidates/write", {
+    data: {
+      session,
+      candidate: {
+        id: `${sessionId}-alive-parent`,
+        kind: "phrase",
+        genome: phraseGenome,
+        generation: 0,
+        seed: 502,
+        status: "alive",
+      },
+    },
+  });
+  expect(nonEliteWrite.status()).toBe(200);
+  const rejectedDevelop = await request.post("/api/persistence/candidates/develop", {
+    data: {
+      session,
+      parentId: `${sessionId}-alive-parent`,
+      mutation,
+    },
+  });
+  expect(rejectedDevelop.status()).toBe(400);
 });
 
 test("persistence records musical events through an off-callback buffer", async ({ page }) => {

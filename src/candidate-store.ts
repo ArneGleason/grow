@@ -95,6 +95,28 @@ export interface CandidateSelectionResult {
   purged: readonly StoredCandidate[];
 }
 
+export interface CandidateDevelopmentMutation {
+  type: "phrase.nudge";
+  scaleDegreeDelta?: number;
+  octaveDelta?: number;
+  velocityMultiplier?: number;
+  rotateSteps?: number;
+}
+
+export interface CandidateDevelopmentOptions {
+  parentId: string;
+  mutation: CandidateDevelopmentMutation;
+  branchId?: string;
+  seed?: number;
+  createdAtBeat?: number;
+}
+
+export interface CandidateDevelopmentResult {
+  parent: StoredCandidate;
+  child: StoredCandidate;
+  mutation: CandidateDevelopmentMutation;
+}
+
 const DEFAULT_PHRASE_GENOME: PlayerPatternSource = {
   subdivisionBeats: 1,
   events: [null],

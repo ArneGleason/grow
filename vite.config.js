@@ -3,6 +3,7 @@ import {
   appendEvents,
   capCandidates,
   databaseExists,
+  developCandidate,
   dumpGrowDatabase,
   ensureSession,
   getSchemaVersion,
@@ -86,6 +87,16 @@ function persistencePlugin() {
             hasDatabase,
           }, abort.signal);
         } catch (error) {
+          if (error instanceof PersistenceRequestError) {
+            if (!response.destroyed && !response.writableEnded) {
+              sendJson(response, 400, {
+                error: error.message,
+              }, {
+                "X-Grow-Persistence": "vite-dev",
+              });
+            }
+            return;
+          }
           if (isAbortError(error) || request.destroyed || response.destroyed) {
             if (!response.destroyed && !response.writableEnded) {
               sendJson(response, 499, { error: "Persistence request aborted" }, {
@@ -94,7 +105,7 @@ function persistencePlugin() {
             }
             return;
           }
-          sendJson(response, error instanceof PersistenceRequestError ? 400 : 500, {
+          sendJson(response, 500, {
             error: error instanceof Error ? error.message : String(error),
           }, {
             "X-Grow-Persistence": "vite-dev",
@@ -272,6 +283,31 @@ async function handlePersistenceRequest(request, response, persistence, signal) 
       kind: payload.kind,
       eliteLimit: payload.eliteLimit,
     });
+    sendPersistenceJson(response, 200, {
+      ok: true,
+      session,
+      ...result,
+    });
+    return;
+  }
+
+  if (path === `${PERSISTENCE_PREFIX}/candidates/develop` && request.method === "POST") {
+    const database = persistence.getDatabase();
+    const payload = await readJsonBody(request, signal);
+    const session = ensureCandidateSession(database, payload);
+    let result;
+    try {
+      result = developCandidate(database, {
+        sessionId: session.id,
+        branchId: payload.branchId ?? session.branchId,
+        parentId: payload.parentId,
+        mutation: payload.mutation,
+        seed: payload.seed,
+        createdAtBeat: payload.createdAtBeat,
+      });
+    } catch (error) {
+      throw new PersistenceRequestError(error instanceof Error ? error.message : String(error));
+    }
     sendPersistenceJson(response, 200, {
       ok: true,
       session,

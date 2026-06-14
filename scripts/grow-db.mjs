@@ -8,6 +8,7 @@ import {
   DEFAULT_DATABASE_PATH,
   appendEvent,
   databaseExists,
+  developCandidate,
   dumpGrowDatabase,
   ensureSession,
   getSchemaVersion,
@@ -147,19 +148,32 @@ function runSmoke() {
       eliteLimit: 1,
       updatedAt: "2026-01-01T00:00:06.000Z",
     });
+    const developed = developCandidate(database, {
+      sessionId: session.id,
+      parentId: selected.elite[0].id,
+      mutation: {
+        type: "phrase.nudge",
+        scaleDegreeDelta: 1,
+        velocityMultiplier: 1.1,
+      },
+      seed: 33,
+      createdAt: "2026-01-01T00:00:07.000Z",
+    });
     const dump = dumpGrowDatabase(database);
     const phraseCandidates = listCandidates(database, { kind: "phrase", limit: 10 });
     assert(session.id === "smoke-session", "session should round-trip");
     assert(started.seq === 1, "first event should have seq 1");
     assert(modeChanged.seq === 2, "second event should have seq 2");
     assert(dump.sessions.length === 1, "dump should include one session");
-    assert(dump.events.length === 7, "dump should include decision and candidate audit events");
-    assert(dump.events[0].type === "candidate.purged", "dump should sort newest event first");
+    assert(dump.events.length === 8, "dump should include decision and candidate audit events");
+    assert(dump.events[0].type === "candidate.created", "dump should sort newest event first");
     assert(scored.scores.melody === 1, "scores should clamp to 1");
     assert(selected.elite[0].status === "elite", "selection should mark top candidate elite");
     assert(selected.purged.length === 1, "selection should purge one lower-fitness candidate");
-    assert(phraseCandidates.length === 2, "candidate query should include both phrase candidates");
-    assert(dump.candidates.length === 2, "dump should include candidate rows");
+    assert(developed.child.parentId === selected.elite[0].id, "developed child should keep parentId");
+    assert(developed.child.generation === selected.elite[0].generation + 1, "developed child should advance generation");
+    assert(phraseCandidates.length === 3, "candidate query should include parent, overflow, and child candidates");
+    assert(dump.candidates.length === 3, "dump should include candidate rows");
     console.log(JSON.stringify({
       ok: true,
       schemaVersion: dump.schemaVersion,

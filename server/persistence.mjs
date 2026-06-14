@@ -510,6 +510,104 @@ export function selectCandidates(database, request) {
   });
 }
 
+export function developCandidate(database, request) {
+  const session = getRequiredSession(database, request.sessionId);
+  const branchId = request.branchId ?? session.branchId ?? "main";
+  const parentId = requireCandidateId(request.parentId, "parentId");
+  const mutation = normalizeCandidateDevelopmentMutation(request.mutation);
+  const updatedAt = request.createdAt ?? new Date().toISOString();
+
+  return withImmediateTransaction(database, () => {
+    const parent = readCandidateById(database, parentId);
+    if (!parent) {
+      throw new Error(`Cannot develop missing candidate: ${parentId}`);
+    }
+    if (parent.branchId !== branchId) {
+      throw new Error("Cannot develop a candidate from another branch");
+    }
+    if (parent.status !== "elite") {
+      throw new Error("Candidate development requires an elite parent");
+    }
+    if (parent.kind !== "phrase") {
+      throw new Error("Candidate development currently supports phrase genomes only");
+    }
+
+    const childGenome = applyCandidateDevelopmentMutation(parent.genome, mutation);
+    if (stableJson(childGenome) === stableJson(parent.genome)) {
+      throw new Error("Candidate development mutation did not change the genome");
+    }
+    const childSeed = request.seed === undefined
+      ? deriveChildSeed(parent, mutation)
+      : clampInteger(request.seed, 0, 0xffffffff, "seed");
+    const child = normalizeCandidateInput({
+      kind: parent.kind,
+      genome: childGenome,
+      scores: {},
+      fitness: 0,
+      parentId: parent.id,
+      generation: parent.generation + 1,
+      seed: childSeed,
+      status: "alive",
+      createdAtBeat: request.createdAtBeat ?? parent.createdAtBeat,
+    });
+    const existingChild = readCandidateById(database, child.id);
+    if (existingChild) {
+      return {
+        parent,
+        child: existingChild,
+        mutation,
+      };
+    }
+
+    database.prepare(`
+      INSERT INTO candidates (
+        id,
+        branch_id,
+        kind,
+        genome_json,
+        scores_json,
+        fitness,
+        parent_id,
+        generation,
+        seed,
+        status,
+        created_at_beat,
+        created_at,
+        updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      child.id,
+      branchId,
+      child.kind,
+      stableJson(child.genome),
+      stableJson(child.scores),
+      child.fitness,
+      child.parentId ?? null,
+      child.generation,
+      child.seed,
+      child.status,
+      child.createdAtBeat ?? null,
+      updatedAt,
+      updatedAt,
+    );
+
+    const storedChild = readCandidateById(database, child.id);
+    appendEventsInTransaction(database, [
+      createCandidateAuditEvent("candidate.created", session.id, branchId, storedChild, updatedAt, {
+        reason: "development",
+        parentId: parent.id,
+        mutation,
+      }),
+    ]);
+    return {
+      parent,
+      child: storedChild,
+      mutation,
+    };
+  });
+}
+
 export function listCandidates(database, options = {}) {
   const clauses = [];
   const params = [];
@@ -930,10 +1028,94 @@ function normalizeCandidateIds(value) {
   return value.map((candidateId) => requireCandidateId(candidateId));
 }
 
+function normalizeCandidateDevelopmentMutation(value) {
+  if (!isRecord(value)) {
+    throw new Error("Candidate development mutation must be an object");
+  }
+  if (value.type !== "phrase.nudge") {
+    throw new Error("Candidate development mutation type must be phrase.nudge");
+  }
+  const mutation = {
+    type: "phrase.nudge",
+    scaleDegreeDelta: clampInteger(value.scaleDegreeDelta ?? 0, -7, 7, "mutation.scaleDegreeDelta"),
+    octaveDelta: clampInteger(value.octaveDelta ?? 0, -2, 2, "mutation.octaveDelta"),
+    velocityMultiplier: clampFiniteNumber(value.velocityMultiplier ?? 1, 0.25, 2, "mutation.velocityMultiplier"),
+    rotateSteps: clampInteger(value.rotateSteps ?? 0, -128, 128, "mutation.rotateSteps"),
+  };
+  if (
+    mutation.scaleDegreeDelta === 0 &&
+    mutation.octaveDelta === 0 &&
+    mutation.velocityMultiplier === 1 &&
+    mutation.rotateSteps === 0
+  ) {
+    throw new Error("Candidate development mutation must change at least one bounded knob");
+  }
+  return mutation;
+}
+
+function applyCandidateDevelopmentMutation(genome, mutation) {
+  const childGenome = deepCloneJson(genome);
+  if (!isRecord(childGenome) || !Array.isArray(childGenome.events)) {
+    throw new Error("Phrase development requires a PlayerPatternSource genome");
+  }
+  childGenome.events = rotateArray(
+    childGenome.events.map((event) => {
+      if (event === null) return null;
+      if (!isRecord(event)) return event;
+      return {
+        ...event,
+        scaleDegree: clampInteger(
+          readFiniteNumber(event.scaleDegree, 0) + mutation.scaleDegreeDelta,
+          -28,
+          28,
+          "child.scaleDegree",
+        ),
+        octave: clampInteger(
+          readFiniteNumber(event.octave, 4) + mutation.octaveDelta,
+          0,
+          8,
+          "child.octave",
+        ),
+        velocity: clampFiniteNumber(
+          readFiniteNumber(event.velocity, 0) * mutation.velocityMultiplier,
+          0,
+          1,
+          "child.velocity",
+        ),
+      };
+    }),
+    mutation.rotateSteps,
+  );
+  return normalizePhraseGenome(childGenome);
+}
+
+function rotateArray(value, steps) {
+  if (value.length === 0) return value;
+  const offset = ((steps % value.length) + value.length) % value.length;
+  if (offset === 0) return value;
+  return [
+    ...value.slice(value.length - offset),
+    ...value.slice(0, value.length - offset),
+  ];
+}
+
+function deriveChildSeed(parent, mutation) {
+  return parseInt(stableHash(`${parent.id}:${parent.seed}:${parent.generation}:${stableJson(mutation)}`), 36);
+}
+
+function readFiniteNumber(value, fallback) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
 function normalizeLimit(value, fallback) {
   const parsed = Number(value ?? fallback);
   if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
   return Math.min(Math.trunc(parsed), 500);
+}
+
+function deepCloneJson(value) {
+  return JSON.parse(JSON.stringify(value));
 }
 
 function stableJson(value) {

@@ -2,6 +2,7 @@ import "./style.css";
 import type {
   CandidateCapOptions,
   Candidate,
+  CandidateDevelopmentOptions,
   CandidateInput,
   CandidateQueryOptions,
   CandidateScores,
@@ -3218,6 +3219,7 @@ declare global {
       purgeCandidates(candidateIds: readonly string[]): ReturnType<typeof persistence.purgeCandidates>;
       capCandidates(options: CandidateCapOptions): ReturnType<typeof persistence.capCandidates>;
       selectCandidates(options: CandidateSelectionOptions): ReturnType<typeof persistence.selectCandidates>;
+      developCandidate(options: CandidateDevelopmentOptions): ReturnType<typeof persistence.developCandidate>;
     };
     ollama?: {
       getConfig(): OllamaConfig;
@@ -3414,6 +3416,7 @@ window.persistence = {
   purgeCandidates: (candidateIds) => persistence.purgeCandidates(candidateIds),
   capCandidates: (options) => persistence.capCandidates(options),
   selectCandidates: (options) => persistence.selectCandidates(options),
+  developCandidate: (options) => persistence.developCandidate(options),
 };
 
 window.ollama = {

@@ -1969,6 +1969,17 @@ Current scope:
 
 Clone an elite candidate, apply a caller-provided mutation operator, and create a child with `parentId`, `generation + 1`, and a new deterministic seed.
 
+Status: implemented as phrase candidate development.
+
+Current scope:
+
+- `developCandidate()` requires an `elite` parent from the same branch and currently supports `phrase` genomes only.
+- The parent genome is deep-cloned before mutation; elite rows are never mutated in place.
+- The first closed mutation operator is `phrase.nudge`, with bounded `scaleDegreeDelta`, `octaveDelta`, `velocityMultiplier`, and `rotateSteps` knobs.
+- A successful development creates a new `alive` child candidate with empty scores, `fitness: 0`, `parentId`, `generation + 1`, and either caller-provided or deterministically derived seed.
+- The child creation is audited with the existing `candidate.created` event, carrying `reason: "development"`, `parentId`, and the normalized mutation.
+- No audio, model, playback, scoring loop, or automatic evolution loop consumes developed children yet.
+
 ### Byte 16b: Band-Proposed Key/Mode Change
 
 First case: a bridge modulation, since it is already convention. A proposer (bassist first, model critic later) proposes a key/mode change for a target section through the Byte 12 proposal shape; players respond with the Byte 15c stance machinery; an accepted change commits through the lookahead path at the section boundary.

@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Merge Track A3 candidate selection review",
-  "status": "track-a3-approved-merged-ready-for-a4",
-  "updatedAt": "2026-06-14T17:01:13Z",
+  "lastTask": "Implement Track A4 candidate development hook",
+  "status": "track-a4-implemented-ready-for-review",
+  "updatedAt": "2026-06-14T17:12:01Z",
   "lastHandoff": "",
-  "branch": "main",
+  "branch": "codex/byte-a4-development-hook",
   "commit": "branch-head",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Track A3 is approved and merged to main. The durable Claude review artifact from claude/codex-a3-selection-code-review was cherry-picked, and the A1+A2+A3 candidate-store engine is complete. A3 adds per-kind selectCandidates() to the candidate store, using deterministic fitness/generation/created_at/id ordering to mark top eliteLimit candidates elite and purge overflow with candidate.retained/candidate.purged audit events carrying reason:\"selection\" and rank. Carry forward: selection is strict elitism and should get a diversity lever later; A4 must deep-clone genomes, create new ids with parentId and generation+1, and never mutate elites in place. Next: Track A4 development hook."
+    "summary": "Track A4 is implemented on codex/byte-a4-development-hook. The branch adds developCandidate() to clone an elite same-branch phrase parent, deep-clone its genome, apply a closed bounded phrase.nudge mutation, and create a new alive child candidate with parentId, generation+1, empty scores, fitness 0, and caller-provided or derived deterministic seed. Child creation is audited through candidate.created with reason:\"development\", parentId, and normalized mutation. The endpoint/client/window hook are inspect-only; no audio/model/playback/scoring loop consumes developed children. Validation: build green, db:smoke green, smoke 43/43, diff-check green; npm audit still reports the known Vite/esbuild advisories."
   }
 }

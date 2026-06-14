@@ -50,6 +50,7 @@ The `candidates` table is the first intentional mutable projection:
 - A `phrase` genome is currently validated as a bounded `PlayerPatternSource`; other kinds accept bounded JSON until their contracts become more specific.
 - Scalar fitness can be previewed by the pure `src/candidate-fitness.ts` weighted aggregator, but the table changes only through explicit score/retain/purge candidate-store mutations.
 - Selection is per-kind and branch-local: top-N candidates become `elite`, overflow becomes `purged`, and the audit events carry `reason: "selection"` plus the deterministic rank.
+- Development creates a new `alive` child row rather than editing the parent: `candidate.created` carries `reason: "development"`, `parentId`, and the bounded mutation.
 
 ## Checkpoint Payload
 

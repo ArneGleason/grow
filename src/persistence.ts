@@ -4,6 +4,8 @@ import type {
   CandidateInput,
   CandidateQueryOptions,
   CandidateScores,
+  CandidateDevelopmentOptions,
+  CandidateDevelopmentResult,
   CandidateSelectionOptions,
   CandidateSelectionResult,
   StoredCandidate,
@@ -78,6 +80,7 @@ export interface PersistenceClient {
   purgeCandidates(candidateIds: readonly string[]): Promise<readonly StoredCandidate[]>;
   capCandidates(options: CandidateCapOptions): Promise<CandidateCapResult>;
   selectCandidates(options: CandidateSelectionOptions): Promise<CandidateSelectionResult>;
+  developCandidate(options: CandidateDevelopmentOptions): Promise<CandidateDevelopmentResult>;
   getState(): PersistenceClientState;
 }
 
@@ -357,6 +360,12 @@ export function createPersistenceClient(
     selectCandidates: async (options) => {
       return postPersistenceJson<CandidateSelectionResult>(
         `${CANDIDATES_ENDPOINT}/select`,
+        { session, ...options },
+      );
+    },
+    developCandidate: async (options) => {
+      return postPersistenceJson<CandidateDevelopmentResult>(
+        `${CANDIDATES_ENDPOINT}/develop`,
         { session, ...options },
       );
     },
