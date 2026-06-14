@@ -1941,6 +1941,16 @@ Build the inspect-only candidate store:
 
 Add a pure weighted-scalar fitness aggregator over candidate score maps. Document the first weights as tunable, not permanent musical truth.
 
+Status: implemented as `src/candidate-fitness.ts`.
+
+Current scope:
+
+- Pure function only: `aggregateCandidateFitness(scores, options)` computes a bounded scalar and contribution breakdown without database writes or playback effects.
+- Default score weights are intentionally modest and tunable: `landing`, `monotony`, `surprise`, `harmony`, `energy`, `proportion`, `motif`, `cadence`, and `goal`.
+- Missing weighted score keys count as `0` by default so incomplete candidates do not accidentally look elite; callers can override `missingScore` for experiments.
+- Unknown score keys are ignored unless a caller includes them in the weight map, and the result reports `ignoredScoreKeys`.
+- `previewCandidateFitness(candidate, options)` returns a copy with computed `fitness`; it does not mutate or persist the candidate.
+
 #### Track A3: Selection And Bounded Population
 
 Select deterministically by kind: top-N become `elite`, overflow becomes `purged`, and population caps are enforced with audit events.

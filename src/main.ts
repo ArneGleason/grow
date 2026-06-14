@@ -1,10 +1,18 @@
 import "./style.css";
 import type {
   CandidateCapOptions,
+  Candidate,
   CandidateInput,
   CandidateQueryOptions,
   CandidateScores,
 } from "./candidate-store";
+import {
+  aggregateCandidateFitness,
+  previewCandidateFitness,
+  type CandidateFitnessOptions,
+  type CandidateFitnessPreview,
+  type CandidateFitnessResult,
+} from "./candidate-fitness";
 import { formatExpressionSnapshot, type PlayerExpressionSnapshot } from "./expression";
 import { createFormScore, type FormScore } from "./form-scoring";
 import {
@@ -3186,6 +3194,14 @@ declare global {
     persistence?: {
       getState(): PersistenceClientState;
       getMusicalEventBufferState(): MusicalEventRecordBufferState;
+      aggregateCandidateFitness(
+        scores: CandidateScores,
+        options?: CandidateFitnessOptions,
+      ): CandidateFitnessResult;
+      previewCandidateFitness(
+        candidate: Candidate,
+        options?: CandidateFitnessOptions,
+      ): CandidateFitnessPreview;
       flush(): Promise<void>;
       flushMusicalEvents(): number;
       flushOnPageHide(): void;
@@ -3383,6 +3399,8 @@ window.formScore = {
 window.persistence = {
   getState: () => persistence.getState(),
   getMusicalEventBufferState: () => musicalEventRecordBuffer.getState(),
+  aggregateCandidateFitness: (scores, options) => aggregateCandidateFitness(scores, options),
+  previewCandidateFitness: (candidate, options) => previewCandidateFitness(candidate, options),
   flush: () => persistence.flush(),
   flushMusicalEvents: () => flushMusicalEventBufferToPersistence("manual", MUSICAL_EVENT_DRAIN_ALL),
   flushOnPageHide: () => handlePageHide(),

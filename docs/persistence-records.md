@@ -48,6 +48,7 @@ The `candidates` table is the first intentional mutable projection:
 - Every mutation that matters also appends an event row: `candidate.created`, `candidate.scored`, `candidate.retained`, or `candidate.purged`.
 - Replay/research should treat the event log as provenance and the table as the current population view.
 - A `phrase` genome is currently validated as a bounded `PlayerPatternSource`; other kinds accept bounded JSON until their contracts become more specific.
+- Scalar fitness can be previewed by the pure `src/candidate-fitness.ts` weighted aggregator, but the table changes only through explicit score/retain/purge candidate-store mutations.
 
 ## Checkpoint Payload
 

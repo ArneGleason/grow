@@ -4,6 +4,10 @@ import {
   validateCandidate,
   type StoredCandidate,
 } from "../src/candidate-store";
+import {
+  aggregateCandidateFitness,
+  previewCandidateFitness,
+} from "../src/candidate-fitness";
 import { calculatePlayerExpression } from "../src/expression";
 import { createFormScore } from "../src/form-scoring";
 import { FORM_VARIANTS, getFormVariant } from "../src/form-variants";
@@ -1768,6 +1772,88 @@ test("candidate contract validates bounded phrase genomes and clamps scores", ()
   ]));
 });
 
+test("candidate fitness aggregation is pure weighted bounded scoring", () => {
+  const aggregate = aggregateCandidateFitness(
+    {
+      landing: 1,
+      monotony: 0.5,
+      surprise: 0.25,
+      unweightedNovelty: 1,
+    },
+    {
+      weights: {
+        landing: 2,
+        monotony: 1,
+        surprise: 1,
+      },
+    },
+  );
+
+  expect(aggregate.fitness).toBe(0.6875);
+  expect(aggregate.totalWeight).toBe(4);
+  expect(aggregate.ignoredScoreKeys).toEqual(["unweightedNovelty"]);
+  expect(aggregate.contributions).toEqual([
+    expect.objectContaining({
+      key: "landing",
+      score: 1,
+      weight: 2,
+      normalizedWeight: 0.5,
+      weightedScore: 0.5,
+      missing: false,
+    }),
+    expect.objectContaining({
+      key: "monotony",
+      score: 0.5,
+      weight: 1,
+      normalizedWeight: 0.25,
+      weightedScore: 0.125,
+      missing: false,
+    }),
+    expect.objectContaining({
+      key: "surprise",
+      score: 0.25,
+      weight: 1,
+      normalizedWeight: 0.25,
+      weightedScore: 0.0625,
+      missing: false,
+    }),
+  ]);
+
+  const penalizedMissing = aggregateCandidateFitness(
+    { landing: 1 },
+    { weights: { landing: 1, cadence: 1 } },
+  );
+  expect(penalizedMissing.fitness).toBe(0.5);
+  expect(penalizedMissing.contributions.find((entry) => entry.key === "cadence")).toMatchObject({
+    score: 0,
+    missing: true,
+  });
+
+  const bounded = aggregateCandidateFitness(
+    { landing: 4, monotony: -1, surprise: Number.NaN },
+    { weights: { landing: 1, monotony: 1, surprise: 1, ignored: -99 } },
+  );
+  expect(bounded.fitness).toBeCloseTo(1 / 3, 6);
+  expect(bounded.contributions.map((entry) => entry.key)).toEqual(["landing", "monotony", "surprise"]);
+  expect(bounded.contributions.map((entry) => entry.score)).toEqual([1, 0, 0]);
+
+  const candidate = assertValidCandidate({
+    kind: "phrase",
+    genome: SONG_MATERIALS[0].patterns[0],
+    scores: { landing: 0.8, cadence: 0.6 },
+    fitness: 0,
+    generation: 1,
+    seed: 7,
+  });
+  const preview = previewCandidateFitness(candidate, {
+    weights: { landing: 1, cadence: 1 },
+  });
+  expect(preview.fitness.fitness).toBe(0.7);
+  expect(preview.candidate.fitness).toBe(0.7);
+  expect(candidate.fitness).toBe(0);
+  expect(preview.candidate).not.toBe(candidate);
+});
+
 test("song goal interpreter produces bounded deterministic knobs", () => {
   const spacious = interpretSongGoal("slow bright spacious wide return with machine pulse in G dorian");
   const urgent = interpretSongGoal("urgent restless hook chorus with glass sparks");
@@ -3173,10 +3259,11 @@ test("persistence records low-frequency decisions off the audio path", async ({ 
 
 test("candidate store writes queries scores retains and caps audited phrase candidates", async ({ request }) => {
   const sessionId = `candidate-store-${Date.now().toString(36)}`;
+  const branchId = `${sessionId}-branch`;
   const session = {
     id: sessionId,
     name: "Candidate store smoke",
-    branchId: "main",
+    branchId,
     metadata: { byte: "A1" },
   };
   const phraseGenome = SONG_MATERIALS[0].patterns.find((pattern) =>
@@ -3263,7 +3350,7 @@ test("candidate store writes queries scores retains and caps audited phrase cand
   expect(capped.purged.map((candidate) => candidate.id)).toEqual([`${sessionId}-beta`]);
   expect(capped.purged[0].status).toBe("purged");
 
-  const listResponse = await request.get(`/api/persistence/candidates?kind=phrase&branchId=main&limit=10`);
+  const listResponse = await request.get(`/api/persistence/candidates?kind=phrase&branchId=${branchId}&limit=10`);
   expect(listResponse.status()).toBe(200);
   const listed = await listResponse.json() as { candidates: StoredCandidate[] };
   expect(listed.candidates.some((candidate) => candidate.id === written.candidate.id)).toBe(true);

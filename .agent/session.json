@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Merge Track A1 candidate store review and prepare Track A2",
-  "status": "track-a1-approved-merged-ready-for-a2",
-  "updatedAt": "2026-06-14T14:27:18Z",
+  "lastTask": "Implement Track A2 candidate fitness aggregation",
+  "status": "track-a2-implemented-ready-for-review",
+  "updatedAt": "2026-06-14T14:37:04Z",
   "lastHandoff": "",
-  "branch": "main",
+  "branch": "codex/byte-a2-fitness-aggregation",
   "commit": "branch-head",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Track A1 is approved and merged to main. The durable Claude review artifact from claude/codex-a1-candidate-store-code-review was cherry-picked, and the candidate-store shell is ready as the foundation for Track A2. A1 adds a bounded Candidate contract, SQLite schema v3 candidates table, server/client write/query/score/retain/purge/cap APIs, candidate.created/scored/retained/purged audit events, db smoke coverage, and middleware smoke coverage. It is inspect-only: no audio, model, generator loop, or playback path consumes candidates. Next: Track A2 pure fitness aggregation, keeping it deterministic, bounded, documented, and inspect-only."
+    "summary": "Track A2 is implemented on codex/byte-a2-fitness-aggregation. The branch adds src/candidate-fitness.ts with a pure weighted scalar aggregator, contribution breakdown, missing-score penalty, ignored-key reporting, and copy-only candidate fitness preview. The helper is exposed through window.persistence for inspection only; it does not write to SQLite and no audio/model/playback/selection/cap path consumes it. Docs record the tunable first weights, and smoke covers bounded scoring plus non-mutating preview. Validation: build green, db:smoke green, smoke 41/41, diff-check green; npm audit still reports the known Vite/esbuild advisories. Next likely Track A3: deterministic top-N elite selection and cap/purge loop using existing candidate-store mutations."
   }
 }
