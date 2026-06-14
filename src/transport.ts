@@ -87,6 +87,7 @@ export interface TransportHandlers {
   tempoBpm?: () => number;
   timingFeelMode?: () => TimingFeelMode;
   chorusDevelopment?: () => ChorusDevelopment | undefined;
+  melodyPhrasing?: () => PlayerPatternSource | undefined;
 }
 
 export interface TransportOptions {
@@ -165,11 +166,16 @@ const latestAudioFireTiming: AudioFireTimingDiagnostic[] = [];
 const wallClockFallbackTimers = new Map<number, number>();
 
 function buildPlayerPatterns(songId: SongId): readonly PlayerPattern[] {
-  return getSongMaterial(songId).patterns.map((pattern) => ({
-    source: pattern,
-    subdivisionBeats: pattern.subdivisionBeats,
-    events: pattern.events.map((note) => note ? { ...note } : null),
-  }));
+  const melodyPhrasing = handlers.melodyPhrasing?.();
+  return getSongMaterial(songId).patterns.map((pattern) => {
+    const isMelody = pattern.events.some((note) => note?.playerId === "melody");
+    const source = isMelody && melodyPhrasing ? melodyPhrasing : pattern;
+    return {
+      source,
+      subdivisionBeats: source.subdivisionBeats,
+      events: source.events.map((note) => note ? { ...note } : null),
+    };
+  });
 }
 
 function materializeNote(tonalContext: TonalContext, note: PatternNoteSource): ScheduledNote {
