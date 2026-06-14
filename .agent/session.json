@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Implement Track A2 candidate fitness aggregation",
-  "status": "track-a2-implemented-ready-for-review",
-  "updatedAt": "2026-06-14T14:37:04Z",
+  "lastTask": "Merge Track A2 candidate fitness aggregation review",
+  "status": "track-a2-approved-merged-ready-for-a3",
+  "updatedAt": "2026-06-14T15:00:13Z",
   "lastHandoff": "",
-  "branch": "codex/byte-a2-fitness-aggregation",
+  "branch": "main",
   "commit": "branch-head",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Track A2 is implemented on codex/byte-a2-fitness-aggregation. The branch adds src/candidate-fitness.ts with a pure weighted scalar aggregator, contribution breakdown, missing-score penalty, ignored-key reporting, and copy-only candidate fitness preview. The helper is exposed through window.persistence for inspection only; it does not write to SQLite and no audio/model/playback/selection/cap path consumes it. Docs record the tunable first weights, and smoke covers bounded scoring plus non-mutating preview. Validation: build green, db:smoke green, smoke 41/41, diff-check green; npm audit still reports the known Vite/esbuild advisories. Next likely Track A3: deterministic top-N elite selection and cap/purge loop using existing candidate-store mutations."
+    "summary": "Track A2 is approved and merged to main. The durable Claude review artifact from claude/codex-a2-fitness-aggregation-code-review was cherry-picked, and the pure candidate fitness ruler is ready for Track A3. A2 adds src/candidate-fitness.ts with a pure weighted scalar aggregator, contribution breakdown, missing-score penalty, ignored-key reporting, and copy-only candidate fitness preview. The helper is exposed through window.persistence for inspection only; it does not write to SQLite and no audio/model/playback/selection/cap path consumes it. Carry forward: fitness is meaningful only within a candidate kind for now, and A4 must deep-clone genomes before mutation. Next: Track A3 deterministic top-N-per-kind elite selection and overflow purge using existing candidate-store mutation/audit APIs."
   }
 }
