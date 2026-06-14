@@ -1916,6 +1916,39 @@ Let Ollama fill the proven `SongGoal` shape via structured output, validator/cla
 
 Add goal-alignment terms to melody/form scorers so the band can compare candidate takes against the interpreted brief.
 
+### Evolutionary Composition Arc: Candidate Population
+
+Claude's 2026-06-14 evolutionary-composition plan reframes the next backbone as a bounded search over musical material: players/generators create many candidate songs and elements, existing scorers assign fitness, SQLite keeps the best, and the rest are purged. Source planning note: `claude/evolutionary-composition-plan` commit `d2e083c`.
+
+Core boundary:
+
+- Candidates are bounded genomes, not raw audio or executable instructions.
+- A phrase candidate genome can be the same `PlayerPatternSource` shape used by song material and the prosody generator.
+- The candidate table is the one allowed mutable persistence projection; every create/score/retain/purge decision also appends an audit event.
+- Deterministic seed and lineage stay on every candidate so later development and replay can reproduce the path.
+
+#### Track A1: Candidate Store Shell
+
+Build the inspect-only candidate store:
+
+- Add the `Candidate` contract: `kind`, validated bounded `genome`, `scores`, `fitness`, `parentId`, `generation`, `seed`, `status`, and optional `createdAtBeat`.
+- Add a mutable capped `candidates` SQLite table alongside the existing append-only `events`.
+- Add write/query/score/retain/purge/cap APIs through the dev-only `/api/persistence/*` middleware and debug client.
+- Emit `candidate.created`, `candidate.scored`, `candidate.retained`, and `candidate.purged` audit events.
+- No audio, no generator loop, no model, and no playback drive.
+
+#### Track A2: Fitness Aggregation
+
+Add a pure weighted-scalar fitness aggregator over candidate score maps. Document the first weights as tunable, not permanent musical truth.
+
+#### Track A3: Selection And Bounded Population
+
+Select deterministically by kind: top-N become `elite`, overflow becomes `purged`, and population caps are enforced with audit events.
+
+#### Track A4: Development Hook
+
+Clone an elite candidate, apply a caller-provided mutation operator, and create a child with `parentId`, `generation + 1`, and a new deterministic seed.
+
 ### Byte 16b: Band-Proposed Key/Mode Change
 
 First case: a bridge modulation, since it is already convention. A proposer (bassist first, model critic later) proposes a key/mode change for a target section through the Byte 12 proposal shape; players respond with the Byte 15c stance machinery; an accepted change commits through the lookahead path at the section boundary.

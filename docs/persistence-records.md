@@ -1,6 +1,6 @@
 # Persistence Record Boundaries
 
-Status: Byte 13b-c4. The app persists low-frequency decision records and `musical.event_recorded` rows through SQLite. Musical events flow through an in-memory source buffer and retained persistence queue before they reach the dev middleware; their database ids include a play-span discriminator because transport-local source event ids reset on each start.
+Status: Byte A1 candidate-store shell. The app persists low-frequency decision records and `musical.event_recorded` rows through SQLite, and now has an inspect-only mutable `candidates` projection table backed by append-only `candidate.*` audit events. Musical events flow through an in-memory source buffer and retained persistence queue before they reach the dev middleware; their database ids include a play-span discriminator because transport-local source event ids reset on each start.
 
 ## Principles
 
@@ -25,6 +25,10 @@ These are logical records. They may initially be stored as `events.type + payloa
 | `timing.feel_changed` | Makes grid/feel/wide timing choices replayable. | `fromFeel`, `toFeel`, beat, actor/source. | Button selected state. |
 | `transport.started` / `transport.stopped` | Optional transport lifecycle audit if start/stop becomes replayable. | beat, actor/source, clear/drain behavior, reason. | AudioContext internals or scheduler handles. |
 | `musical.event_recorded` | Ledger source of truth for heard playback. | `MusicalEventRecordPayload`, `seq`, `actorId`, grid timing/pitch, performed timing/pitch, expression snapshot, performed-timing snapshot, tags. | Recomputed expression/timing values. |
+| `candidate.created` | Audits a new mutable candidate-table row. | Candidate id, kind, status, generation, seed, parent id, fitness, and full bounded candidate snapshot. | Raw audio, freeform executable instructions, or unvalidated genome shapes. |
+| `candidate.scored` | Audits score/fitness updates. | Candidate id, scores, aggregate fitness, scoring source/version when known. | Recomputed score explanations unless accepted into a structured score field. |
+| `candidate.retained` | Audits a candidate promoted to elite. | Candidate id, kind, generation, fitness, selection source/reason. | UI selection state only. |
+| `candidate.purged` | Audits a candidate removed from active population by cap/selection. | Candidate id, kind, generation, fitness, purge reason and cap if applicable. | Deleting the audit trail. |
 | `thought.requested` | Captures the exact player prompt contract. | `PlayerThoughtRequest`, prompt protocol id, model config, generated beat, selected seed fragments. | In-flight promise/controller state. |
 | `thought.responded` | Audits a model or fallback response. | Provider, model, latency, raw response, parse status/errors, `PlayerThoughtIntent` if parsed, validation result, fallback intent/validation. | Interpreting rationale as commands. |
 | `thought.accepted` | Marks a thought result that passed the gate. | Request id, intent id, accepted beat, retarget information, validator version. | New musical slots unless they are actually committed later. |
@@ -34,6 +38,16 @@ These are logical records. They may initially be stored as `events.type + payloa
 | `song.proposal_text_received` | Saves model-authored copywriter output. | Proposal id, provider/model/protocol, raw response, parsed `SongSketchProposalText`, validation result, fallback text/validation, applied status. | Any field that changes kind, chord plan, root degrees, target section, player ids, or stances. |
 | `checkpoint.created` | Allows rewind/fork/seek-and-continue. | Snapshot payload described below, source event seq, beat, state hash. | Raw media or long unbounded history copies. |
 | `moment.marked` | Keeps best-of windows without archiving everything. | Start/end event seq, label, score, source (`manual`, `heuristic`, future observer), metadata. | Unmarked raw audio/video. |
+
+## Candidate Store Projection
+
+The `candidates` table is the first intentional mutable projection:
+
+- It stores the current population row for each candidate: `id`, `branch_id`, `kind`, bounded `genome_json`, `scores_json`, scalar `fitness`, `parent_id`, `generation`, `seed`, `status`, optional `created_at_beat`, and timestamps.
+- It is capped and mutable because evolutionary search needs to keep the best current population and purge the rest.
+- Every mutation that matters also appends an event row: `candidate.created`, `candidate.scored`, `candidate.retained`, or `candidate.purged`.
+- Replay/research should treat the event log as provenance and the table as the current population view.
+- A `phrase` genome is currently validated as a bounded `PlayerPatternSource`; other kinds accept bounded JSON until their contracts become more specific.
 
 ## Checkpoint Payload
 

@@ -7,12 +7,17 @@ import { parseArgs } from "node:util";
 import {
   DEFAULT_DATABASE_PATH,
   appendEvent,
+  capCandidates,
   databaseExists,
   dumpGrowDatabase,
   ensureSession,
   getSchemaVersion,
+  listCandidates,
   openGrowDatabase,
+  retainCandidates,
   resolveDatabasePath,
+  scoreCandidate,
+  writeCandidate,
 } from "../server/persistence.mjs";
 
 const command = process.argv[2] ?? "help";
@@ -103,24 +108,94 @@ function runSmoke() {
       payload: { fromMode: "break", toMode: "rehearsal" },
       createdAt: "2026-01-01T00:00:01.000Z",
     });
+    const candidate = writeCandidate(database, {
+      sessionId: session.id,
+      candidate: {
+        id: "phrase-smoke-a",
+        kind: "phrase",
+        genome: createSmokePhraseGenome(0),
+        generation: 0,
+        seed: 11,
+        status: "alive",
+        createdAtBeat: 0,
+      },
+      createdAt: "2026-01-01T00:00:02.000Z",
+    });
+    const scored = scoreCandidate(database, {
+      sessionId: session.id,
+      candidateId: candidate.id,
+      scores: { melody: 1.2, groove: 0.42 },
+      fitness: 0.9,
+      updatedAt: "2026-01-01T00:00:03.000Z",
+    });
+    const retained = retainCandidates(database, {
+      sessionId: session.id,
+      candidateIds: [candidate.id],
+      updatedAt: "2026-01-01T00:00:04.000Z",
+    });
+    writeCandidate(database, {
+      sessionId: session.id,
+      candidate: {
+        id: "phrase-smoke-b",
+        kind: "phrase",
+        genome: createSmokePhraseGenome(2),
+        scores: { melody: 0.1 },
+        fitness: 0.1,
+        generation: 0,
+        seed: 12,
+        status: "alive",
+      },
+      createdAt: "2026-01-01T00:00:05.000Z",
+    });
+    const capped = capCandidates(database, {
+      sessionId: session.id,
+      kind: "phrase",
+      limit: 1,
+      updatedAt: "2026-01-01T00:00:06.000Z",
+    });
     const dump = dumpGrowDatabase(database);
+    const phraseCandidates = listCandidates(database, { kind: "phrase", limit: 10 });
     assert(session.id === "smoke-session", "session should round-trip");
     assert(started.seq === 1, "first event should have seq 1");
     assert(modeChanged.seq === 2, "second event should have seq 2");
     assert(dump.sessions.length === 1, "dump should include one session");
-    assert(dump.events.length === 2, "dump should include two events");
-    assert(dump.events[0].type === "session.mode_changed", "dump should sort newest event first");
+    assert(dump.events.length === 7, "dump should include decision and candidate audit events");
+    assert(dump.events[0].type === "candidate.purged", "dump should sort newest event first");
+    assert(scored.scores.melody === 1, "scores should clamp to 1");
+    assert(retained[0].status === "elite", "retain should mark candidate elite");
+    assert(capped.purged.length === 1, "cap should purge one lower-fitness candidate");
+    assert(phraseCandidates.length === 2, "candidate query should include both phrase candidates");
+    assert(dump.candidates.length === 2, "dump should include candidate rows");
     console.log(JSON.stringify({
       ok: true,
       schemaVersion: dump.schemaVersion,
       sessionCount: dump.sessions.length,
       eventCount: dump.events.length,
+      candidateCount: dump.candidates.length,
       eventTypes: dump.events.map((event) => event.type).reverse(),
+      candidateStatuses: dump.candidates.map((row) => `${row.id}:${row.status}`).sort(),
     }, null, 2));
   } finally {
     database.close();
     rmSync(directory, { recursive: true, force: true });
   }
+}
+
+function createSmokePhraseGenome(offset) {
+  return {
+    subdivisionBeats: 0.5,
+    events: [
+      {
+        playerId: "melody",
+        scaleDegree: offset,
+        octave: 4,
+        duration: "8n",
+        durationBeats: 0.5,
+        velocity: 0.3,
+      },
+      null,
+    ],
+  };
 }
 
 function parseCliArgs(rawArgs) {
@@ -147,5 +222,5 @@ Usage:
   node scripts/grow-db.mjs smoke
 
 The default database path can also be set with GROW_DB_PATH.
-The dev app writes low-frequency decision records through /api/persistence/*; musical events are still deferred.`);
+The dev app writes low-frequency decision records, musical events, and candidate-store rows through /api/persistence/*.`);
 }

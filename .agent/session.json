@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Merge approved Byte 17c-b and route review artifact",
-  "status": "byte17c-b-approved-merged-ready-for-byte17c-c",
-  "updatedAt": "2026-06-14T03:14:54Z",
+  "lastTask": "Implement Track A1 candidate store shell",
+  "status": "track-a1-implemented-ready-for-review",
+  "updatedAt": "2026-06-14T12:59:17Z",
   "lastHandoff": "",
-  "branch": "main",
+  "branch": "codex/byte-a1-candidate-store",
   "commit": "branch-head",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 17c-b is approved and merged on main with Claude's durable review artifact included. Applied SongGoal surpriseTarget and dispositionBias now derive adjusted PlayerTasteProfile thresholds used by the existing taste evaluator, with no action override, dwell bypass, player registry mutation, note path change, model/prose behavior, or persistence schema change. Next likely slice is Byte 17c-c: curated influenceHints as sealed vocabulary mapped to bounded in-scale prior nudges, with no freeform influence text or material source."
+    "summary": "Track A1 is implemented on codex/byte-a1-candidate-store from main. The branch adds a bounded Candidate contract, SQLite schema v3 candidates table, server/client write/query/score/retain/purge/cap APIs, candidate.created/scored/retained/purged audit events, db smoke coverage, and middleware smoke coverage. It is inspect-only: no audio, model, generator loop, or playback path consumes candidates. Validation: build green, db:smoke green, smoke 40/40, diff-check green; npm audit still reports the known Vite/esbuild dev-server advisories."
   }
 }

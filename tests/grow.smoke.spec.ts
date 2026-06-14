@@ -1,4 +1,9 @@
 import { expect, test, type Page } from "@playwright/test";
+import {
+  assertValidCandidate,
+  validateCandidate,
+  type StoredCandidate,
+} from "../src/candidate-store";
 import { calculatePlayerExpression } from "../src/expression";
 import { createFormScore } from "../src/form-scoring";
 import { FORM_VARIANTS, getFormVariant } from "../src/form-variants";
@@ -212,6 +217,7 @@ type PersistenceDump = {
     sessionMode: string | null;
     payload: Record<string, unknown>;
   }>;
+  candidates: StoredCandidate[];
 };
 
 type ListeningFrame = {
@@ -1700,6 +1706,68 @@ test("song goal taste profile applies bounded surprise and disposition nudges", 
   expect(spare.densityTolerance).toBeGreaterThan(MELODY_PLAYER.taste.densityTolerance);
 });
 
+test("candidate contract validates bounded phrase genomes and clamps scores", () => {
+  const phraseGenome = SONG_MATERIALS[0].patterns.find((pattern) =>
+    pattern.events.some((event) => event?.playerId === "melody")
+  );
+  if (!phraseGenome) {
+    throw new Error("Expected a melody phrase genome fixture");
+  }
+
+  const result = validateCandidate({
+    kind: "phrase",
+    genome: {
+      ...phraseGenome,
+      events: [
+        ...phraseGenome.events,
+        {
+          playerId: "melody",
+          scaleDegree: 99,
+          octave: 12,
+          duration: "8n",
+          durationBeats: 99,
+          velocity: 2,
+        },
+      ],
+    },
+    scores: {
+      prosody: 1.25,
+      coherence: 0.42,
+    },
+    fitness: -0.4,
+    generation: 2.8,
+    seed: 42.9,
+    status: "alive",
+    createdAtBeat: 4,
+  });
+  expect(result.valid).toBe(true);
+  expect(result.candidate.kind).toBe("phrase");
+  expect(result.candidate.scores.prosody).toBe(1);
+  expect(result.candidate.fitness).toBe(0);
+  expect(result.candidate.generation).toBe(2);
+  expect(result.candidate.seed).toBe(42);
+  expect(result.candidate.createdAtBeat).toBe(4);
+  expect(result.clamps).toEqual(expect.arrayContaining([
+    expect.stringContaining("scores.prosody"),
+    expect.stringContaining("fitness"),
+    expect.stringContaining("scaleDegree"),
+    expect.stringContaining("octave"),
+    expect.stringContaining("durationBeats"),
+    expect.stringContaining("velocity"),
+  ]));
+  expect(assertValidCandidate(result.candidate).id).toBe(result.candidate.id);
+
+  const invalid = validateCandidate({
+    kind: "riff",
+    genome: { freeform: "not a closed kind" },
+    scores: {},
+  });
+  expect(invalid.valid).toBe(false);
+  expect(invalid.errors).toEqual(expect.arrayContaining([
+    expect.stringContaining("kind must be one of"),
+  ]));
+});
+
 test("song goal interpreter produces bounded deterministic knobs", () => {
   const spacious = interpretSongGoal("slow bright spacious wide return with machine pulse in G dorian");
   const urgent = interpretSongGoal("urgent restless hook chorus with glass sparks");
@@ -3101,6 +3169,122 @@ test("persistence records low-frequency decisions off the audio path", async ({ 
   expect(pagehideState.lastPagehideFlushAt).toBeTruthy();
   expect(pagehideState.pendingCount).toBeGreaterThanOrEqual(1);
   await expect(page.getByTestId("persistence-status")).toContainText("flushing");
+});
+
+test("candidate store writes queries scores retains and caps audited phrase candidates", async ({ request }) => {
+  const sessionId = `candidate-store-${Date.now().toString(36)}`;
+  const session = {
+    id: sessionId,
+    name: "Candidate store smoke",
+    branchId: "main",
+    metadata: { byte: "A1" },
+  };
+  const phraseGenome = SONG_MATERIALS[0].patterns.find((pattern) =>
+    pattern.events.some((event) => event?.playerId === "melody")
+  );
+  if (!phraseGenome) {
+    throw new Error("Expected a melody phrase genome fixture");
+  }
+
+  const writeResponse = await request.post("/api/persistence/candidates/write", {
+    data: {
+      session,
+      candidate: {
+        id: `${sessionId}-alpha`,
+        kind: "phrase",
+        genome: phraseGenome,
+        generation: 0,
+        seed: 101,
+        status: "alive",
+        createdAtBeat: 12,
+      },
+    },
+  });
+  expect(writeResponse.status()).toBe(200);
+  expect(writeResponse.headers()["x-grow-persistence"]).toBe("vite-dev");
+  const written = await writeResponse.json() as { candidate: StoredCandidate };
+  expect(written.candidate).toMatchObject({
+    id: `${sessionId}-alpha`,
+    kind: "phrase",
+    status: "alive",
+    createdAtBeat: 12,
+  });
+
+  const scoreResponse = await request.post("/api/persistence/candidates/score", {
+    data: {
+      session,
+      candidateId: written.candidate.id,
+      scores: { prosody: 1.2, coherence: 0.64 },
+      fitness: 0.88,
+    },
+  });
+  expect(scoreResponse.status()).toBe(200);
+  const scored = await scoreResponse.json() as { candidate: StoredCandidate };
+  expect(scored.candidate.scores.prosody).toBe(1);
+  expect(scored.candidate.fitness).toBe(0.88);
+
+  const retainResponse = await request.post("/api/persistence/candidates/retain", {
+    data: {
+      session,
+      candidateIds: [written.candidate.id],
+    },
+  });
+  expect(retainResponse.status()).toBe(200);
+  const retained = await retainResponse.json() as { candidates: StoredCandidate[] };
+  expect(retained.candidates[0].status).toBe("elite");
+
+  const writeLowerResponse = await request.post("/api/persistence/candidates/write", {
+    data: {
+      session,
+      candidate: {
+        id: `${sessionId}-beta`,
+        kind: "phrase",
+        genome: phraseGenome,
+        scores: { prosody: 0.1 },
+        fitness: 0.1,
+        generation: 0,
+        seed: 102,
+        status: "alive",
+      },
+    },
+  });
+  expect(writeLowerResponse.status()).toBe(200);
+
+  const capResponse = await request.post("/api/persistence/candidates/cap", {
+    data: {
+      session,
+      kind: "phrase",
+      limit: 1,
+    },
+  });
+  expect(capResponse.status()).toBe(200);
+  const capped = await capResponse.json() as { kept: StoredCandidate[]; purged: StoredCandidate[] };
+  expect(capped.kept.map((candidate) => candidate.id)).toEqual([written.candidate.id]);
+  expect(capped.purged.map((candidate) => candidate.id)).toEqual([`${sessionId}-beta`]);
+  expect(capped.purged[0].status).toBe("purged");
+
+  const listResponse = await request.get(`/api/persistence/candidates?kind=phrase&branchId=main&limit=10`);
+  expect(listResponse.status()).toBe(200);
+  const listed = await listResponse.json() as { candidates: StoredCandidate[] };
+  expect(listed.candidates.some((candidate) => candidate.id === written.candidate.id)).toBe(true);
+  expect(listed.candidates.some((candidate) => candidate.id === `${sessionId}-beta`)).toBe(true);
+
+  const dumpResponse = await request.get("/api/persistence/dump?limit=500");
+  expect(dumpResponse.status()).toBe(200);
+  const dump = await dumpResponse.json() as PersistenceDump;
+  const auditTypes = dump.events
+    .filter((event) => event.sessionId === sessionId && event.type.startsWith("candidate."))
+    .sort((left, right) => left.seq - right.seq)
+    .map((event) => event.type);
+  expect(auditTypes).toEqual([
+    "candidate.created",
+    "candidate.scored",
+    "candidate.retained",
+    "candidate.created",
+    "candidate.purged",
+  ]);
+  expect(dump.candidates.find((candidate) => candidate.id === written.candidate.id)?.status).toBe("elite");
+  expect(dump.candidates.find((candidate) => candidate.id === `${sessionId}-beta`)?.status).toBe("purged");
 });
 
 test("persistence records musical events through an off-callback buffer", async ({ page }) => {

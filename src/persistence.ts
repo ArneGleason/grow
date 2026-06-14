@@ -1,3 +1,12 @@
+import type {
+  CandidateCapOptions,
+  CandidateCapResult,
+  CandidateInput,
+  CandidateQueryOptions,
+  CandidateScores,
+  StoredCandidate,
+} from "./candidate-store";
+
 export type PersistenceRecordType =
   | "session.started"
   | "session.mode_changed"
@@ -7,7 +16,11 @@ export type PersistenceRecordType =
   | "timing.feel_changed"
   | "song.melody_critic_selection"
   | "song.take_feedback"
-  | "musical.event_recorded";
+  | "musical.event_recorded"
+  | "candidate.created"
+  | "candidate.scored"
+  | "candidate.retained"
+  | "candidate.purged";
 
 export type PersistenceStatus = "idle" | "scheduled" | "flushing" | "retrying" | "error";
 
@@ -56,6 +69,12 @@ export interface PersistenceClient {
   flush(): Promise<void>;
   flushOnPageHide(): void;
   dump(limit?: number): Promise<unknown>;
+  writeCandidate(candidate: CandidateInput): Promise<StoredCandidate>;
+  listCandidates(options?: CandidateQueryOptions): Promise<readonly StoredCandidate[]>;
+  scoreCandidate(candidateId: string, scores: CandidateScores, fitness: number): Promise<StoredCandidate>;
+  retainCandidates(candidateIds: readonly string[]): Promise<readonly StoredCandidate[]>;
+  purgeCandidates(candidateIds: readonly string[]): Promise<readonly StoredCandidate[]>;
+  capCandidates(options: CandidateCapOptions): Promise<CandidateCapResult>;
   getState(): PersistenceClientState;
 }
 
@@ -65,6 +84,7 @@ export interface PersistenceClientOptions {
 
 const APPEND_ENDPOINT = "/api/persistence/append";
 const DUMP_ENDPOINT = "/api/persistence/dump";
+const CANDIDATES_ENDPOINT = "/api/persistence/candidates";
 const FLUSH_DELAY_MS = 100;
 const MAX_BATCH_SIZE = 25;
 const MAX_RETRY_ATTEMPTS = 3;
@@ -283,10 +303,70 @@ export function createPersistenceClient(
       }
       return response.json();
     },
+    writeCandidate: async (candidate) => {
+      const payload = await postPersistenceJson<{ candidate: StoredCandidate }>(
+        `${CANDIDATES_ENDPOINT}/write`,
+        { session, candidate },
+      );
+      return payload.candidate;
+    },
+    listCandidates: async (options = {}) => {
+      const searchParams = new URLSearchParams();
+      if (options.kind) searchParams.set("kind", options.kind);
+      if (options.status) searchParams.set("status", options.status);
+      if (options.branchId) searchParams.set("branchId", options.branchId);
+      if (options.limit !== undefined) searchParams.set("limit", String(options.limit));
+      const query = searchParams.toString();
+      const response = await fetch(`${CANDIDATES_ENDPOINT}${query ? `?${query}` : ""}`);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      const payload = await response.json() as { candidates?: StoredCandidate[] };
+      return payload.candidates ?? [];
+    },
+    scoreCandidate: async (candidateId, scores, fitness) => {
+      const payload = await postPersistenceJson<{ candidate: StoredCandidate }>(
+        `${CANDIDATES_ENDPOINT}/score`,
+        { session, candidateId, scores, fitness },
+      );
+      return payload.candidate;
+    },
+    retainCandidates: async (candidateIds) => {
+      const payload = await postPersistenceJson<{ candidates: StoredCandidate[] }>(
+        `${CANDIDATES_ENDPOINT}/retain`,
+        { session, candidateIds },
+      );
+      return payload.candidates;
+    },
+    purgeCandidates: async (candidateIds) => {
+      const payload = await postPersistenceJson<{ candidates: StoredCandidate[] }>(
+        `${CANDIDATES_ENDPOINT}/purge`,
+        { session, candidateIds },
+      );
+      return payload.candidates;
+    },
+    capCandidates: async (options) => {
+      return postPersistenceJson<CandidateCapResult>(
+        `${CANDIDATES_ENDPOINT}/cap`,
+        { session, ...options },
+      );
+    },
     getState: () => ({
       ...snapshotState(),
     }),
   };
+}
+
+async function postPersistenceJson<T>(url: string, body: unknown): Promise<T> {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+  return response.json() as Promise<T>;
 }
 
 function getRetryDelayMs(retryAttempt: number): number {

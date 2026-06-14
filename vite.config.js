@@ -1,12 +1,18 @@
 import { defineConfig } from "vite";
 import {
   appendEvents,
+  capCandidates,
   databaseExists,
   dumpGrowDatabase,
   ensureSession,
   getSchemaVersion,
+  listCandidates,
   openGrowDatabase,
+  purgeCandidates,
+  retainCandidates,
   resolveDatabasePath,
+  scoreCandidate,
+  writeCandidate,
 } from "./server/persistence.mjs";
 
 const OLLAMA_PROXY_PREFIX = "/api/ollama";
@@ -146,6 +152,115 @@ async function handlePersistenceRequest(request, response, persistence, signal) 
     return;
   }
 
+  if (path === `${PERSISTENCE_PREFIX}/candidates` && request.method === "GET") {
+    if (!persistence.hasDatabase()) {
+      sendPersistenceJson(response, 200, {
+        ok: true,
+        candidates: [],
+      });
+      return;
+    }
+    const database = persistence.getDatabase();
+    sendPersistenceJson(response, 200, {
+      ok: true,
+      candidates: listCandidates(database, {
+        branchId: requestUrl.searchParams.get("branchId") ?? undefined,
+        kind: requestUrl.searchParams.get("kind") ?? undefined,
+        status: requestUrl.searchParams.get("status") ?? undefined,
+        limit: requestUrl.searchParams.get("limit") ?? undefined,
+      }),
+    });
+    return;
+  }
+
+  if (path === `${PERSISTENCE_PREFIX}/candidates/write` && request.method === "POST") {
+    const database = persistence.getDatabase();
+    const payload = await readJsonBody(request, signal);
+    const session = ensureCandidateSession(database, payload);
+    const candidate = writeCandidate(database, {
+      sessionId: session.id,
+      branchId: payload.branchId ?? session.branchId,
+      candidate: payload.candidate,
+    });
+    sendPersistenceJson(response, 200, {
+      ok: true,
+      session,
+      candidate,
+    });
+    return;
+  }
+
+  if (path === `${PERSISTENCE_PREFIX}/candidates/score` && request.method === "POST") {
+    const database = persistence.getDatabase();
+    const payload = await readJsonBody(request, signal);
+    const session = ensureCandidateSession(database, payload);
+    const candidate = scoreCandidate(database, {
+      sessionId: session.id,
+      branchId: payload.branchId ?? session.branchId,
+      candidateId: payload.candidateId,
+      scores: payload.scores,
+      fitness: payload.fitness,
+    });
+    sendPersistenceJson(response, 200, {
+      ok: true,
+      session,
+      candidate,
+    });
+    return;
+  }
+
+  if (path === `${PERSISTENCE_PREFIX}/candidates/retain` && request.method === "POST") {
+    const database = persistence.getDatabase();
+    const payload = await readJsonBody(request, signal);
+    const session = ensureCandidateSession(database, payload);
+    const candidates = retainCandidates(database, {
+      sessionId: session.id,
+      branchId: payload.branchId ?? session.branchId,
+      candidateIds: payload.candidateIds,
+    });
+    sendPersistenceJson(response, 200, {
+      ok: true,
+      session,
+      candidates,
+    });
+    return;
+  }
+
+  if (path === `${PERSISTENCE_PREFIX}/candidates/purge` && request.method === "POST") {
+    const database = persistence.getDatabase();
+    const payload = await readJsonBody(request, signal);
+    const session = ensureCandidateSession(database, payload);
+    const candidates = purgeCandidates(database, {
+      sessionId: session.id,
+      branchId: payload.branchId ?? session.branchId,
+      candidateIds: payload.candidateIds,
+    });
+    sendPersistenceJson(response, 200, {
+      ok: true,
+      session,
+      candidates,
+    });
+    return;
+  }
+
+  if (path === `${PERSISTENCE_PREFIX}/candidates/cap` && request.method === "POST") {
+    const database = persistence.getDatabase();
+    const payload = await readJsonBody(request, signal);
+    const session = ensureCandidateSession(database, payload);
+    const result = capCandidates(database, {
+      sessionId: session.id,
+      branchId: payload.branchId ?? session.branchId,
+      kind: payload.kind,
+      limit: payload.limit,
+    });
+    sendPersistenceJson(response, 200, {
+      ok: true,
+      session,
+      ...result,
+    });
+    return;
+  }
+
   if (path === `${PERSISTENCE_PREFIX}/append` && request.method === "POST") {
     const database = persistence.getDatabase();
     const payload = await readJsonBody(request, signal);
@@ -209,6 +324,13 @@ async function handleOllamaProxy(request, response) {
 
   abort.cleanup();
   sendJson(response, 404, { error: "Unknown Ollama proxy route" });
+}
+
+function ensureCandidateSession(database, payload) {
+  if (!payload.session) {
+    throw new PersistenceRequestError("Candidate store requests require a session");
+  }
+  return ensureSession(database, payload.session);
 }
 
 function createProxyAbortController(request, response) {

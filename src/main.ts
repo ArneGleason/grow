@@ -1,4 +1,10 @@
 import "./style.css";
+import type {
+  CandidateCapOptions,
+  CandidateInput,
+  CandidateQueryOptions,
+  CandidateScores,
+} from "./candidate-store";
 import { formatExpressionSnapshot, type PlayerExpressionSnapshot } from "./expression";
 import { createFormScore, type FormScore } from "./form-scoring";
 import {
@@ -3184,6 +3190,16 @@ declare global {
       flushMusicalEvents(): number;
       flushOnPageHide(): void;
       dump(limit?: number): Promise<unknown>;
+      writeCandidate(candidate: CandidateInput): ReturnType<typeof persistence.writeCandidate>;
+      listCandidates(options?: CandidateQueryOptions): ReturnType<typeof persistence.listCandidates>;
+      scoreCandidate(
+        candidateId: string,
+        scores: CandidateScores,
+        fitness: number,
+      ): ReturnType<typeof persistence.scoreCandidate>;
+      retainCandidates(candidateIds: readonly string[]): ReturnType<typeof persistence.retainCandidates>;
+      purgeCandidates(candidateIds: readonly string[]): ReturnType<typeof persistence.purgeCandidates>;
+      capCandidates(options: CandidateCapOptions): ReturnType<typeof persistence.capCandidates>;
     };
     ollama?: {
       getConfig(): OllamaConfig;
@@ -3371,6 +3387,12 @@ window.persistence = {
   flushMusicalEvents: () => flushMusicalEventBufferToPersistence("manual", MUSICAL_EVENT_DRAIN_ALL),
   flushOnPageHide: () => handlePageHide(),
   dump: (limit) => persistence.dump(limit),
+  writeCandidate: (candidate) => persistence.writeCandidate(candidate),
+  listCandidates: (options) => persistence.listCandidates(options),
+  scoreCandidate: (candidateId, scores, fitness) => persistence.scoreCandidate(candidateId, scores, fitness),
+  retainCandidates: (candidateIds) => persistence.retainCandidates(candidateIds),
+  purgeCandidates: (candidateIds) => persistence.purgeCandidates(candidateIds),
+  capCandidates: (options) => persistence.capCandidates(options),
 };
 
 window.ollama = {

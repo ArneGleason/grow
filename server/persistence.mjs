@@ -3,7 +3,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
-export const CURRENT_SCHEMA_VERSION = 2;
+export const CURRENT_SCHEMA_VERSION = 3;
 export const DEFAULT_DATABASE_PATH = "data/grow.sqlite3";
 
 export const INITIAL_RECORD_TYPES = Object.freeze([
@@ -12,7 +12,16 @@ export const INITIAL_RECORD_TYPES = Object.freeze([
   "song.changed",
   "timing.feel_changed",
   "musical.event_recorded",
+  "candidate.created",
+  "candidate.scored",
+  "candidate.retained",
+  "candidate.purged",
 ]);
+
+const CANDIDATE_KINDS = Object.freeze(["song", "phrase", "groove", "harmony", "form"]);
+const CANDIDATE_STATUSES = Object.freeze(["alive", "elite", "purged"]);
+const MAX_CANDIDATE_LIMIT = 500;
+const MAX_SCORE_KEYS = 32;
 
 export function resolveDatabasePath(databasePath = process.env.GROW_DB_PATH ?? DEFAULT_DATABASE_PATH) {
   if (databasePath === ":memory:") return databasePath;
@@ -75,6 +84,22 @@ export function initializeGrowDatabase(database) {
       UNIQUE(session_id, branch_id, seq)
     );
 
+    CREATE TABLE IF NOT EXISTS candidates (
+      id TEXT PRIMARY KEY,
+      branch_id TEXT NOT NULL DEFAULT 'main',
+      kind TEXT NOT NULL,
+      genome_json TEXT NOT NULL,
+      scores_json TEXT NOT NULL DEFAULT '{}',
+      fitness REAL NOT NULL DEFAULT 0,
+      parent_id TEXT,
+      generation INTEGER NOT NULL DEFAULT 0,
+      seed INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'alive',
+      created_at_beat REAL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
   `);
 
   migrateGrowDatabase(database);
@@ -91,6 +116,12 @@ export function initializeGrowDatabase(database) {
 
     CREATE INDEX IF NOT EXISTS events_scheduled_beat_idx
       ON events(scheduled_beat);
+
+    CREATE INDEX IF NOT EXISTS candidates_branch_kind_status_fitness_idx
+      ON candidates(branch_id, kind, status, fitness DESC);
+
+    CREATE INDEX IF NOT EXISTS candidates_parent_idx
+      ON candidates(parent_id);
   `);
 
   database.prepare(`
@@ -122,6 +153,11 @@ function migrateGrowDatabase(database) {
         WHERE scheduled_beat IS NULL AND scheduled_bar IS NOT NULL
       `);
     }
+  }
+
+  const candidateColumns = getTableColumnNames(database, "candidates");
+  if (candidateColumns.length > 0) {
+    addColumnIfMissing(database, "candidates", candidateColumns, "created_at_beat", "REAL");
   }
 }
 
@@ -205,82 +241,254 @@ export function appendEvents(database, events) {
     validateEventInput(event);
   }
 
+  return withImmediateTransaction(database, () => appendEventsInTransaction(database, events));
+}
+
+function appendEventsInTransaction(database, events) {
   const sessionsById = new Map();
   const nextSeqBySessionBranch = new Map();
   const appendedEvents = [];
-  return withImmediateTransaction(database, () => {
-    for (const event of events) {
-      const existingEvent = event.id ? readEventById(database, event.id) : null;
-      if (existingEvent) {
-        appendedEvents.push(existingEvent);
-        continue;
-      }
-
-      let session = sessionsById.get(event.sessionId);
-      if (!session) {
-        session = getSession(database, event.sessionId);
-        if (!session) {
-          throw new Error(`Cannot append event for missing session: ${event.sessionId}`);
-        }
-        sessionsById.set(event.sessionId, session);
-      }
-
-      const branchId = event.branchId ?? session.branchId ?? "main";
-      const sessionBranchKey = `${event.sessionId}:${branchId}`;
-      let seq = nextSeqBySessionBranch.get(sessionBranchKey);
-      if (seq === undefined) {
-        const seqRow = database.prepare(`
-          SELECT COALESCE(MAX(seq), 0) + 1 AS nextSeq
-          FROM events
-          WHERE session_id = ? AND branch_id = ?
-        `).get(event.sessionId, branchId);
-        seq = Number(seqRow.nextSeq);
-      }
-
-      const createdAt = event.createdAt ?? new Date().toISOString();
-      const eventId = event.id ?? randomUUID();
-
-      database.prepare(`
-        INSERT INTO events (
-          id,
-          session_id,
-          branch_id,
-          seq,
-          tick,
-          beat,
-          scheduled_beat,
-          actor_id,
-          session_mode,
-          type,
-          payload_json,
-          created_at
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        eventId,
-        event.sessionId,
-        branchId,
-        seq,
-        event.tick ?? 0,
-        event.beat ?? null,
-        event.scheduledBeat ?? null,
-        event.actorId ?? null,
-        event.sessionMode ?? null,
-        event.type,
-        stableJson(event.payload ?? {}),
-        createdAt,
-      );
-
-      database.prepare("UPDATE sessions SET updated_at = ? WHERE id = ?").run(createdAt, event.sessionId);
-      nextSeqBySessionBranch.set(sessionBranchKey, seq + 1);
-      const appendedEvent = readEventById(database, eventId);
-      if (appendedEvent) {
-        appendedEvents.push(appendedEvent);
-      }
+  for (const event of events) {
+    const existingEvent = event.id ? readEventById(database, event.id) : null;
+    if (existingEvent) {
+      appendedEvents.push(existingEvent);
+      continue;
     }
 
-    return appendedEvents;
+    let session = sessionsById.get(event.sessionId);
+    if (!session) {
+      session = getSession(database, event.sessionId);
+      if (!session) {
+        throw new Error(`Cannot append event for missing session: ${event.sessionId}`);
+      }
+      sessionsById.set(event.sessionId, session);
+    }
+
+    const branchId = event.branchId ?? session.branchId ?? "main";
+    const sessionBranchKey = `${event.sessionId}:${branchId}`;
+    let seq = nextSeqBySessionBranch.get(sessionBranchKey);
+    if (seq === undefined) {
+      const seqRow = database.prepare(`
+        SELECT COALESCE(MAX(seq), 0) + 1 AS nextSeq
+        FROM events
+        WHERE session_id = ? AND branch_id = ?
+      `).get(event.sessionId, branchId);
+      seq = Number(seqRow.nextSeq);
+    }
+
+    const createdAt = event.createdAt ?? new Date().toISOString();
+    const eventId = event.id ?? randomUUID();
+
+    database.prepare(`
+      INSERT INTO events (
+        id,
+        session_id,
+        branch_id,
+        seq,
+        tick,
+        beat,
+        scheduled_beat,
+        actor_id,
+        session_mode,
+        type,
+        payload_json,
+        created_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      eventId,
+      event.sessionId,
+      branchId,
+      seq,
+      event.tick ?? 0,
+      event.beat ?? null,
+      event.scheduledBeat ?? null,
+      event.actorId ?? null,
+      event.sessionMode ?? null,
+      event.type,
+      stableJson(event.payload ?? {}),
+      createdAt,
+    );
+
+    database.prepare("UPDATE sessions SET updated_at = ? WHERE id = ?").run(createdAt, event.sessionId);
+    nextSeqBySessionBranch.set(sessionBranchKey, seq + 1);
+    const appendedEvent = readEventById(database, eventId);
+    if (appendedEvent) {
+      appendedEvents.push(appendedEvent);
+    }
+  }
+
+  return appendedEvents;
+}
+
+export function writeCandidate(database, request) {
+  const session = getRequiredSession(database, request.sessionId);
+  const branchId = request.branchId ?? session.branchId ?? "main";
+  const candidate = normalizeCandidateInput(request.candidate);
+  const createdAt = request.createdAt ?? new Date().toISOString();
+
+  return withImmediateTransaction(database, () => {
+    const existingCandidate = readCandidateById(database, candidate.id);
+    if (existingCandidate) return existingCandidate;
+
+    database.prepare(`
+      INSERT INTO candidates (
+        id,
+        branch_id,
+        kind,
+        genome_json,
+        scores_json,
+        fitness,
+        parent_id,
+        generation,
+        seed,
+        status,
+        created_at_beat,
+        created_at,
+        updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      candidate.id,
+      branchId,
+      candidate.kind,
+      stableJson(candidate.genome),
+      stableJson(candidate.scores),
+      candidate.fitness,
+      candidate.parentId ?? null,
+      candidate.generation,
+      candidate.seed,
+      candidate.status,
+      candidate.createdAtBeat ?? null,
+      createdAt,
+      createdAt,
+    );
+
+    const storedCandidate = readCandidateById(database, candidate.id);
+    appendEventsInTransaction(database, [
+      createCandidateAuditEvent("candidate.created", session.id, branchId, storedCandidate, createdAt),
+    ]);
+    return storedCandidate;
   });
+}
+
+export function scoreCandidate(database, request) {
+  const session = getRequiredSession(database, request.sessionId);
+  const branchId = request.branchId ?? session.branchId ?? "main";
+  const candidateId = requireCandidateId(request.candidateId);
+  const scores = normalizeScores(request.scores);
+  const fitness = clampFiniteNumber(request.fitness, 0, 1, "fitness");
+  const updatedAt = request.updatedAt ?? new Date().toISOString();
+
+  return withImmediateTransaction(database, () => {
+    const existingCandidate = readCandidateById(database, candidateId);
+    if (!existingCandidate) {
+      throw new Error(`Cannot score missing candidate: ${candidateId}`);
+    }
+    database.prepare(`
+      UPDATE candidates
+      SET scores_json = ?,
+          fitness = ?,
+          updated_at = ?
+      WHERE id = ?
+    `).run(stableJson(scores), fitness, updatedAt, candidateId);
+
+    const storedCandidate = readCandidateById(database, candidateId);
+    appendEventsInTransaction(database, [
+      createCandidateAuditEvent("candidate.scored", session.id, branchId, storedCandidate, updatedAt),
+    ]);
+    return storedCandidate;
+  });
+}
+
+export function retainCandidates(database, request) {
+  return setCandidateStatus(database, request, "elite", "candidate.retained");
+}
+
+export function purgeCandidates(database, request) {
+  return setCandidateStatus(database, request, "purged", "candidate.purged");
+}
+
+export function capCandidates(database, request) {
+  const session = getRequiredSession(database, request.sessionId);
+  const kind = normalizeCandidateKind(request.kind);
+  const branchId = request.branchId ?? session.branchId ?? "main";
+  const limit = normalizeLimit(request.limit, 50);
+  const updatedAt = request.updatedAt ?? new Date().toISOString();
+
+  return withImmediateTransaction(database, () => {
+    const candidates = listCandidates(database, {
+      branchId,
+      kind,
+      includePurged: false,
+      limit: MAX_CANDIDATE_LIMIT,
+      order: "fitness",
+    });
+    const kept = candidates.slice(0, limit);
+    const overflow = candidates.slice(limit);
+    const purged = updateCandidateStatusesInTransaction(database, overflow.map((candidate) => candidate.id), "purged", updatedAt);
+    if (purged.length > 0) {
+      appendEventsInTransaction(
+        database,
+        purged.map((candidate) =>
+          createCandidateAuditEvent("candidate.purged", session.id, branchId, candidate, updatedAt, {
+            reason: "cap",
+            limit,
+          })
+        ),
+      );
+    }
+    return {
+      kept,
+      purged,
+    };
+  });
+}
+
+export function listCandidates(database, options = {}) {
+  const clauses = [];
+  const params = [];
+  if (options.branchId) {
+    clauses.push("branch_id = ?");
+    params.push(options.branchId);
+  }
+  if (options.kind) {
+    clauses.push("kind = ?");
+    params.push(normalizeCandidateKind(options.kind));
+  }
+  if (options.status) {
+    clauses.push("status = ?");
+    params.push(normalizeCandidateStatus(options.status));
+  } else if (options.includePurged === false) {
+    clauses.push("status != 'purged'");
+  }
+
+  const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
+  const limit = normalizeLimit(options.limit, 50);
+  const orderBy = options.order === "fitness"
+    ? "fitness DESC, generation ASC, created_at ASC, id ASC"
+    : "updated_at DESC, created_at DESC, id ASC";
+  const rows = database.prepare(`
+    SELECT
+      id,
+      branch_id AS branchId,
+      kind,
+      genome_json AS genomeJson,
+      scores_json AS scoresJson,
+      fitness,
+      parent_id AS parentId,
+      generation,
+      seed,
+      status,
+      created_at_beat AS createdAtBeat,
+      created_at AS createdAt,
+      updated_at AS updatedAt
+    FROM candidates
+    ${where}
+    ORDER BY ${orderBy}
+    LIMIT ?
+  `).all(...params, limit);
+  return rows.map(parseCandidateRow);
 }
 
 export function readEvents(database, options = {}) {
@@ -328,6 +536,7 @@ export function dumpGrowDatabase(database, options = {}) {
     schemaVersion: getSchemaVersion(database),
     sessions: listSessions(database, { limit: options.sessionLimit ?? 20 }),
     events: readEvents(database, { limit: options.eventLimit ?? options.limit ?? 50 }),
+    candidates: listCandidates(database, { limit: options.candidateLimit ?? options.limit ?? 50 }),
   };
 }
 
@@ -350,6 +559,97 @@ function readEventById(database, eventId) {
     WHERE id = ?
   `).get(eventId);
   return row ? parseEventRow(row) : null;
+}
+
+function readCandidateById(database, candidateId) {
+  const row = database.prepare(`
+    SELECT
+      id,
+      branch_id AS branchId,
+      kind,
+      genome_json AS genomeJson,
+      scores_json AS scoresJson,
+      fitness,
+      parent_id AS parentId,
+      generation,
+      seed,
+      status,
+      created_at_beat AS createdAtBeat,
+      created_at AS createdAt,
+      updated_at AS updatedAt
+    FROM candidates
+    WHERE id = ?
+  `).get(candidateId);
+  return row ? parseCandidateRow(row) : null;
+}
+
+function setCandidateStatus(database, request, status, auditType) {
+  const session = getRequiredSession(database, request.sessionId);
+  const branchId = request.branchId ?? session.branchId ?? "main";
+  const candidateIds = normalizeCandidateIds(request.candidateIds);
+  const updatedAt = request.updatedAt ?? new Date().toISOString();
+  return withImmediateTransaction(database, () => {
+    const candidates = updateCandidateStatusesInTransaction(database, candidateIds, status, updatedAt);
+    appendEventsInTransaction(
+      database,
+      candidates.map((candidate) =>
+        createCandidateAuditEvent(auditType, session.id, branchId, candidate, updatedAt)
+      ),
+    );
+    return candidates;
+  });
+}
+
+function updateCandidateStatusesInTransaction(database, candidateIds, status, updatedAt) {
+  const normalizedStatus = normalizeCandidateStatus(status);
+  const candidates = [];
+  for (const candidateId of candidateIds) {
+    const existingCandidate = readCandidateById(database, candidateId);
+    if (!existingCandidate) {
+      throw new Error(`Cannot update missing candidate: ${candidateId}`);
+    }
+    database.prepare(`
+      UPDATE candidates
+      SET status = ?,
+          updated_at = ?
+      WHERE id = ?
+    `).run(normalizedStatus, updatedAt, candidateId);
+    const candidate = readCandidateById(database, candidateId);
+    if (candidate) candidates.push(candidate);
+  }
+  return candidates;
+}
+
+function createCandidateAuditEvent(type, sessionId, branchId, candidate, createdAt, extraPayload = {}) {
+  return {
+    sessionId,
+    branchId,
+    type,
+    actorId: "candidate-store",
+    payload: {
+      candidateId: candidate.id,
+      kind: candidate.kind,
+      status: candidate.status,
+      fitness: candidate.fitness,
+      parentId: candidate.parentId,
+      generation: candidate.generation,
+      seed: candidate.seed,
+      candidate,
+      ...extraPayload,
+    },
+    createdAt,
+  };
+}
+
+function getRequiredSession(database, sessionId) {
+  if (!sessionId || typeof sessionId !== "string") {
+    throw new Error("Candidate store requires sessionId");
+  }
+  const session = getSession(database, sessionId);
+  if (!session) {
+    throw new Error(`Candidate store requires existing session: ${sessionId}`);
+  }
+  return session;
 }
 
 function withImmediateTransaction(database, work) {
@@ -402,6 +702,169 @@ function parseEventRow(row) {
   };
 }
 
+function parseCandidateRow(row) {
+  const candidate = {
+    id: row.id,
+    branchId: row.branchId,
+    kind: row.kind,
+    genome: JSON.parse(row.genomeJson),
+    scores: JSON.parse(row.scoresJson),
+    fitness: row.fitness,
+    parentId: row.parentId ?? undefined,
+    generation: row.generation,
+    seed: row.seed,
+    status: row.status,
+    createdAtBeat: row.createdAtBeat ?? undefined,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+  return candidate;
+}
+
+function normalizeCandidateInput(input) {
+  if (!isRecord(input)) {
+    throw new Error("Candidate must be an object");
+  }
+  const kind = normalizeCandidateKind(input.kind);
+  const genome = normalizeCandidateGenome(kind, input.genome);
+  const scores = normalizeScores(input.scores ?? {});
+  const fitness = clampFiniteNumber(input.fitness ?? 0, 0, 1, "fitness");
+  const generation = clampInteger(input.generation ?? 0, 0, 10_000, "generation");
+  const seed = clampInteger(input.seed ?? 0, 0, 0xffffffff, "seed");
+  const status = normalizeCandidateStatus(input.status ?? "alive");
+  const parentId = input.parentId === undefined ? undefined : requireCandidateId(input.parentId, "parentId");
+  const createdAtBeat = input.createdAtBeat === undefined
+    ? undefined
+    : clampFiniteNumber(input.createdAtBeat, 0, 1_000_000, "createdAtBeat");
+  const candidateWithoutId = removeUndefined({
+    kind,
+    genome,
+    scores,
+    fitness,
+    parentId,
+    generation,
+    seed,
+    status,
+    createdAtBeat,
+  });
+  const id = input.id === undefined
+    ? `candidate-${stableHash(stableJson(candidateWithoutId))}`
+    : requireCandidateId(input.id);
+  const candidate = removeUndefined({
+    id,
+    ...candidateWithoutId,
+  });
+  const genomeLength = stableJson(candidate.genome).length;
+  if (genomeLength > 20_000) {
+    throw new Error("Candidate genome JSON exceeds 20000 characters");
+  }
+  return candidate;
+}
+
+function normalizeCandidateGenome(kind, genome) {
+  if (kind === "phrase") {
+    return normalizePhraseGenome(genome);
+  }
+  return normalizeBoundedJson(genome, "genome");
+}
+
+function normalizePhraseGenome(genome) {
+  if (!isRecord(genome)) {
+    throw new Error("Phrase candidate genome must be a PlayerPatternSource object");
+  }
+  const rawEvents = Array.isArray(genome.events) ? genome.events : null;
+  if (!rawEvents) {
+    throw new Error("Phrase candidate genome events must be an array");
+  }
+  const events = rawEvents.slice(0, 128).map((event, index) => {
+    if (event === null) return null;
+    if (!isRecord(event)) {
+      throw new Error(`Phrase candidate event ${index} must be null or an object`);
+    }
+    return {
+      playerId: typeof event.playerId === "string" && event.playerId.trim().length > 0
+        ? event.playerId.trim().slice(0, 48)
+        : "melody",
+      scaleDegree: clampInteger(event.scaleDegree ?? 0, -28, 28, `genome.events.${index}.scaleDegree`),
+      octave: clampInteger(event.octave ?? 4, 0, 8, `genome.events.${index}.octave`),
+      duration: typeof event.duration === "string" && event.duration.trim().length > 0
+        ? event.duration.trim().slice(0, 16)
+        : "8n",
+      durationBeats: clampFiniteNumber(event.durationBeats ?? 0.5, 0.0625, 8, `genome.events.${index}.durationBeats`),
+      velocity: clampFiniteNumber(event.velocity ?? 0.3, 0, 1, `genome.events.${index}.velocity`),
+    };
+  });
+  if (events.length === 0) {
+    throw new Error("Phrase candidate genome must include at least one event slot");
+  }
+  return {
+    subdivisionBeats: clampFiniteNumber(genome.subdivisionBeats ?? 1, 0.125, 4, "genome.subdivisionBeats"),
+    events,
+  };
+}
+
+function normalizeBoundedJson(value, label, depth = 0) {
+  if (depth > 8) {
+    throw new Error(`${label} exceeds max JSON depth`);
+  }
+  if (value === null || typeof value === "boolean") return value;
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) return 0;
+    return roundTo(value, 6);
+  }
+  if (typeof value === "string") return value.slice(0, 1_000);
+  if (Array.isArray(value)) {
+    return value.slice(0, 256).map((item, index) => normalizeBoundedJson(item, `${label}.${index}`, depth + 1));
+  }
+  if (isRecord(value)) {
+    return Object.fromEntries(
+      Object.entries(value)
+        .slice(0, 64)
+        .map(([key, item]) => [key.slice(0, 80), normalizeBoundedJson(item, `${label}.${key}`, depth + 1)]),
+    );
+  }
+  throw new Error(`${label} must be JSON-serializable`);
+}
+
+function normalizeScores(value) {
+  if (!isRecord(value)) {
+    throw new Error("Candidate scores must be an object");
+  }
+  return Object.fromEntries(
+    Object.entries(value).slice(0, MAX_SCORE_KEYS).map(([key, rawValue]) => {
+      const scoreKey = key.trim().slice(0, 48);
+      if (!/^[a-zA-Z0-9_.:-]+$/.test(scoreKey)) {
+        throw new Error(`Candidate score key is not allowed: ${key}`);
+      }
+      return [scoreKey, clampFiniteNumber(rawValue, 0, 1, `scores.${scoreKey}`)];
+    }),
+  );
+}
+
+function normalizeCandidateKind(value) {
+  if (typeof value === "string" && CANDIDATE_KINDS.includes(value)) return value;
+  throw new Error(`Candidate kind must be one of ${CANDIDATE_KINDS.join(", ")}`);
+}
+
+function normalizeCandidateStatus(value) {
+  if (typeof value === "string" && CANDIDATE_STATUSES.includes(value)) return value;
+  throw new Error(`Candidate status must be one of ${CANDIDATE_STATUSES.join(", ")}`);
+}
+
+function requireCandidateId(value, label = "candidateId") {
+  if (typeof value !== "string" || !/^[a-zA-Z0-9:_-]{1,120}$/.test(value.trim())) {
+    throw new Error(`${label} must be 1-120 chars of letters, numbers, colon, underscore, or dash`);
+  }
+  return value.trim();
+}
+
+function normalizeCandidateIds(value) {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new Error("candidateIds must be a non-empty array");
+  }
+  return value.map((candidateId) => requireCandidateId(candidateId));
+}
+
 function normalizeLimit(value, fallback) {
   const parsed = Number(value ?? fallback);
   if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
@@ -410,4 +873,42 @@ function normalizeLimit(value, fallback) {
 
 function stableJson(value) {
   return JSON.stringify(value ?? {});
+}
+
+function clampFiniteNumber(value, minimum, maximum, label) {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new Error(`${label} must be finite`);
+  }
+  return roundTo(Math.min(maximum, Math.max(minimum, value)), 4);
+}
+
+function clampInteger(value, minimum, maximum, label) {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new Error(`${label} must be finite`);
+  }
+  return Math.min(maximum, Math.max(minimum, Math.trunc(value)));
+}
+
+function roundTo(value, places) {
+  const scale = 10 ** places;
+  return Math.round(value * scale) / scale;
+}
+
+function isRecord(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function removeUndefined(value) {
+  return Object.fromEntries(
+    Object.entries(value).filter(([, entryValue]) => entryValue !== undefined),
+  );
+}
+
+function stableHash(value) {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
 }
