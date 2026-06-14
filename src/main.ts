@@ -9,6 +9,11 @@ import type {
   CandidateSelectionOptions,
 } from "./candidate-store";
 import {
+  runCandidateCycle,
+  type CandidateCycleOptions,
+  type CandidateCycleResult,
+} from "./candidate-cycle";
+import {
   aggregateCandidateFitness,
   previewCandidateFitness,
   type CandidateFitnessOptions,
@@ -3247,18 +3252,20 @@ declare global {
       flushMusicalEvents(): number;
       flushOnPageHide(): void;
       dump(limit?: number): Promise<unknown>;
-      writeCandidate(candidate: CandidateInput): ReturnType<typeof persistence.writeCandidate>;
+      writeCandidate(candidate: CandidateInput, branchId?: string): ReturnType<typeof persistence.writeCandidate>;
       listCandidates(options?: CandidateQueryOptions): ReturnType<typeof persistence.listCandidates>;
       scoreCandidate(
         candidateId: string,
         scores: CandidateScores,
         fitness: number,
+        branchId?: string,
       ): ReturnType<typeof persistence.scoreCandidate>;
       retainCandidates(candidateIds: readonly string[]): ReturnType<typeof persistence.retainCandidates>;
       purgeCandidates(candidateIds: readonly string[]): ReturnType<typeof persistence.purgeCandidates>;
       capCandidates(options: CandidateCapOptions): ReturnType<typeof persistence.capCandidates>;
       selectCandidates(options: CandidateSelectionOptions): ReturnType<typeof persistence.selectCandidates>;
       developCandidate(options: CandidateDevelopmentOptions): ReturnType<typeof persistence.developCandidate>;
+      runCandidateCycle(options: CandidateCycleOptions): Promise<CandidateCycleResult>;
     };
     ollama?: {
       getConfig(): OllamaConfig;
@@ -3454,14 +3461,16 @@ window.persistence = {
   flushMusicalEvents: () => flushMusicalEventBufferToPersistence("manual", MUSICAL_EVENT_DRAIN_ALL),
   flushOnPageHide: () => handlePageHide(),
   dump: (limit) => persistence.dump(limit),
-  writeCandidate: (candidate) => persistence.writeCandidate(candidate),
+  writeCandidate: (candidate, branchId) => persistence.writeCandidate(candidate, branchId),
   listCandidates: (options) => persistence.listCandidates(options),
-  scoreCandidate: (candidateId, scores, fitness) => persistence.scoreCandidate(candidateId, scores, fitness),
+  scoreCandidate: (candidateId, scores, fitness, branchId) =>
+    persistence.scoreCandidate(candidateId, scores, fitness, branchId),
   retainCandidates: (candidateIds) => persistence.retainCandidates(candidateIds),
   purgeCandidates: (candidateIds) => persistence.purgeCandidates(candidateIds),
   capCandidates: (options) => persistence.capCandidates(options),
   selectCandidates: (options) => persistence.selectCandidates(options),
   developCandidate: (options) => persistence.developCandidate(options),
+  runCandidateCycle: (options) => runCandidateCycle(options, persistence),
 };
 
 window.ollama = {

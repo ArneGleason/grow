@@ -73,9 +73,14 @@ export interface PersistenceClient {
   flush(): Promise<void>;
   flushOnPageHide(): void;
   dump(limit?: number): Promise<unknown>;
-  writeCandidate(candidate: CandidateInput): Promise<StoredCandidate>;
+  writeCandidate(candidate: CandidateInput, branchId?: string): Promise<StoredCandidate>;
   listCandidates(options?: CandidateQueryOptions): Promise<readonly StoredCandidate[]>;
-  scoreCandidate(candidateId: string, scores: CandidateScores, fitness: number): Promise<StoredCandidate>;
+  scoreCandidate(
+    candidateId: string,
+    scores: CandidateScores,
+    fitness: number,
+    branchId?: string,
+  ): Promise<StoredCandidate>;
   retainCandidates(candidateIds: readonly string[]): Promise<readonly StoredCandidate[]>;
   purgeCandidates(candidateIds: readonly string[]): Promise<readonly StoredCandidate[]>;
   capCandidates(options: CandidateCapOptions): Promise<CandidateCapResult>;
@@ -309,10 +314,10 @@ export function createPersistenceClient(
       }
       return response.json();
     },
-    writeCandidate: async (candidate) => {
+    writeCandidate: async (candidate, branchId) => {
       const payload = await postPersistenceJson<{ candidate: StoredCandidate }>(
         `${CANDIDATES_ENDPOINT}/write`,
-        { session, candidate },
+        { session, branchId, candidate },
       );
       return payload.candidate;
     },
@@ -330,10 +335,10 @@ export function createPersistenceClient(
       const payload = await response.json() as { candidates?: StoredCandidate[] };
       return payload.candidates ?? [];
     },
-    scoreCandidate: async (candidateId, scores, fitness) => {
+    scoreCandidate: async (candidateId, scores, fitness, branchId) => {
       const payload = await postPersistenceJson<{ candidate: StoredCandidate }>(
         `${CANDIDATES_ENDPOINT}/score`,
-        { session, candidateId, scores, fitness },
+        { session, branchId, candidateId, scores, fitness },
       );
       return payload.candidate;
     },

@@ -6,6 +6,10 @@ import {
   type CandidateSelectionResult,
   type StoredCandidate,
 } from "../src/candidate-store";
+import type {
+  CandidateCycleOptions,
+  CandidateCycleResult,
+} from "../src/candidate-cycle";
 import {
   aggregateCandidateFitness,
   previewCandidateFitness,
@@ -488,6 +492,26 @@ async function dumpPersistence(page: Page, limit = 100): Promise<PersistenceDump
   }
 
   return dump;
+}
+
+async function runCandidateCycleInApp(
+  page: Page,
+  options: CandidateCycleOptions,
+): Promise<CandidateCycleResult> {
+  const result = await page.evaluate(async (nextOptions) => {
+    const appWindow = window as unknown as {
+      persistence?: {
+        runCandidateCycle(options: CandidateCycleOptions): Promise<CandidateCycleResult>;
+      };
+    };
+    return appWindow.persistence?.runCandidateCycle(nextOptions);
+  }, options);
+
+  if (!result) {
+    throw new Error("window.persistence.runCandidateCycle() was not available");
+  }
+
+  return result;
 }
 
 async function getTimingDiagnostics(page: Page): Promise<readonly AudioFireTimingDiagnostic[]> {
@@ -3610,6 +3634,90 @@ test("candidate development deep-clones elite phrase genomes into child candidat
     },
   });
   expect(rejectedDevelop.status()).toBe(400);
+});
+
+test("candidate cycle produces scores selects elites develops children and stays idempotent", async ({ page }) => {
+  await page.goto("/");
+  await flushPersistenceUntilIdle(page);
+
+  const uniqueSeed = 1_000_000 + Math.trunc(Date.now() % 1_000_000);
+  const branchId = `candidate-cycle-${uniqueSeed}`;
+  const options = {
+    seed: uniqueSeed,
+    kind: "phrase" as const,
+    count: 5,
+    eliteLimit: 2,
+    branchId,
+  };
+
+  const first = await runCandidateCycleInApp(page, options);
+  expect(first).toMatchObject({
+    kind: "phrase",
+    branchId,
+    seed: uniqueSeed,
+    count: 5,
+    eliteLimit: 2,
+  });
+  expect(first.produced).toHaveLength(5);
+  expect(first.elite).toHaveLength(2);
+  expect(first.purged).toHaveLength(3);
+  expect(first.children).toHaveLength(2);
+
+  const producedStatuses = first.produced.map((candidate) => candidate.status).sort();
+  expect(producedStatuses).toEqual(["elite", "elite", "purged", "purged", "purged"]);
+  const eliteIds = new Set(first.elite.map((candidate) => candidate.id));
+  const purgedIds = new Set(first.purged.map((candidate) => candidate.id));
+  for (const candidate of first.produced) {
+    const expectedFitness = aggregateCandidateFitness(candidate.scores).fitness;
+    expect(candidate.fitness).toBeCloseTo(expectedFitness, 4);
+    if (candidate.status === "elite") {
+      expect(eliteIds.has(candidate.id)).toBe(true);
+    }
+    if (candidate.status === "purged") {
+      expect(purgedIds.has(candidate.id)).toBe(true);
+    }
+  }
+
+  for (const child of first.children) {
+    const parent = first.elite.find((candidate) => candidate.id === child.parentId);
+    expect(parent).toBeTruthy();
+    expect(child.status).toBe("alive");
+    expect(child.generation).toBe((parent?.generation ?? 0) + 1);
+    expect(child.fitness).toBe(0);
+    expect(child.scores).toEqual({});
+    expect(child.mutation.type).toBe("phrase.nudge");
+  }
+
+  const firstDump = await dumpPersistence(page, 2_000);
+  const firstEvents = firstDump.events.filter((event) =>
+    event.branchId === branchId && event.type.startsWith("candidate.")
+  );
+  expect(firstEvents.filter((event) => event.type === "candidate.created")).toHaveLength(7);
+  expect(firstEvents.filter((event) => event.type === "candidate.scored")).toHaveLength(5);
+  expect(firstEvents.filter((event) => event.type === "candidate.retained")).toHaveLength(2);
+  expect(firstEvents.filter((event) => event.type === "candidate.purged")).toHaveLength(3);
+  expect(firstEvents.filter((event) =>
+    event.type === "candidate.created" && event.payload.reason === "development"
+  )).toHaveLength(2);
+  expect(firstEvents.filter((event) =>
+    ["candidate.retained", "candidate.purged"].includes(event.type)
+  ).map((event) => event.payload.reason)).toEqual([
+    "selection",
+    "selection",
+    "selection",
+    "selection",
+    "selection",
+  ]);
+
+  const second = await runCandidateCycleInApp(page, options);
+  expect(second).toEqual(first);
+  const secondDump = await dumpPersistence(page, 2_000);
+  const secondEvents = secondDump.events.filter((event) =>
+    event.branchId === branchId && event.type.startsWith("candidate.")
+  );
+  expect(secondEvents.map((event) => event.id).sort()).toEqual(
+    firstEvents.map((event) => event.id).sort(),
+  );
 });
 
 test("persistence records musical events through an off-callback buffer", async ({ page }) => {

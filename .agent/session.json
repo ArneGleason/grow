@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Implement Track A4 candidate development hook",
-  "status": "track-a4-implemented-ready-for-review",
-  "updatedAt": "2026-06-14T17:12:01Z",
+  "lastTask": "Implement Track D1 minimal end-to-end candidate cycle",
+  "status": "track-d1-implemented-ready-for-review",
+  "updatedAt": "2026-06-14T18:12:45Z",
   "lastHandoff": "",
-  "branch": "codex/byte-a4-development-hook",
+  "branch": "codex/byte-d1-candidate-cycle",
   "commit": "branch-head",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Track A4 is implemented on codex/byte-a4-development-hook. The branch adds developCandidate() to clone an elite same-branch phrase parent, deep-clone its genome, apply a closed bounded phrase.nudge mutation, and create a new alive child candidate with parentId, generation+1, empty scores, fitness 0, and caller-provided or derived deterministic seed. Child creation is audited through candidate.created with reason:\"development\", parentId, and normalized mutation. The endpoint/client/window hook are inspect-only; no audio/model/playback/scoring loop consumes developed children. Validation: build green, db:smoke green, smoke 43/43, diff-check green; npm audit still reports the known Vite/esbuild advisories."
+    "summary": "Track D1 is implemented on codex/byte-d1-candidate-cycle. The branch adds runCandidateCycle() as a composition layer over B4 produceProsodyCandidates(), A1 persistence writes, A2 aggregateCandidateFitness(), A3 selectCandidates(), and A4 developCandidate(). It stores/scored phrase candidates, selects elites, purges overflow, develops each elite through the audited phrase.nudge path, and exposes window.persistence.runCandidateCycle() for inspection. Repeated identical cycles skip reselection when the produced set is already settled so developed children are not purged and no duplicate candidate audit events are appended. No audio/model/playback/transport behavior consumes the cycle. Validation: build green, db:smoke green, smoke 58/58, diff-check green; npm audit still reports the known Vite/esbuild advisories."
   }
 }

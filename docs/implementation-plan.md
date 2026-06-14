@@ -1980,6 +1980,25 @@ Current scope:
 - The child creation is audited with the existing `candidate.created` event, carrying `reason: "development"`, `parentId`, and the normalized mutation.
 - No audio, model, playback, scoring loop, or automatic evolution loop consumes developed children yet.
 
+#### Track D1: Minimal End-To-End Candidate Cycle
+
+Compose the approved producer/store/fitness/selection/development primitives into one deterministic inspect-only generation.
+
+Status: implemented as `src/candidate-cycle.ts`.
+
+Current scope:
+
+- `runCandidateCycle({ seed, kind: "phrase", count, eliteLimit, branchId }, persistence)` produces phrase candidates through `produceProsodyCandidates()`.
+- Each produced candidate is stored through the A1 persistence client, then scored through A2's `aggregateCandidateFitness(scores)` and persisted through `scoreCandidate()`.
+- Selection calls the A3 `selectCandidates()` path when the produced set contains new alive candidates; repeated identical cycles skip reselection so developed children are not purged by a duplicate call.
+- Each surviving elite is developed through the A4 `developCandidate()` path with a deterministic bounded `phrase.nudge` mutation derived from the elite seed/id/generation.
+- The browser debug surface exposes `window.persistence.runCandidateCycle()`. It remains inspect-only: no audio, transport, playback, model, or automatic scheduler consumes the population.
+- The diversity seam is explicit before selection; future work can plug in a novelty reservoir or fitness+novelty blend once convergence can be observed.
+
+Open design question:
+
+- D1 uses A4's generic `phrase.nudge` mutation for children. Before D2 performs elites, decide whether development should move to the prosody B2 operators (`varyContour`, `reFoot`, `alterCadence`, `shiftAnacrusis`) so child phrases are musical developments rather than bounded mechanical nudges.
+
 ### Byte 16b: Band-Proposed Key/Mode Change
 
 First case: a bridge modulation, since it is already convention. A proposer (bassist first, model critic later) proposes a key/mode change for a target section through the Byte 12 proposal shape; players respond with the Byte 15c stance machinery; an accepted change commits through the lookahead path at the section boundary.
