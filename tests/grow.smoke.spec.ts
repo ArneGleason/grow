@@ -7,7 +7,7 @@ import {
   createMusicalEventPersistenceRecord,
 } from "../src/musical-event-record";
 import { calculatePerformedTiming } from "../src/performed-time";
-import { MELODY_PLAYER, PLAYER_REGISTRY } from "../src/players";
+import { MELODY_PLAYER, PLAYER_REGISTRY, type PlayerTasteProfile } from "../src/players";
 import {
   createMelodyConsensusDecision,
   createMockMelodyCriticSelection,
@@ -27,6 +27,7 @@ import {
   BALANCED_SECTION_DYNAMICS_PROFILE,
   createGoalSectionDynamicsProfile,
 } from "../src/section-dynamics";
+import { createGoalTasteProfile } from "../src/taste";
 import {
   createMockThoughtIntent,
   validateMusicalExcerpt,
@@ -301,6 +302,13 @@ type TasteEvaluation = {
   updatedAtBeat: number;
 };
 
+type TasteProfileSnapshot = {
+  playerId: string;
+  role: string;
+  base: PlayerTasteProfile;
+  adjusted: PlayerTasteProfile;
+};
+
 type OllamaThoughtProbe = {
   status: string;
   provider: string;
@@ -524,6 +532,21 @@ async function getTasteEvaluations(page: Page): Promise<readonly TasteEvaluation
   }
 
   return evaluations;
+}
+
+async function getTasteProfiles(page: Page): Promise<readonly TasteProfileSnapshot[]> {
+  const profiles = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      taste?: { getProfiles(): readonly TasteProfileSnapshot[] };
+    };
+    return appWindow.taste?.getProfiles();
+  });
+
+  if (!profiles) {
+    throw new Error("window.taste.getProfiles() was not available");
+  }
+
+  return profiles;
 }
 
 async function getThoughtSeeds(page: Page): Promise<readonly PlayerThoughtSeed[]> {
@@ -1653,6 +1676,30 @@ test("section dynamics policy is shared by playback and form scoring", () => {
   expect(spaciousChorusBassDecision.velocityMultiplier).toBeCloseTo(0.61959, 5);
 });
 
+test("song goal taste profile applies bounded surprise and disposition nudges", () => {
+  expect(createGoalTasteProfile(MELODY_PLAYER.taste, "melody", undefined)).toBe(MELODY_PLAYER.taste);
+
+  const restless = createGoalTasteProfile(MELODY_PLAYER.taste, "melody", {
+    id: "restless",
+    surpriseTarget: 0.72,
+    dispositionBias: { melody: 0.14 },
+  });
+  expect(restless.noveltyPreference).toBeGreaterThan(MELODY_PLAYER.taste.noveltyPreference);
+  expect(restless.repetitionPreference).toBeLessThan(MELODY_PLAYER.taste.repetitionPreference);
+  expect(restless.densityTarget).toBeGreaterThan(MELODY_PLAYER.taste.densityTarget);
+  expect(restless.densityTolerance).toBeGreaterThan(MELODY_PLAYER.taste.densityTolerance);
+
+  const spare = createGoalTasteProfile(MELODY_PLAYER.taste, "melody", {
+    id: "spare",
+    surpriseTarget: 0.14,
+    dispositionBias: { melody: -0.25 },
+  });
+  expect(spare.noveltyPreference).toBeLessThan(MELODY_PLAYER.taste.noveltyPreference);
+  expect(spare.repetitionPreference).toBeGreaterThan(MELODY_PLAYER.taste.repetitionPreference);
+  expect(spare.densityTarget).toBeLessThan(MELODY_PLAYER.taste.densityTarget);
+  expect(spare.densityTolerance).toBeGreaterThan(MELODY_PLAYER.taste.densityTolerance);
+});
+
 test("song goal interpreter produces bounded deterministic knobs", () => {
   const spacious = interpretSongGoal("slow bright spacious wide return with machine pulse in G dorian");
   const urgent = interpretSongGoal("urgent restless hook chorus with glass sparks");
@@ -1796,8 +1843,10 @@ test("song goal setup applies tonal context tempo form and persists the structur
   await expect(page.getByTestId("song-goal-applied")).toContainText("75 BPM");
   await expect(page.getByTestId("song-goal-applied")).toContainText("wide-return");
   await expect(page.getByTestId("song-goal-applied")).toContainText("energy 0.44");
+  await expect(page.getByTestId("song-goal-applied")).toContainText("surprise 0.42");
   await expect(page.getByTestId("song-goal-applied")).toContainText("chorus 0.72");
   await expect(page.getByTestId("song-goal-applied")).toContainText("bridge 0.72");
+  await expect(page.getByTestId("song-goal-applied")).toContainText("melody -0.020");
   await expect(page.getByTestId("listening-tonal-context")).toHaveText("G dorian");
   const appliedGoal = await getAppliedSongGoal(page);
   expect(appliedGoal).toMatchObject({
@@ -1818,6 +1867,14 @@ test("song goal setup applies tonal context tempo form and persists the structur
     return appWindow.formScore?.getVariant().id;
   });
   expect(activeVariant).toBe("wide-return");
+  const tasteProfiles = await getTasteProfiles(page);
+  const pulseTasteProfile = tasteProfiles.find((profile) => profile.playerId === "pulse");
+  const melodyTasteProfile = tasteProfiles.find((profile) => profile.playerId === "melody");
+  expect(pulseTasteProfile).toBeTruthy();
+  expect(melodyTasteProfile).toBeTruthy();
+  expect(pulseTasteProfile!.adjusted.densityTarget).toBeGreaterThan(pulseTasteProfile!.base.densityTarget);
+  expect(pulseTasteProfile!.adjusted.noveltyPreference).toBeGreaterThan(pulseTasteProfile!.base.noveltyPreference);
+  expect(melodyTasteProfile!.adjusted.densityTarget).toBeLessThan(melodyTasteProfile!.base.densityTarget);
   const sketch = await getSongSketch(page);
   expect(sketch.tonalContext).toEqual({
     tonic: "G",

@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Merge approved Byte 17c-a and route review artifact",
-  "status": "byte17c-a-approved-merged-ready-for-byte17c-b",
-  "updatedAt": "2026-06-14T02:55:04Z",
+  "lastTask": "Implement Byte 17c-b SongGoal surprise and disposition taste nudges",
+  "status": "byte17c-b-implemented-ready-for-review",
+  "updatedAt": "2026-06-14T03:04:02Z",
   "lastHandoff": "",
-  "branch": "main",
+  "branch": "codex/byte-17c-b",
   "commit": "branch-head",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 17c-a is approved and merged on main with Claude's durable review artifact included. Applied SongGoal energy and sectionEmphasis now derive a bounded section-dynamics velocity overlay shared by playback and form scoring. Claude confirmed no model/prose/material authority was introduced and the multiplier envelope cannot collapse or overdrive sections. Next slice is Byte 17c-b: apply surpriseTarget and/or bounded disposition nudges through existing scorer/taste mechanisms, sharing one adjusted value and avoiding note-selection authority."
+    "summary": "Byte 17c-b is implemented on codex/byte-17c-b. Applied SongGoal surpriseTarget and dispositionBias now derive adjusted PlayerTasteProfile thresholds used by the existing taste evaluator: surprise nudges novelty/repetition, and role bias nudges density target/tolerance. The player registry remains unchanged and window.taste.getProfiles() exposes base vs adjusted values. Scope stays deterministic and bounded: no model, no prose parsing, no direct action override, no note generation/removal, no persistence schema change. Validation so far: build green, smoke 38/38, db:smoke green, diff-check green; npm audit still reports the known Vite/esbuild advisories."
   }
 }

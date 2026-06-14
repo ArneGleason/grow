@@ -1898,6 +1898,16 @@ First character-drive slice:
 - Keep this as an overlay on app-owned deterministic material: no model, no prose parsing, no new notes, no new persistence schema.
 - Leave `surpriseTarget`, `dispositionBias`, and `influenceHints` for smaller follow-up slices.
 
+#### Byte 17c-b: Surprise And Disposition Taste Nudges
+
+Second character-drive slice:
+
+- Derive an adjusted `PlayerTasteProfile` from the applied `SongGoal`.
+- Use `surpriseTarget` as a bounded nudge toward novelty/repetition preference, and role-specific `dispositionBias` as a bounded density-target nudge.
+- Feed the adjusted taste profile into the existing taste evaluation path; do not alter actions directly, bypass dwell, parse prose, or create/remove notes.
+- Expose the base/adjusted taste profiles through the debug surface so reviews can verify one shared adjusted value.
+- Leave curated `influenceHints` and melody-scoring prior nudges for a separate slice.
+
 #### Byte 17d: Local ML SongGoal Interpreter
 
 Let Ollama fill the proven `SongGoal` shape via structured output, validator/clamps, and deterministic fallback. The model fills knobs only.

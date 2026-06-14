@@ -48,7 +48,33 @@ const DEFAULT_DECISION: TasteNoteDecision = {
   reason: "No taste evaluation yet; keep the deterministic pattern.",
 };
 
+export interface GoalTasteSource {
+  id: string;
+  surpriseTarget: number;
+  dispositionBias: Partial<Record<PlayerRole, number>>;
+}
+
 const MIN_ACTION_DWELL_BEATS = 4;
+const BASELINE_GOAL_SURPRISE = 0.42;
+
+export function createGoalTasteProfile(
+  baseProfile: PlayerTasteProfile,
+  playerRole: PlayerRole,
+  goal: GoalTasteSource | undefined,
+): PlayerTasteProfile {
+  if (!goal) return baseProfile;
+  const surpriseDelta = clamp(goal.surpriseTarget, 0, 1) - BASELINE_GOAL_SURPRISE;
+  const roleBias = clamp(goal.dispositionBias[playerRole] ?? 0, -0.25, 0.25);
+  const noveltyShift = surpriseDelta * 0.36 + Math.max(0, roleBias) * 0.16;
+  const densityShift = roleBias * 0.4;
+  return {
+    ...baseProfile,
+    densityTarget: roundTaste(clamp(baseProfile.densityTarget + densityShift, 0.1, 1.2)),
+    densityTolerance: roundTaste(clamp(baseProfile.densityTolerance + Math.abs(roleBias) * 0.08, 0.18, 0.7)),
+    noveltyPreference: roundTaste(clamp(baseProfile.noveltyPreference + noveltyShift, 0, 1)),
+    repetitionPreference: roundTaste(clamp(baseProfile.repetitionPreference - noveltyShift * 0.72, 0, 1)),
+  };
+}
 
 export function createInitialTasteEvaluation(player: Player): PlayerTasteEvaluation {
   return {
@@ -408,4 +434,13 @@ function isWholeBeat(beat: number): boolean {
 
 function clamp01(value: number): number {
   return Math.max(0, Math.min(1, value));
+}
+
+function clamp(value: number, minimum: number, maximum: number): number {
+  if (!Number.isFinite(value)) return minimum;
+  return Math.min(maximum, Math.max(minimum, value));
+}
+
+function roundTaste(value: number): number {
+  return Math.round(value * 1000) / 1000;
 }

@@ -6,7 +6,7 @@ import {
   type TonalContext,
 } from "./listening";
 import { RECENT_ACTIVITY_WINDOW_BEATS } from "./music-time";
-import type { Player, PlayerRuntimeState } from "./players";
+import type { Player, PlayerRuntimeState, PlayerTasteProfile } from "./players";
 import { DEFAULT_SESSION_MODE, type SessionMode } from "./session-mode";
 import {
   createInitialTasteEvaluation,
@@ -130,11 +130,20 @@ export class GrowWorldState {
     });
   }
 
-  syncTasteEvaluations(frame: ListeningFrame): void {
+  syncTasteEvaluations(
+    frame: ListeningFrame,
+    options: {
+      getTasteProfile?: (player: Player) => PlayerTasteProfile;
+    } = {},
+  ): void {
     for (const player of this.players) {
+      const tasteProfile = options.getTasteProfile?.(player) ?? player.taste;
+      const tastePlayer = tasteProfile === player.taste
+        ? player
+        : { ...player, taste: tasteProfile };
       this.tasteEvaluations.set(
         player.id,
-        evaluatePlayerTaste(player, frame, this.tasteEvaluations.get(player.id)),
+        evaluatePlayerTaste(tastePlayer, frame, this.tasteEvaluations.get(player.id)),
       );
     }
   }

@@ -59,7 +59,7 @@ import {
   type MelodyPhraseScore,
   type MelodyRepairTake,
 } from "./melody-scoring";
-import { PLAYER_REGISTRY } from "./players";
+import { PLAYER_REGISTRY, type Player, type PlayerTasteProfile } from "./players";
 import {
   DEFAULT_SESSION_MODE,
   getSessionModeLabel,
@@ -112,6 +112,7 @@ import {
   type TerrariumVisualState,
 } from "./terrarium";
 import {
+  createGoalTasteProfile,
   type PlayerTasteEvaluation,
   type TasteNoteDecision,
   type TasteNoteDecisionInput,
@@ -1276,7 +1277,9 @@ function formatAppliedSongGoal(goal: SongGoal): string {
     `${goal.tempoBpm} BPM`,
     goal.formPreference,
     `energy ${goal.energy.toFixed(2)}`,
+    `surprise ${goal.surpriseTarget.toFixed(2)}`,
     formatSectionEmphasis(goal),
+    formatSongGoalBiases(goal),
     goal.id,
   ].join(" | ");
 }
@@ -1858,6 +1861,34 @@ function getGoalSectionDynamicsProfile(variant: FormVariant = getCurrentFormVari
       }
       : undefined,
   );
+}
+
+function getGoalTasteProfile(player: Player): PlayerTasteProfile {
+  return createGoalTasteProfile(
+    player.taste,
+    player.role,
+    appliedSongGoal
+      ? {
+        id: appliedSongGoal.id,
+        surpriseTarget: appliedSongGoal.surpriseTarget,
+        dispositionBias: appliedSongGoal.dispositionBias,
+      }
+      : undefined,
+  );
+}
+
+function getGoalTasteProfiles(): readonly {
+  playerId: string;
+  role: string;
+  base: PlayerTasteProfile;
+  adjusted: PlayerTasteProfile;
+}[] {
+  return world.getPlayers().map(({ player }) => ({
+    playerId: player.id,
+    role: player.role,
+    base: { ...player.taste },
+    adjusted: getGoalTasteProfile(player),
+  }));
 }
 
 function getCurrentFormVariantScores(state: GrowTransportState = getState()): readonly ScoredFormVariant[] {
@@ -2609,7 +2640,9 @@ function renderWorld(state: GrowTransportState = getState()): void {
     meter: [4, 4],
     currentBeat: state.currentBeat,
   });
-  world.syncTasteEvaluations(frame);
+  world.syncTasteEvaluations(frame, {
+    getTasteProfile: getGoalTasteProfile,
+  });
   const evaluations = world.getTasteEvaluations();
   const thoughtRequests = world.getThoughtRequests(frame);
   const thoughtIntents = world.getMockThoughtIntents(frame, thoughtRequests);
@@ -3086,6 +3119,12 @@ declare global {
     };
     taste?: {
       getEvaluations(): readonly PlayerTasteEvaluation[];
+      getProfiles(): readonly {
+        playerId: string;
+        role: string;
+        base: PlayerTasteProfile;
+        adjusted: PlayerTasteProfile;
+      }[];
     };
     thinking?: {
       getSeeds(): readonly PlayerThoughtSeed[];
@@ -3184,6 +3223,7 @@ window.listening = {
 
 window.taste = {
   getEvaluations: () => world.getTasteEvaluations(),
+  getProfiles: () => getGoalTasteProfiles(),
 };
 
 window.thinking = {
