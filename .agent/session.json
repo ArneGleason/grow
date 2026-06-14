@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Implement Track A3 candidate selection",
-  "status": "track-a3-implemented-ready-for-review",
-  "updatedAt": "2026-06-14T15:11:01Z",
+  "lastTask": "Merge Track A3 candidate selection review",
+  "status": "track-a3-approved-merged-ready-for-a4",
+  "updatedAt": "2026-06-14T17:01:13Z",
   "lastHandoff": "",
-  "branch": "codex/byte-a3-selection",
+  "branch": "main",
   "commit": "branch-head",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Track A3 is implemented on codex/byte-a3-selection. The branch adds per-kind selectCandidates() to the candidate store, using deterministic fitness/generation/created_at/id ordering to mark top eliteLimit candidates elite and purge overflow with existing candidate.retained/candidate.purged audit events carrying reason:\"selection\" and rank. It is exposed through /api/persistence/candidates/select, the persistence client, and window.persistence.selectCandidates(), but no audio/model/playback/generator loop consumes selection. Validation: build green, db:smoke green, smoke 42/42, diff-check green; npm audit still reports the known Vite/esbuild advisories. Next likely Track A4: clone elite candidates into bounded child candidates, deep-cloning genomes before mutation."
+    "summary": "Track A3 is approved and merged to main. The durable Claude review artifact from claude/codex-a3-selection-code-review was cherry-picked, and the A1+A2+A3 candidate-store engine is complete. A3 adds per-kind selectCandidates() to the candidate store, using deterministic fitness/generation/created_at/id ordering to mark top eliteLimit candidates elite and purge overflow with candidate.retained/candidate.purged audit events carrying reason:\"selection\" and rank. Carry forward: selection is strict elitism and should get a diversity lever later; A4 must deep-clone genomes, create new ids with parentId and generation+1, and never mutate elites in place. Next: Track A4 development hook."
   }
 }
