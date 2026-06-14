@@ -662,6 +662,13 @@ function clearWallClockFallback(eventId: number): void {
   }
 }
 
+function clearWallClockFallbackTimers(): void {
+  for (const timeoutId of wallClockFallbackTimers.values()) {
+    window.clearTimeout(timeoutId);
+  }
+  wallClockFallbackTimers.clear();
+}
+
 function scheduleWallClockFallback(
   tone: typeof ToneNS,
   eventId: number,
@@ -746,10 +753,7 @@ function disposeLookaheadSchedule(tone: typeof ToneNS | null = Tone): void {
     lookaheadTimerId = 0;
   }
 
-  for (const timeoutId of wallClockFallbackTimers.values()) {
-    window.clearTimeout(timeoutId);
-  }
-  wallClockFallbackTimers.clear();
+  clearWallClockFallbackTimers();
 
   const transport = tone?.getTransport();
   if (transport) {
@@ -850,6 +854,7 @@ export function refreshLookaheadSchedule(): GrowTransportState {
 
   const transport = Tone.getTransport();
   transport.bpm.value = getActiveTempoBpm();
+  clearWallClockFallbackTimers();
   for (const eventId of scheduledEventIds) {
     transport.clear(eventId);
   }

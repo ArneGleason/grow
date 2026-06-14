@@ -1876,6 +1876,15 @@ Prep slice before SongGoal drives sound:
 - Let transport read active tonal context and tempo through handlers instead of raw static assumptions.
 - Route display/root-name paths through the active context. No SongGoal setup is applied yet.
 
+#### Byte 17b-b: Explicit Apply/Audition Setup
+
+First setup-drive slice:
+
+- Keep interpretation as preview until the human presses an explicit Apply setup control.
+- Apply only validated structured fields: `(tonic, mode)` -> active tonal context, `tempoBpm` -> active transport tempo, and `formPreference` -> active form variant.
+- Refresh lookahead scheduling after setup changes so committed material, tempo, section form, and fallback timers are rebuilt together instead of mixing old and new setup.
+- Persist `song.goal_set` with the full bounded `SongGoal` plus previous/next setup snapshots so the take can be reproduced from structured data; never parse `sourceIdea`, `brief`, or rationale prose as instructions.
+
 #### Byte 17c: Goal Drives Character
 
 Apply bounded goal character fields to existing knobs: energy/surprise, per-player disposition nudges, curated influence-hint nudges, and section emphasis.

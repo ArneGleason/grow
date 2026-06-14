@@ -20,6 +20,7 @@ These are logical records. They may initially be stored as `events.type + payloa
 | `session.started` | Opens a local run of the terrarium. | `sessionId`, `spaceId`, `branchId`, name, created time, app/schema versions. | Browser viewport, inspector width, help panel state. |
 | `session.mode_changed` | Makes breaks/rehearsal/performance replayable. | `fromMode`, `toMode`, beat, actor/source. | Rendered labels only. |
 | `song.changed` | Makes selected song material replayable and explains generator resets. | `fromSongId`, `toSongId`, beat, actor/source, cleared ledger/thinking flags. | Inspector-only labels. |
+| `song.goal_set` | Makes a human/agent song idea reproducible from the validated structured goal, not just prose. | Full bounded `SongGoal`, previous/next setup snapshot, beat, actor/source, refresh/clear flags. | Parsing `sourceIdea`, `brief`, or `rationale` as instructions. |
 | `song.form_variant_changed` | Makes explicit form-variant auditions replayable when the human switches the song arc. | `fromVariantId`, `toVariantId`, beat, actor/source, refreshed lookahead/thinking flags. | Score readout text and radio selected state. |
 | `timing.feel_changed` | Makes grid/feel/wide timing choices replayable. | `fromFeel`, `toFeel`, beat, actor/source. | Button selected state. |
 | `transport.started` / `transport.stopped` | Optional transport lifecycle audit if start/stop becomes replayable. | beat, actor/source, clear/drain behavior, reason. | AudioContext internals or scheduler handles. |

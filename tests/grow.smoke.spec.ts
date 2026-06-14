@@ -54,11 +54,12 @@ import {
   interpretSongGoal,
   SONG_GOAL_INFLUENCE_HINTS,
   validateSongGoal,
+  type SongGoal,
   type SongGoalInterpretation,
 } from "../src/song-goal";
 import type { SongSketch, SongSketchProposal } from "../src/song-sketch";
 import type { PlayerThoughtSeed } from "../src/thought-seeds";
-import { DEFAULT_TONAL_CONTEXT } from "../src/tonal-context";
+import { createTonalContext, DEFAULT_TONAL_CONTEXT } from "../src/tonal-context";
 
 type TransportState = {
   status: "stopped" | "playing";
@@ -695,6 +696,15 @@ async function getSongGoalResult(page: Page): Promise<SongGoalInterpretation> {
   }
 
   return result;
+}
+
+async function getAppliedSongGoal(page: Page): Promise<SongGoal | undefined> {
+  return page.evaluate(() => {
+    const appWindow = window as unknown as {
+      songGoal?: { getAppliedGoal(): SongGoal | undefined };
+    };
+    return appWindow.songGoal?.getAppliedGoal();
+  });
 }
 
 async function getMelodyRepairTake(page: Page): Promise<MelodyRepairTake> {
@@ -1681,6 +1691,19 @@ test("song goal validation clamps numbers and rejects unknown vocabulary", () =>
   expect(result.clamps.length).toBeGreaterThanOrEqual(5);
 });
 
+test("song goal setup derives a bounded tonal context", () => {
+  expect(createTonalContext("G", "dorian")).toEqual({
+    tonic: "G",
+    mode: "dorian",
+    scale: ["G", "A", "Bb", "C", "D", "E", "F"],
+  });
+  expect(createTonalContext("Bb", "mixolydian")).toEqual({
+    tonic: "Bb",
+    mode: "mixolydian",
+    scale: ["Bb", "C", "D", "Eb", "F", "G", "Ab"],
+  });
+});
+
 test("song goal inspector interprets prose without driving playback", async ({ page }) => {
   await page.goto("/");
   await flushPersistence(page);
@@ -1721,6 +1744,90 @@ test("song goal inspector interprets prose without driving playback", async ({ p
   expect(afterState.bpm).toBe(beforeState.bpm);
   expect(afterState.songId).toBe(beforeState.songId);
   expect(afterState.songForm.sectionType).toBe(beforeState.songForm.sectionType);
+});
+
+test("song goal setup applies tonal context tempo form and persists the structured goal", async ({ page }) => {
+  await page.goto("/");
+  await flushPersistence(page);
+  const beforeState = await getTransportState(page);
+  expect(beforeState.bpm).toBe(90);
+
+  await page.getByTestId("song-goal-idea-input").fill("slow bright spacious wide return with machine pulse in G dorian");
+  await page.getByTestId("song-goal-interpret").click();
+  await expect(page.getByTestId("song-goal-setup")).toContainText("G dorian");
+  await expect(page.getByTestId("song-goal-applied")).toContainText("not applied");
+
+  await page.getByTestId("song-goal-apply").click();
+  await expect(page.getByTestId("song-goal-applied")).toContainText("G dorian");
+  await expect(page.getByTestId("song-goal-applied")).toContainText("75 BPM");
+  await expect(page.getByTestId("song-goal-applied")).toContainText("wide-return");
+  await expect(page.getByTestId("listening-tonal-context")).toHaveText("G dorian");
+  const appliedGoal = await getAppliedSongGoal(page);
+  expect(appliedGoal).toMatchObject({
+    tonic: "G",
+    mode: "dorian",
+    tempoBpm: 75,
+    formPreference: "wide-return",
+  });
+
+  const setupState = await getTransportState(page);
+  expect(setupState.status).toBe("stopped");
+  expect(setupState.bpm).toBe(75);
+  expect(setupState.lookahead.pendingSlotCount).toBe(0);
+  const activeVariant = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      formScore?: { getVariant(): { id: string } };
+    };
+    return appWindow.formScore?.getVariant().id;
+  });
+  expect(activeVariant).toBe("wide-return");
+  const sketch = await getSongSketch(page);
+  expect(sketch.tonalContext).toEqual({
+    tonic: "G",
+    mode: "dorian",
+    scale: ["G", "A", "Bb", "C", "D", "E", "F"],
+  });
+
+  await flushPersistence(page);
+  const persistenceState = await getPersistenceState(page);
+  const dump = await dumpPersistence(page, 200);
+  const goalEvents = dump.events
+    .filter((event) =>
+      event.sessionId === persistenceState.sessionId &&
+      event.type === "song.goal_set"
+    )
+    .sort((left, right) => left.seq - right.seq);
+  expect(goalEvents).toHaveLength(1);
+  expect(goalEvents[0].payload.goal).toMatchObject({
+    tonic: "G",
+    mode: "dorian",
+    tempoBpm: 75,
+    formPreference: "wide-return",
+  });
+  expect(goalEvents[0].payload.nextSetup).toMatchObject({
+    tonic: "G",
+    mode: "dorian",
+    tempoBpm: 75,
+    formVariantId: "wide-return",
+  });
+
+  await page.getByTestId("transport-toggle").click();
+  await expect(page.getByTestId("transport-toggle")).toHaveText("Stop");
+  await expect.poll(async () => (await getListeningFrame(page)).eventCount, { timeout: 8_000 }).toBeGreaterThan(8);
+  const frame = await getListeningFrame(page);
+  expect(frame.tonalContext).toEqual({
+    tonic: "G",
+    mode: "dorian",
+    scale: ["G", "A", "Bb", "C", "D", "E", "F"],
+  });
+  const heardPitchClasses = frame.recentEvents
+    .map((event) => event.pitch?.replace(/-?\d+$/, ""))
+    .filter((pitchClass): pitchClass is string => Boolean(pitchClass));
+  expect(heardPitchClasses.length).toBeGreaterThan(0);
+  expect(heardPitchClasses.every((pitchClass) => frame.tonalContext.scale.includes(pitchClass))).toBe(true);
+
+  await page.getByTestId("transport-toggle").click();
+  await expect(page.getByTestId("transport-toggle")).toHaveText("Start");
 });
 
 test("form variant selector scores candidates and drives the transport form", async ({ page }) => {

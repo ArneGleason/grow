@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Merge approved Byte 17b-a and route review artifact",
-  "status": "byte17b-a-approved-merged-ready-for-byte17b-b",
-  "updatedAt": "2026-06-13T23:39:49Z",
+  "lastTask": "Implement Byte 17b-b explicit SongGoal setup apply",
+  "status": "byte17b-b-implemented-ready-for-review",
+  "updatedAt": "2026-06-14T00:11:37Z",
   "lastHandoff": "",
-  "branch": "main",
-  "commit": "6aae26b",
+  "branch": "codex/byte-17b-b",
+  "commit": "branch-head",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 17b-a is approved and merged on main with Claude's durable review artifact included. Setup plumbing is behavior-preserving: token/phrase matching prevents short substring false positives, world state can hold active tonal context, transport reads active tempo/context through handlers, and display formatting uses active context. Next slice is Byte 17b-b: explicit Apply/Audition Goal Setup, using validated SongGoal setup fields to set active tonal context, tempo, and form preference, then persist song.goal_set. Apply through refreshLookaheadSchedule or stop/start boundaries and clear wall-clock fallback timers so old committed material does not mix with new setup."
+    "summary": "Byte 17b-b is implemented on codex/byte-17b-b. The Song Goal panel now previews interpretation until Apply setup is pressed; Apply uses only validated structured fields to set active tonal context, active tempo, and form variant, then clears stale musical/slow-thinking/critic state, refreshes lookahead scheduling, clears wall-clock fallback timers, and persists song.goal_set with the bounded SongGoal plus previous/next setup snapshots. Smoke proves a G dorian / 75 BPM / Wide Return goal updates display, transport, sketch/scoring context, persistence, and heard pitch classes in the active scale."
   }
 }

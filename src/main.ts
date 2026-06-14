@@ -100,6 +100,7 @@ import {
   type SongGoalValidationResult,
   type SongGoalVocabulary,
 } from "./song-goal";
+import { createTonalContext } from "./tonal-context";
 import {
   createTerrariumView,
   type TerrariumHeatState,
@@ -159,6 +160,7 @@ let melodyDevelopmentMode: MelodyDevelopmentMode = "repaired";
 let formVariantId: FormVariantId = DEFAULT_FORM_VARIANT_ID;
 let activeTempoBpm = DEFAULT_TRANSPORT_BPM;
 let songGoalInterpretation = interpretSongGoal("Build a balanced modal terrarium piece.");
+let appliedSongGoal: SongGoal | undefined;
 let cachedSongSketchKey = "";
 let cachedSongSketchBase: SongSketch | undefined;
 let cachedMelodyRepairKey = "";
@@ -311,7 +313,7 @@ const HELP_TOPICS = {
   },
   "song-goal": {
     title: "Song Goal",
-    body: "Song Goal interprets a free-text idea into bounded setup and character knobs. The prose is provenance only; in this byte the goal is inspect-only and does not drive key, tempo, form, players, or playback.",
+    body: "Song Goal interprets a free-text idea into bounded setup and character knobs. Interpret previews the structured goal; Apply setup uses only validated key, tempo, and form fields. Prose remains provenance only.",
   },
   "melody-score": {
     title: "Melody Score",
@@ -571,11 +573,14 @@ ${renderHelpButton("song-goal", "song goal")}
             </label>
             <div class="ollama-actions">
               <button class="mini-button" data-testid="song-goal-interpret" type="button">Interpret</button>
+              <button class="mini-button" data-testid="song-goal-apply" type="button">Apply setup</button>
             </div>
           </div>
           <dl>
             <dt>Status</dt>
             <dd data-testid="song-goal-status">idle</dd>
+            <dt>Applied</dt>
+            <dd data-testid="song-goal-applied">none</dd>
             <dt>Setup</dt>
             <dd data-testid="song-goal-setup">none</dd>
             <dt>Character</dt>
@@ -779,7 +784,9 @@ const lookaheadThrough = requireElement<HTMLElement>("[data-testid='lookahead-th
 const lookaheadPendingSlots = requireElement<HTMLElement>("[data-testid='lookahead-pending-slots']");
 const songGoalIdeaInput = requireElement<HTMLInputElement>("[data-testid='song-goal-idea-input']");
 const songGoalInterpretButton = requireElement<HTMLButtonElement>("[data-testid='song-goal-interpret']");
+const songGoalApplyButton = requireElement<HTMLButtonElement>("[data-testid='song-goal-apply']");
 const songGoalStatus = requireElement<HTMLElement>("[data-testid='song-goal-status']");
+const songGoalApplied = requireElement<HTMLElement>("[data-testid='song-goal-applied']");
 const songGoalSetup = requireElement<HTMLElement>("[data-testid='song-goal-setup']");
 const songGoalCharacter = requireElement<HTMLElement>("[data-testid='song-goal-character']");
 const songGoalInfluences = requireElement<HTMLElement>("[data-testid='song-goal-influences']");
@@ -1231,11 +1238,15 @@ function formatSlowThoughtPlayback(playback: SlowThoughtPlayback): string {
 
 function renderSongGoal(interpretation: SongGoalInterpretation): void {
   const { goal, validation, matchedKeywords } = interpretation;
+  songGoalApplyButton.disabled = !validation.valid;
   songGoalStatus.textContent = [
     goal.status,
     validation.valid ? "valid" : `invalid (${validation.errors.length})`,
     `${matchedKeywords.length} cues`,
   ].join(" | ");
+  songGoalApplied.textContent = appliedSongGoal
+    ? formatAppliedSongGoal(appliedSongGoal)
+    : "not applied; current setup is default";
   songGoalSetup.textContent = [
     `${goal.tonic} ${goal.mode}`,
     `${goal.tempoBpm} BPM`,
@@ -1255,11 +1266,64 @@ function renderSongGoal(interpretation: SongGoalInterpretation): void {
   songGoalValidation.textContent = formatSongGoalValidation(validation);
 }
 
+function formatAppliedSongGoal(goal: SongGoal): string {
+  return `${goal.tonic} ${goal.mode} | ${goal.tempoBpm} BPM | ${goal.formPreference} | ${goal.id}`;
+}
+
 function applySongGoalIdea(sourceIdea: string): SongGoalInterpretation {
   songGoalInterpretation = interpretSongGoal(sourceIdea);
   songGoalIdeaInput.value = songGoalInterpretation.goal.sourceIdea;
   renderWorld();
   return songGoalInterpretation;
+}
+
+function applySongGoalSetup(
+  interpretation: SongGoalInterpretation = songGoalInterpretation,
+): SongGoal | undefined {
+  if (!interpretation.validation.valid) {
+    renderWorld();
+    return undefined;
+  }
+
+  const goal = cloneSongGoal(interpretation.goal);
+  const previousSetup = getCurrentSongGoalSetupSnapshot(appliedSongGoal);
+  world.setTonalContext(createTonalContext(goal.tonic, goal.mode));
+  activeTempoBpm = goal.tempoBpm;
+  formVariantId = goal.formPreference;
+  appliedSongGoal = cloneSongGoal(goal);
+  melodyRepairFeedbackMessage = "Goal setup applied.";
+  invalidateMelodyRepairCache();
+  ollamaProposalTextTest = createInitialOllamaProposalTextTest(ollamaConfig);
+  resetMelodyCriticTest("Goal setup changed; melody critic reset");
+  cancelSlowThinkingControllers("goal setup changed before the thought could land");
+  clearSlowThoughtPlayback();
+  world.clearMusicalEvents();
+  world.resetTasteEvaluations();
+  refreshLookaheadSchedule();
+  recordSongGoalSet(goal, previousSetup, getCurrentSongGoalSetupSnapshot(appliedSongGoal));
+  renderWorld();
+  return cloneSongGoal(goal);
+}
+
+function cloneSongGoal(goal: SongGoal): SongGoal {
+  return {
+    ...goal,
+    dispositionBias: { ...goal.dispositionBias },
+    influenceHints: [...goal.influenceHints],
+    sectionEmphasis: { ...goal.sectionEmphasis },
+  };
+}
+
+function getCurrentSongGoalSetupSnapshot(goal: SongGoal | undefined): Record<string, unknown> {
+  const tonalContext = world.getTonalContext();
+  return {
+    goalId: goal?.id,
+    tonic: tonalContext.tonic,
+    mode: tonalContext.mode,
+    scale: [...tonalContext.scale],
+    tempoBpm: activeTempoBpm,
+    formVariantId,
+  };
 }
 
 function formatSongGoalValidation(validation: SongGoalValidationResult): string {
@@ -2770,6 +2834,28 @@ function recordFormVariantChanged(fromVariantId: FormVariantId, toVariantId: For
   });
 }
 
+function recordSongGoalSet(
+  goal: SongGoal,
+  previousSetup: Record<string, unknown>,
+  nextSetup: Record<string, unknown>,
+): void {
+  persistence.record({
+    type: "song.goal_set",
+    actorId: "human",
+    sessionMode: world.getSessionMode(),
+    beat: getPersistenceBeat(),
+    payload: {
+      source: "song-goal-apply",
+      goal: cloneSongGoal(goal) as unknown as Record<string, unknown>,
+      previousSetup,
+      nextSetup,
+      refreshedLookahead: true,
+      clearedLedger: true,
+      clearedSlowThinking: true,
+    },
+  });
+}
+
 function getPersistenceBeat(): number {
   return roundDisplayBeat(getState().currentBeat);
 }
@@ -2858,6 +2944,10 @@ formVariantControl.addEventListener("change", (event) => {
 
 songGoalInterpretButton.addEventListener("click", () => {
   applySongGoalIdea(songGoalIdeaInput.value);
+});
+
+songGoalApplyButton.addEventListener("click", () => {
+  applySongGoalSetup();
 });
 
 songGoalIdeaInput.addEventListener("keydown", (event) => {
@@ -2996,6 +3086,8 @@ declare global {
       setId(nextSongId: string): SongId;
     };
     songGoal?: {
+      applySetup(): SongGoal | undefined;
+      getAppliedGoal(): SongGoal | undefined;
       getGoal(): SongGoal;
       getLastResult(): SongGoalInterpretation;
       getVocabulary(): SongGoalVocabulary;
@@ -3141,6 +3233,8 @@ window.song = {
 };
 
 window.songGoal = {
+  applySetup: () => applySongGoalSetup(),
+  getAppliedGoal: () => appliedSongGoal ? cloneSongGoal(appliedSongGoal) : undefined,
   getGoal: () => ({
     ...songGoalInterpretation.goal,
     dispositionBias: { ...songGoalInterpretation.goal.dispositionBias },
