@@ -22,7 +22,11 @@ import {
   shouldSessionModeRefillLookahead,
   type SessionMode,
 } from "../src/session-mode";
-import { applySectionDynamics } from "../src/section-dynamics";
+import {
+  applySectionDynamics,
+  BALANCED_SECTION_DYNAMICS_PROFILE,
+  createGoalSectionDynamicsProfile,
+} from "../src/section-dynamics";
 import {
   createMockThoughtIntent,
   validateMusicalExcerpt,
@@ -1617,6 +1621,36 @@ test("section dynamics policy is shared by playback and form scoring", () => {
     velocityMultiplier: 0.47,
     tags: ["section:verse", "section:grounded"],
   });
+
+  const spaciousProfile = createGoalSectionDynamicsProfile(BALANCED_SECTION_DYNAMICS_PROFILE, {
+    id: "goal-test",
+    energy: 0.44,
+    sectionEmphasis: {
+      verse: 0.5,
+      chorus: 0.72,
+      bridge: 0.72,
+    },
+  });
+  expect(spaciousProfile.verseMultiplier).toBe(0.983);
+  expect(spaciousProfile.chorusMultiplier).toBe(1.087);
+  expect(spaciousProfile.bridgeMultiplier).toBe(1.087);
+  const spaciousChorusBassDecision = applySectionDynamics({
+    role: "bass",
+    sectionType: "chorus",
+    occurrence: 1,
+    localBeat: 2,
+    localBar: 1,
+    absoluteBeat: 34,
+    baseAction: "repeat",
+    baseShouldPlay: true,
+    baseVelocityMultiplier: 0.5,
+    profile: spaciousProfile,
+  });
+  expect(spaciousChorusBassDecision).toMatchObject({
+    action: "repeat",
+    shouldPlay: true,
+  });
+  expect(spaciousChorusBassDecision.velocityMultiplier).toBeCloseTo(0.61959, 5);
 });
 
 test("song goal interpreter produces bounded deterministic knobs", () => {
@@ -1761,6 +1795,9 @@ test("song goal setup applies tonal context tempo form and persists the structur
   await expect(page.getByTestId("song-goal-applied")).toContainText("G dorian");
   await expect(page.getByTestId("song-goal-applied")).toContainText("75 BPM");
   await expect(page.getByTestId("song-goal-applied")).toContainText("wide-return");
+  await expect(page.getByTestId("song-goal-applied")).toContainText("energy 0.44");
+  await expect(page.getByTestId("song-goal-applied")).toContainText("chorus 0.72");
+  await expect(page.getByTestId("song-goal-applied")).toContainText("bridge 0.72");
   await expect(page.getByTestId("listening-tonal-context")).toHaveText("G dorian");
   const appliedGoal = await getAppliedSongGoal(page);
   expect(appliedGoal).toMatchObject({
@@ -1787,6 +1824,22 @@ test("song goal setup applies tonal context tempo form and persists the structur
     mode: "dorian",
     scale: ["G", "A", "Bb", "C", "D", "E", "F"],
   });
+  const formScore = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      formScore?: {
+        getScore(): {
+          sections: readonly { sectionType: string; energy: number }[];
+        };
+      };
+    };
+    return appWindow.formScore?.getScore();
+  });
+  expect(formScore).toBeTruthy();
+  const verseEnergy = formScore?.sections.find((section) => section.sectionType === "verse")?.energy ?? 0;
+  const chorusEnergy = formScore?.sections.find((section) => section.sectionType === "chorus")?.energy ?? 0;
+  const bridgeEnergy = formScore?.sections.find((section) => section.sectionType === "bridge")?.energy ?? 0;
+  expect(chorusEnergy).toBeGreaterThan(verseEnergy);
+  expect(bridgeEnergy).toBeGreaterThan(0);
 
   await flushPersistence(page);
   const persistenceState = await getPersistenceState(page);

@@ -69,7 +69,11 @@ import {
   type SessionMode,
   type SessionModeOption,
 } from "./session-mode";
-import { applySectionDynamics } from "./section-dynamics";
+import {
+  applySectionDynamics,
+  createGoalSectionDynamicsProfile,
+  type SectionDynamicsProfile,
+} from "./section-dynamics";
 import {
   DEFAULT_SONG_ID,
   getSongMaterial,
@@ -1267,7 +1271,14 @@ function renderSongGoal(interpretation: SongGoalInterpretation): void {
 }
 
 function formatAppliedSongGoal(goal: SongGoal): string {
-  return `${goal.tonic} ${goal.mode} | ${goal.tempoBpm} BPM | ${goal.formPreference} | ${goal.id}`;
+  return [
+    `${goal.tonic} ${goal.mode}`,
+    `${goal.tempoBpm} BPM`,
+    goal.formPreference,
+    `energy ${goal.energy.toFixed(2)}`,
+    formatSectionEmphasis(goal),
+    goal.id,
+  ].join(" | ");
 }
 
 function applySongGoalIdea(sourceIdea: string): SongGoalInterpretation {
@@ -1821,7 +1832,7 @@ function getCurrentFormScore(state: GrowTransportState = getState()): FormScore 
     tonalContext: world.getTonalContext(),
     arrangement: variant.arrangement,
     chorusDevelopment: getCurrentChorusDevelopment(),
-    sectionDynamicsProfile: variant.sectionDynamicsProfile,
+    sectionDynamicsProfile: getGoalSectionDynamicsProfile(variant),
   });
 }
 
@@ -1836,6 +1847,19 @@ function getCurrentFormVariant(): FormVariant {
   return getFormVariant(formVariantId);
 }
 
+function getGoalSectionDynamicsProfile(variant: FormVariant = getCurrentFormVariant()): SectionDynamicsProfile {
+  return createGoalSectionDynamicsProfile(
+    variant.sectionDynamicsProfile,
+    appliedSongGoal
+      ? {
+        id: appliedSongGoal.id,
+        energy: appliedSongGoal.energy,
+        sectionEmphasis: appliedSongGoal.sectionEmphasis,
+      }
+      : undefined,
+  );
+}
+
 function getCurrentFormVariantScores(state: GrowTransportState = getState()): readonly ScoredFormVariant[] {
   const song = getSongMaterial(state.songId);
   const tonalContext = world.getTonalContext();
@@ -1847,7 +1871,7 @@ function getCurrentFormVariantScores(state: GrowTransportState = getState()): re
       tonalContext,
       arrangement: variant.arrangement,
       chorusDevelopment,
-      sectionDynamicsProfile: variant.sectionDynamicsProfile,
+      sectionDynamicsProfile: getGoalSectionDynamicsProfile(variant),
     }),
     active: variant.id === formVariantId,
     winner: false,
@@ -2276,7 +2300,7 @@ function applySongSectionDecision(
     localBeat: section.localBeat,
     localBar: section.localBar,
     absoluteBeat: input.absoluteBeat,
-    profile: variant.sectionDynamicsProfile,
+    profile: getGoalSectionDynamicsProfile(variant),
     baseAction: baseDecision.action,
     baseShouldPlay: baseDecision.shouldPlay,
     baseVelocityMultiplier: baseDecision.velocityMultiplier,

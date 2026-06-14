@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Merge approved Byte 17b-b and route review artifact",
-  "status": "byte17b-b-approved-merged-ready-for-byte17c",
-  "updatedAt": "2026-06-14T02:08:56Z",
+  "lastTask": "Implement Byte 17c-a SongGoal energy and section emphasis",
+  "status": "byte17c-a-implemented-ready-for-review",
+  "updatedAt": "2026-06-14T02:26:26Z",
   "lastHandoff": "",
-  "branch": "main",
+  "branch": "codex/byte-17c-a",
   "commit": "branch-head",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte 17b-b is approved and merged on main with Claude's durable review artifact included. Song Goal setup now has explicit preview/apply semantics; Apply uses validated structured fields to set active tonal context, tempo, and form variant, refreshes lookahead, clears stale slow-thinking/critic/material state, and persists song.goal_set. Claude verified live G dorian and Bb mixolydian setup switches stayed in-scale and seam-free. Next slice is Byte 17c: let bounded SongGoal character fields drive existing character mechanisms such as surprise targets, density/taste pressure, influence-prior nudges, and section emphasis."
+    "summary": "Byte 17c-a is implemented on codex/byte-17c-a. Applied SongGoal energy and sectionEmphasis now derive a bounded section-dynamics profile overlay used by both playback and form scoring. The change keeps character drive deterministic and app-owned: no model, no prose parsing, no new notes, and no persistence schema change. The Applied readout exposes energy and section emphasis. Validation so far: build green, smoke 37/37, db:smoke green, diff-check green; npm audit still reports the known Vite/esbuild advisories."
   }
 }

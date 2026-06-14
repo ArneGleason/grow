@@ -25,6 +25,9 @@ export interface SectionDynamicsDecision {
 export interface SectionDynamicsProfile {
   id: string;
   label: string;
+  verseMultiplier: number;
+  chorusMultiplier: number;
+  bridgeMultiplier: number;
   chorusMelodyMinimum: number;
   chorusMelodyRestFloor: number;
   chorusBassMultiplier: number;
@@ -40,6 +43,9 @@ export interface SectionDynamicsProfile {
 export const BALANCED_SECTION_DYNAMICS_PROFILE: SectionDynamicsProfile = {
   id: "balanced",
   label: "Balanced",
+  verseMultiplier: 1,
+  chorusMultiplier: 1,
+  bridgeMultiplier: 1,
   chorusMelodyMinimum: 1.18,
   chorusMelodyRestFloor: 0.92,
   chorusBassMultiplier: 1.14,
@@ -82,6 +88,31 @@ export const BREATHING_SECTION_DYNAMICS_PROFILE: SectionDynamicsProfile = {
   bridgeMelodyWholeBeatsOnly: true,
 };
 
+export interface GoalSectionDynamicsSource {
+  id: string;
+  energy: number;
+  sectionEmphasis: Partial<Record<"verse" | "chorus" | "bridge", number>>;
+}
+
+export function createGoalSectionDynamicsProfile(
+  baseProfile: SectionDynamicsProfile,
+  goal: GoalSectionDynamicsSource | undefined,
+): SectionDynamicsProfile {
+  if (!goal) return baseProfile;
+  const energyMultiplier = 0.86 + clamp01(goal.energy) * 0.28;
+  const verseMultiplier = createGoalSectionMultiplier(goal.sectionEmphasis.verse, energyMultiplier);
+  const chorusMultiplier = createGoalSectionMultiplier(goal.sectionEmphasis.chorus, energyMultiplier);
+  const bridgeMultiplier = createGoalSectionMultiplier(goal.sectionEmphasis.bridge, energyMultiplier);
+  return {
+    ...baseProfile,
+    id: `${baseProfile.id}+goal-${goal.id}`,
+    label: `${baseProfile.label} + Goal`,
+    verseMultiplier: roundMultiplier(baseProfile.verseMultiplier * verseMultiplier),
+    chorusMultiplier: roundMultiplier(baseProfile.chorusMultiplier * chorusMultiplier),
+    bridgeMultiplier: roundMultiplier(baseProfile.bridgeMultiplier * bridgeMultiplier),
+  };
+}
+
 export function applySectionDynamics(input: SectionDynamicsInput): SectionDynamicsDecision {
   const profile = input.profile ?? BALANCED_SECTION_DYNAMICS_PROFILE;
   const baseShouldPlay = input.baseShouldPlay ?? true;
@@ -92,13 +123,14 @@ export function applySectionDynamics(input: SectionDynamicsInput): SectionDynami
 
   if (input.sectionType === "chorus") {
     if (input.role === "melody") {
+      const melodyMultiplier = Math.max(
+        baseShouldPlay ? baseVelocityMultiplier : profile.chorusMelodyRestFloor,
+        profile.chorusMelodyMinimum,
+      ) * profile.chorusMultiplier;
       return {
         action: "vary",
         shouldPlay: true,
-        velocityMultiplier: Math.max(
-          baseShouldPlay ? baseVelocityMultiplier : profile.chorusMelodyRestFloor,
-          profile.chorusMelodyMinimum,
-        ),
+        velocityMultiplier: melodyMultiplier,
         tags: [...tags, "section:developed-chorus"],
         reason: `Chorus ${input.occurrence}: lifting the developed hook above taste rests.`,
       };
@@ -108,7 +140,8 @@ export function applySectionDynamics(input: SectionDynamicsInput): SectionDynami
       action: baseAction,
       shouldPlay: baseShouldPlay,
       velocityMultiplier: baseVelocityMultiplier *
-        (input.role === "bass" ? profile.chorusBassMultiplier : profile.chorusSupportMultiplier),
+        (input.role === "bass" ? profile.chorusBassMultiplier : profile.chorusSupportMultiplier) *
+        profile.chorusMultiplier,
       tags: [...tags, "section:full"],
       reason: `Chorus ${input.occurrence}: fuller support under the developed hook.`,
     };
@@ -120,7 +153,7 @@ export function applySectionDynamics(input: SectionDynamicsInput): SectionDynami
       return {
         action: "simplify",
         shouldPlay,
-        velocityMultiplier: shouldPlay ? profile.bridgePulseMultiplier : 0,
+        velocityMultiplier: shouldPlay ? profile.bridgePulseMultiplier * profile.bridgeMultiplier : 0,
         tags: [...tags, "section:sparse"],
         reason: "Bridge: pulse marks only the bar downbeats.",
       };
@@ -132,7 +165,7 @@ export function applySectionDynamics(input: SectionDynamicsInput): SectionDynami
       return {
         action: "simplify",
         shouldPlay,
-        velocityMultiplier: shouldPlay ? profile.bridgeBassMultiplier : 0,
+        velocityMultiplier: shouldPlay ? profile.bridgeBassMultiplier * profile.bridgeMultiplier : 0,
         tags: [...tags, "section:sparse"],
         reason: "Bridge: bass leaves alternate bars open.",
       };
@@ -143,7 +176,7 @@ export function applySectionDynamics(input: SectionDynamicsInput): SectionDynami
       return {
         action: "contrast",
         shouldPlay,
-        velocityMultiplier: shouldPlay ? profile.bridgeMelodyMultiplier : 0,
+        velocityMultiplier: shouldPlay ? profile.bridgeMelodyMultiplier * profile.bridgeMultiplier : 0,
         tags: [...tags, "section:bridge-lifted-material"],
         reason: "Bridge: sparse committed melody lift answers the chorus.",
       };
@@ -153,7 +186,9 @@ export function applySectionDynamics(input: SectionDynamicsInput): SectionDynami
   return {
     action: baseAction,
     shouldPlay: baseShouldPlay,
-    velocityMultiplier: baseVelocityMultiplier * (input.role === "melody" ? profile.verseMelodyMultiplier : 1),
+    velocityMultiplier: baseVelocityMultiplier *
+      (input.role === "melody" ? profile.verseMelodyMultiplier : 1) *
+      profile.verseMultiplier,
     tags: [...tags, "section:grounded"],
     reason: input.sectionType === "verse"
       ? `Verse ${input.occurrence}: keeping the source loop grounded.`
@@ -167,4 +202,25 @@ function isWholeBeat(value: number): boolean {
 
 function isBarDownbeat(localBeat: number): boolean {
   return Math.abs(localBeat % 4) < 0.000001;
+}
+
+function createGoalSectionMultiplier(
+  emphasis: number | undefined,
+  energyMultiplier: number,
+): number {
+  const emphasisMultiplier = 0.76 + clamp01(emphasis ?? 0.5) * 0.48;
+  return clamp(energyMultiplier * emphasisMultiplier, 0.65, 1.35);
+}
+
+function clamp01(value: number): number {
+  return clamp(value, 0, 1);
+}
+
+function clamp(value: number, minimum: number, maximum: number): number {
+  if (!Number.isFinite(value)) return minimum;
+  return Math.min(maximum, Math.max(minimum, value));
+}
+
+function roundMultiplier(value: number): number {
+  return Math.round(value * 1000) / 1000;
 }

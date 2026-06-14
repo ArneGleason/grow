@@ -1889,6 +1889,15 @@ First setup-drive slice:
 
 Apply bounded goal character fields to existing knobs: energy/surprise, per-player disposition nudges, curated influence-hint nudges, and section emphasis.
 
+#### Byte 17c-a: Energy And Section Emphasis
+
+First character-drive slice:
+
+- Derive a goal-adjusted `SectionDynamicsProfile` from the applied `SongGoal`.
+- Use `energy` plus `sectionEmphasis` as bounded multipliers over the existing section-dynamics path, so playback and form scoring stay aligned.
+- Keep this as an overlay on app-owned deterministic material: no model, no prose parsing, no new notes, no new persistence schema.
+- Leave `surpriseTarget`, `dispositionBias`, and `influenceHints` for smaller follow-up slices.
+
 #### Byte 17d: Local ML SongGoal Interpreter
 
 Let Ollama fill the proven `SongGoal` shape via structured output, validator/clamps, and deterministic fallback. The model fills knobs only.
