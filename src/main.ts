@@ -1280,6 +1280,7 @@ function formatAppliedSongGoal(goal: SongGoal): string {
     `surprise ${goal.surpriseTarget.toFixed(2)}`,
     formatSectionEmphasis(goal),
     formatSongGoalBiases(goal),
+    `hints ${goal.influenceHints.length > 0 ? goal.influenceHints.join(",") : "none"}`,
     goal.id,
   ].join(" | ");
 }
@@ -1484,7 +1485,8 @@ function getCurrentMelodyRepairTake(state: GrowTransportState = getState()): Mel
   const tonalContext = world.getTonalContext();
   const players = world.getPlayers().map(({ player }) => player);
   const rejectedKeys = getRejectedMelodyRepairKeys(state.songId);
-  const cacheKey = createMelodyRepairCacheKey(song, tonalContext, players, rejectedKeys);
+  const influenceHints = appliedSongGoal?.influenceHints ?? [];
+  const cacheKey = createMelodyRepairCacheKey(song, tonalContext, players, rejectedKeys, influenceHints);
   if (!cachedMelodyRepairTake || cachedMelodyRepairKey !== cacheKey) {
     cachedMelodyRepairKey = cacheKey;
     cachedMelodyRepairTake = createMelodyRepairTake({
@@ -1495,6 +1497,7 @@ function getCurrentMelodyRepairTake(state: GrowTransportState = getState()): Mel
       rejectedPhraseKeys: rejectedKeys,
       rememberedCount: rememberedMelodyRepairCountsBySong.get(state.songId) ?? 0,
       weightNudges: melodyRepairWeightNudgesByPlayer,
+      influenceHints,
     });
   }
   return cachedMelodyRepairTake;
@@ -1505,6 +1508,7 @@ function createMelodyRepairCacheKey(
   tonalContext: ListeningFrame["tonalContext"],
   players: readonly { id: string }[],
   rejectedKeys: ReadonlySet<string>,
+  influenceHints: readonly string[] = [],
 ): string {
   return [
     song.id,
@@ -1513,6 +1517,7 @@ function createMelodyRepairCacheKey(
     tonalContext.scale.join(","),
     players.map((player) => player.id).join(","),
     [...rejectedKeys].sort().join(","),
+    [...influenceHints].sort().join(","),
   ].join("|");
 }
 

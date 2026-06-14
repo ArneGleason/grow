@@ -1,5 +1,6 @@
 import type { TonalContext } from "./listening";
 import type { Player } from "./players";
+import type { SongGoalInfluenceHint } from "./song-goal";
 import type { PatternNoteSource, PlayerPatternSource, SongMaterial } from "./song-material";
 import {
   DEFAULT_SONG_ARRANGEMENT,
@@ -161,6 +162,7 @@ export interface MelodyRepairTake {
   phraseKey: string;
   rejectedCount: number;
   rememberedCount: number;
+  influencePriorNudges: readonly MelodyInfluencePriorNudge[];
   topCritique: string;
 }
 
@@ -172,6 +174,15 @@ export interface MelodyRepairOptions {
   rejectedPhraseKeys?: ReadonlySet<string>;
   rememberedCount?: number;
   weightNudges?: ReadonlyMap<string, number>;
+  influenceHints?: readonly SongGoalInfluenceHint[];
+}
+
+export interface MelodyInfluencePriorNudge {
+  hint: SongGoalInfluenceHint;
+  phraseCount: number;
+  degreeCount: number;
+  intervalCount: number;
+  summary: string;
 }
 
 export const MELODY_CHORUS_PHRASE_BEATS = 8;
@@ -215,14 +226,30 @@ export const MELODY_CRITIC_TEXT_LIMITS = {
 } as const;
 
 const MELODY_REPAIR_HARMONIC_SECTION: SongHarmonicSectionId = "answer";
+const INFLUENCE_HINT_PRIOR_PHRASES = {
+  "steady-pulse": [[0, 0, 4, 0], [0, 4, 0, 0]],
+  "modal-folk": [[0, 2, 3, 4], [4, 3, 2, 0]],
+  "dub-space": [[0, 0, 6, 0], [0, 4, 0, 6]],
+  "glass-bright": [[0, 2, 4, 6], [2, 4, 6, 4]],
+  "machine-hum": [[0, 0, 1, 0], [4, 4, 5, 4]],
+  "paper-lantern": [[0, 2, 4, 2], [4, 6, 4, 2]],
+  "wide-return": [[0, 4, 6, 4], [6, 4, 2, 0]],
+  "restless-hook": [[0, 3, 6, 2], [4, 1, 5, 2]],
+} as const satisfies Record<SongGoalInfluenceHint, readonly (readonly number[])[]>;
 
 export function createMelodyRepairTake(options: MelodyRepairOptions): MelodyRepairTake {
   const melodyPattern = getPatternForPlayer(options.song, "melody");
   const rawEvents = collectRawChorusEvents(options.song, melodyPattern, options.tonalContext);
   const rawPhrase = phraseFromEvents(rawEvents, melodyPattern.subdivisionBeats);
   const rootDegrees = getMelodyRepairRootDegrees(options.song);
+  const influencePriorNudges = createInfluencePriorNudges(options.influenceHints ?? []);
   const perspectives = options.players.map((player) =>
-    createMelodyPerspective(player, options.song, options.weightNudges?.get(player.id) ?? 0)
+    createMelodyPerspective(
+      player,
+      options.song,
+      options.weightNudges?.get(player.id) ?? 0,
+      influencePriorNudges,
+    )
   );
   const primaryPerspective = perspectives.find((perspective) =>
     perspective.playerId === (options.perspectivePlayerId ?? "melody")
@@ -318,6 +345,7 @@ export function createMelodyRepairTake(options: MelodyRepairOptions): MelodyRepa
     phraseKey,
     rejectedCount: options.rejectedPhraseKeys?.size ?? 0,
     rememberedCount: options.rememberedCount ?? 0,
+    influencePriorNudges,
     topCritique: primaryRepairedScore.critiques[0]?.message ??
       (primaryRawScore.critiques[0]
         ? `repaired cleared raw flag: ${primaryRawScore.critiques[0].message}`
@@ -1331,6 +1359,7 @@ function createMelodyPerspective(
   player: Player,
   song: SongMaterial,
   feedbackNudge: number,
+  influencePriorNudges: readonly MelodyInfluencePriorNudge[] = [],
 ): MelodyPerspective {
   const disposition = player.thinking.disposition;
   const landingWeight = Math.max(
@@ -1363,11 +1392,15 @@ function createMelodyPerspective(
     },
     surpriseTarget: roundScore(surpriseTarget),
     surpriseTolerance: roundScore(0.24 + player.thinking.disposition.disruption * 0.1),
-    prior: buildPrior(player, song),
+    prior: buildPrior(player, song, influencePriorNudges),
   };
 }
 
-function buildPrior(player: Player, song: SongMaterial): MelodyPerspective["prior"] {
+function buildPrior(
+  player: Player,
+  song: SongMaterial,
+  influencePriorNudges: readonly MelodyInfluencePriorNudge[] = [],
+): MelodyPerspective["prior"] {
   const degreeCounts = new Map<number, number>();
   const intervalCounts = new Map<number, number>();
   let totalDegrees = 0;
@@ -1379,6 +1412,12 @@ function buildPrior(player: Player, song: SongMaterial): MelodyPerspective["prio
 
   for (const pattern of song.patterns) {
     addPriorDegrees(pattern.events.flatMap((event) => event ? [event.scaleDegree] : []));
+  }
+
+  for (const nudge of influencePriorNudges) {
+    for (const phrase of INFLUENCE_HINT_PRIOR_PHRASES[nudge.hint]) {
+      addPriorDegrees(phrase);
+    }
   }
 
   function addPriorDegrees(degrees: readonly number[]): void {
@@ -1399,6 +1438,23 @@ function buildPrior(player: Player, song: SongMaterial): MelodyPerspective["prio
     totalDegrees,
     totalIntervals,
   };
+}
+
+function createInfluencePriorNudges(
+  influenceHints: readonly SongGoalInfluenceHint[],
+): readonly MelodyInfluencePriorNudge[] {
+  return [...new Set(influenceHints)].map((hint) => {
+    const phrases = INFLUENCE_HINT_PRIOR_PHRASES[hint];
+    const degreeCount = phrases.reduce((sum, phrase) => sum + phrase.length, 0);
+    const intervalCount = phrases.reduce((sum, phrase) => sum + Math.max(0, phrase.length - 1), 0);
+    return {
+      hint,
+      phraseCount: phrases.length,
+      degreeCount,
+      intervalCount,
+      summary: `${hint}: +${degreeCount} degrees, +${intervalCount} intervals`,
+    };
+  });
 }
 
 function collectRawChorusEvents(

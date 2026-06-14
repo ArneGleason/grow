@@ -1353,6 +1353,13 @@ test("melody scoring repairs the chorus and scores player perspectives different
     players: PLAYER_REGISTRY,
     perspectivePlayerId: "melody",
   });
+  const hintedTake = createMelodyRepairTake({
+    song,
+    tonalContext: DEFAULT_TONAL_CONTEXT,
+    players: PLAYER_REGISTRY,
+    perspectivePlayerId: "melody",
+    influenceHints: ["glass-bright", "restless-hook"],
+  });
   const scaleLength = DEFAULT_TONAL_CONTEXT.scale.length;
   const rawKey = take.rawPhrase.map((note) => `${note.stepIndex}:${note.scaleDegree}:${note.octave}`).join("|");
   const repairedKey = take.repairedPhrase.map((note) =>
@@ -1362,6 +1369,7 @@ test("melody scoring repairs the chorus and scores player perspectives different
   const repairedPositions = take.repairedPhrase.map((note) => note.octave * scaleLength + note.scaleDegree);
   const pulseScore = take.repairedScores.find((score) => score.perspectiveId === "pulse");
   const melodyScore = take.repairedScores.find((score) => score.perspectiveId === "melody");
+  const hintedMelodyScore = hintedTake.repairedScores.find((score) => score.perspectiveId === "melody");
   const deterministicCandidate = take.candidates.find((candidate) =>
     candidate.id === take.deterministicCandidateId
   );
@@ -1393,7 +1401,19 @@ test("melody scoring repairs the chorus and scores player perspectives different
   expect(repairedKey).not.toEqual(rawKey);
   expect(pulseScore).toBeTruthy();
   expect(melodyScore).toBeTruthy();
+  expect(hintedMelodyScore).toBeTruthy();
   expect(pulseScore?.total).not.toBe(melodyScore?.total);
+  expect(hintedMelodyScore?.averageSurprise).not.toBe(melodyScore?.averageSurprise);
+  expect(take.influencePriorNudges).toEqual([]);
+  expect(hintedTake.influencePriorNudges.map((nudge) => nudge.hint)).toEqual([
+    "glass-bright",
+    "restless-hook",
+  ]);
+  expect(hintedTake.influencePriorNudges.every((nudge) =>
+    nudge.phraseCount === 2 &&
+    nudge.degreeCount === 8 &&
+    nudge.intervalCount === 6
+  )).toBe(true);
   expect(take.repairedPhrase.every((note) =>
     DEFAULT_TONAL_CONTEXT.scale[modulo(note.scaleDegree, scaleLength)] !== undefined
   )).toBe(true);
@@ -1847,6 +1867,8 @@ test("song goal setup applies tonal context tempo form and persists the structur
   await expect(page.getByTestId("song-goal-applied")).toContainText("chorus 0.72");
   await expect(page.getByTestId("song-goal-applied")).toContainText("bridge 0.72");
   await expect(page.getByTestId("song-goal-applied")).toContainText("melody -0.020");
+  await expect(page.getByTestId("song-goal-applied")).toContainText("hints steady-pulse");
+  await expect(page.getByTestId("song-goal-applied")).toContainText("machine-hum");
   await expect(page.getByTestId("listening-tonal-context")).toHaveText("G dorian");
   const appliedGoal = await getAppliedSongGoal(page);
   expect(appliedGoal).toMatchObject({
@@ -1875,6 +1897,28 @@ test("song goal setup applies tonal context tempo form and persists the structur
   expect(pulseTasteProfile!.adjusted.densityTarget).toBeGreaterThan(pulseTasteProfile!.base.densityTarget);
   expect(pulseTasteProfile!.adjusted.noveltyPreference).toBeGreaterThan(pulseTasteProfile!.base.noveltyPreference);
   expect(melodyTasteProfile!.adjusted.densityTarget).toBeLessThan(melodyTasteProfile!.base.densityTarget);
+  const activeRepairTake = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      melodyRepair?: {
+        getTake(): {
+          influencePriorNudges: readonly { hint: string; degreeCount: number; intervalCount: number }[];
+        };
+      };
+    };
+    return appWindow.melodyRepair?.getTake();
+  });
+  expect(activeRepairTake?.influencePriorNudges.map((nudge) => nudge.hint)).toEqual([
+    "steady-pulse",
+    "modal-folk",
+    "dub-space",
+    "glass-bright",
+    "machine-hum",
+    "wide-return",
+  ]);
+  expect(activeRepairTake?.influencePriorNudges.every((nudge) =>
+    nudge.degreeCount === 8 &&
+    nudge.intervalCount === 6
+  )).toBe(true);
   const sketch = await getSongSketch(page);
   expect(sketch.tonalContext).toEqual({
     tonic: "G",

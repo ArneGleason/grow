@@ -1908,6 +1908,15 @@ Second character-drive slice:
 - Expose the base/adjusted taste profiles through the debug surface so reviews can verify one shared adjusted value.
 - Leave curated `influenceHints` and melody-scoring prior nudges for a separate slice.
 
+#### Byte 17c-c: Curated Influence Hint Prior Nudges
+
+Final deterministic character-drive slice:
+
+- Map each closed-vocabulary `influenceHint` to a tiny, app-owned phrase seed that nudges the melody-scoring prior.
+- Feed the adjusted prior into the existing chorus scoring/repair path; never parse hint prose, accept freeform influence text, or let hints emit notes directly.
+- Keep the effect bounded and in-scale by scoring app-owned candidate material only; hints may change which existing safe candidate wins, but they are not a material source.
+- Expose the applied hints and derived prior-nudge counts so reviews can confirm the sealed vocabulary and adjusted-prior boundary.
+
 #### Byte 17d: Local ML SongGoal Interpreter
 
 Let Ollama fill the proven `SongGoal` shape via structured output, validator/clamps, and deterministic fallback. The model fills knobs only.
