@@ -23,13 +23,13 @@
     }
   },
   "lastTask": "Implement Track D1 minimal end-to-end candidate cycle",
-  "status": "track-d1-implemented-ready-for-review",
-  "updatedAt": "2026-06-14T18:12:45Z",
+  "status": "track-d1-approved-merged",
+  "updatedAt": "2026-06-14T22:48:55Z",
   "lastHandoff": "",
-  "branch": "codex/byte-d1-candidate-cycle",
+  "branch": "main",
   "commit": "branch-head",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Track D1 is implemented on codex/byte-d1-candidate-cycle. The branch adds runCandidateCycle() as a composition layer over B4 produceProsodyCandidates(), A1 persistence writes, A2 aggregateCandidateFitness(), A3 selectCandidates(), and A4 developCandidate(). It stores/scored phrase candidates, selects elites, purges overflow, develops each elite through the audited phrase.nudge path, and exposes window.persistence.runCandidateCycle() for inspection. Repeated identical cycles skip reselection when the produced set is already settled so developed children are not purged and no duplicate candidate audit events are appended. No audio/model/playback/transport behavior consumes the cycle. Validation: build green, db:smoke green, smoke 58/58, diff-check green; npm audit still reports the known Vite/esbuild advisories."
+    "summary": "Track D1 is approved and merged to main with Claude's durable review artifact. The branch added runCandidateCycle() as a composition layer over B4 produceProsodyCandidates(), A1 persistence writes, A2 aggregateCandidateFitness(), A3 selectCandidates(), and A4 developCandidate(). It stores/scored phrase candidates, selects elites, purges overflow, develops each elite through the audited phrase.nudge path, and exposes window.persistence.runCandidateCycle() for inspection. Repeated identical cycles skip reselection when the produced set is already settled so developed children are not purged and no duplicate candidate audit events are appended. Carry forward: score developed children before a real iterating loop, fix branch-id candidate collisions before parallel populations, avoid comparator drift with A3, and move development to B2 prosody operators before D2 performs elites."
   }
 }
