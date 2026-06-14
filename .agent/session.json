@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Implement Track A1 candidate store shell",
-  "status": "track-a1-implemented-ready-for-review",
-  "updatedAt": "2026-06-14T12:59:17Z",
+  "lastTask": "Merge Track A1 candidate store review and prepare Track A2",
+  "status": "track-a1-approved-merged-ready-for-a2",
+  "updatedAt": "2026-06-14T14:27:18Z",
   "lastHandoff": "",
-  "branch": "codex/byte-a1-candidate-store",
+  "branch": "main",
   "commit": "branch-head",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Track A1 is implemented on codex/byte-a1-candidate-store from main. The branch adds a bounded Candidate contract, SQLite schema v3 candidates table, server/client write/query/score/retain/purge/cap APIs, candidate.created/scored/retained/purged audit events, db smoke coverage, and middleware smoke coverage. It is inspect-only: no audio, model, generator loop, or playback path consumes candidates. Validation: build green, db:smoke green, smoke 40/40, diff-check green; npm audit still reports the known Vite/esbuild dev-server advisories."
+    "summary": "Track A1 is approved and merged to main. The durable Claude review artifact from claude/codex-a1-candidate-store-code-review was cherry-picked, and the candidate-store shell is ready as the foundation for Track A2. A1 adds a bounded Candidate contract, SQLite schema v3 candidates table, server/client write/query/score/retain/purge/cap APIs, candidate.created/scored/retained/purged audit events, db smoke coverage, and middleware smoke coverage. It is inspect-only: no audio, model, generator loop, or playback path consumes candidates. Next: Track A2 pure fitness aggregation, keeping it deterministic, bounded, documented, and inspect-only."
   }
 }
