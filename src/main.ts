@@ -94,9 +94,11 @@ import {
   getSongMaterial,
   isSongId,
   SONG_MATERIALS,
+  type PlayerPatternSource,
   type SongId,
   type SongMaterial,
 } from "./song-material";
+import { generateProsodicMelody } from "./melody-prosody";
 import { sectionAtBeat, type ChorusDevelopment } from "./song-form";
 import {
   applySongSketchProposalText,
@@ -178,6 +180,8 @@ let songId: SongId = DEFAULT_SONG_ID;
 let timingFeelMode: TimingFeelMode = "feel";
 let melodyDevelopmentMode: MelodyDevelopmentMode = "repaired";
 let formVariantId: FormVariantId = DEFAULT_FORM_VARIANT_ID;
+let prosodyEnabled = false;
+let cachedProsodyMelody: PlayerPatternSource | undefined;
 let activeTempoBpm = DEFAULT_TRANSPORT_BPM;
 let songGoalInterpretation = interpretSongGoal("Build a balanced modal terrarium piece.");
 let appliedSongGoal: SongGoal | undefined;
@@ -1865,6 +1869,35 @@ function getCurrentFormVariant(): FormVariant {
   return getFormVariant(formVariantId);
 }
 
+function getActiveMelodyPhrasing(): PlayerPatternSource | undefined {
+  if (!prosodyEnabled) return undefined;
+  if (!cachedProsodyMelody) {
+    cachedProsodyMelody = generateProsodicMelody({ seed: prosodySeedForSong(songId), baseOctave: 4, bars: 4 });
+  }
+  return cachedProsodyMelody;
+}
+
+function prosodySeedForSong(nextSongId: SongId): number {
+  let hash = 2166136261;
+  const key = `prosody:${nextSongId}`;
+  for (let index = 0; index < key.length; index += 1) {
+    hash ^= key.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function setProsodyEnabled(enabled: boolean): boolean {
+  if (prosodyEnabled === enabled) return prosodyEnabled;
+  prosodyEnabled = enabled;
+  cachedProsodyMelody = undefined;
+  cancelSlowThinkingControllers("prosody mode changed before the thought could land");
+  clearSlowThoughtPlayback();
+  refreshLookaheadSchedule();
+  renderWorld();
+  return prosodyEnabled;
+}
+
 function getGoalSectionDynamicsProfile(variant: FormVariant = getCurrentFormVariant()): SectionDynamicsProfile {
   return createGoalSectionDynamicsProfile(
     variant.sectionDynamicsProfile,
@@ -2945,6 +2978,7 @@ initTransport({
   tempoBpm: () => activeTempoBpm,
   timingFeelMode: () => timingFeelMode,
   chorusDevelopment: () => getCurrentChorusDevelopment(),
+  melodyPhrasing: () => getActiveMelodyPhrasing(),
 }, {
   tonalContext: world.getTonalContext(),
   tempoBpm: activeTempoBpm,
@@ -3172,6 +3206,11 @@ declare global {
       interpret(sourceIdea: string): SongGoalInterpretation;
       validate(candidate: unknown): SongGoalValidationResult;
     };
+    prosody?: {
+      isEnabled(): boolean;
+      setEnabled(enabled: boolean): boolean;
+      getPattern(): PlayerPatternSource | undefined;
+    };
     timing?: {
       getMode(): TimingFeelMode;
       setMode(mode: string): TimingFeelMode;
@@ -3360,6 +3399,12 @@ window.songGoal = {
   validate: (candidate) => validateSongGoal(candidate),
 };
 
+window.prosody = {
+  isEnabled: () => prosodyEnabled,
+  setEnabled: (enabled) => setProsodyEnabled(Boolean(enabled)),
+  getPattern: () => getActiveMelodyPhrasing(),
+};
+
 window.timing = {
   getMode: () => timingFeelMode,
   setMode: (mode) => {
@@ -3461,6 +3506,7 @@ if (import.meta.hot) {
     window.session = undefined;
     window.song = undefined;
     window.songGoal = undefined;
+    window.prosody = undefined;
     window.timing = undefined;
     window.melodyRepair = undefined;
     window.formScore = undefined;
