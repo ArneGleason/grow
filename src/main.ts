@@ -7,6 +7,7 @@ import type {
   CandidateQueryOptions,
   CandidateScores,
   CandidateSelectionOptions,
+  StoredCandidate,
 } from "./candidate-store";
 import {
   runCandidateCycle,
@@ -188,6 +189,11 @@ let melodyDevelopmentMode: MelodyDevelopmentMode = "repaired";
 let formVariantId: FormVariantId = DEFAULT_FORM_VARIANT_ID;
 let prosodyEnabled = false;
 let cachedProsodyMelody: PlayerPatternSource | undefined;
+let candidateMelodyAudition: {
+  branchId?: string;
+  candidate?: StoredCandidate;
+  pattern?: PlayerPatternSource;
+} = {};
 let activeTempoBpm = DEFAULT_TRANSPORT_BPM;
 let songGoalInterpretation = interpretSongGoal("Build a balanced modal terrarium piece.");
 let appliedSongGoal: SongGoal | undefined;
@@ -1871,16 +1877,124 @@ interface ScoredFormVariant {
   winner: boolean;
 }
 
+interface CandidateMelodyAuditionOptions {
+  branchId?: string;
+  candidateId?: string;
+}
+
+interface CandidateMelodyAuditionState {
+  enabled: boolean;
+  message: string;
+  candidateId?: string;
+  branchId?: string;
+  fitness?: number;
+  generation?: number;
+  seed?: number;
+  pattern?: PlayerPatternSource;
+}
+
 function getCurrentFormVariant(): FormVariant {
   return getFormVariant(formVariantId);
 }
 
 function getActiveMelodyPhrasing(): PlayerPatternSource | undefined {
+  if (candidateMelodyAudition.pattern) {
+    return clonePlayerPatternSource(candidateMelodyAudition.pattern);
+  }
   if (!prosodyEnabled) return undefined;
   if (!cachedProsodyMelody) {
     cachedProsodyMelody = generateProsodicMelody({ seed: prosodySeedForSong(songId), baseOctave: 4, bars: 4 });
   }
-  return cachedProsodyMelody;
+  return clonePlayerPatternSource(cachedProsodyMelody);
+}
+
+function clonePlayerPatternSource(pattern: PlayerPatternSource): PlayerPatternSource {
+  return {
+    subdivisionBeats: pattern.subdivisionBeats,
+    events: pattern.events.map((event) => event ? { ...event } : null),
+  };
+}
+
+function compareCandidateAuditionRank(left: StoredCandidate, right: StoredCandidate): number {
+  return (
+    right.fitness - left.fitness ||
+    left.generation - right.generation ||
+    left.createdAt.localeCompare(right.createdAt) ||
+    left.id.localeCompare(right.id)
+  );
+}
+
+function getCandidateMelodyAuditionState(message?: string): CandidateMelodyAuditionState {
+  const candidate = candidateMelodyAudition.candidate;
+  if (!candidate || !candidateMelodyAudition.pattern) {
+    return {
+      enabled: false,
+      message: message ?? "No elite phrase candidate is being auditioned.",
+    };
+  }
+
+  return {
+    enabled: true,
+    message: message ?? `Auditioning elite phrase ${candidate.id}.`,
+    candidateId: candidate.id,
+    branchId: candidate.branchId,
+    fitness: candidate.fitness,
+    generation: candidate.generation,
+    seed: candidate.seed,
+    pattern: clonePlayerPatternSource(candidateMelodyAudition.pattern),
+  };
+}
+
+function applyCandidateMelodyAudition(candidate: StoredCandidate): CandidateMelodyAuditionState {
+  candidateMelodyAudition = {
+    branchId: candidate.branchId,
+    candidate,
+    pattern: clonePlayerPatternSource(candidate.genome as unknown as PlayerPatternSource),
+  };
+  cachedProsodyMelody = undefined;
+  cancelSlowThinkingControllers("candidate melody audition changed before the thought could land");
+  clearSlowThoughtPlayback();
+  refreshLookaheadSchedule();
+  renderWorld();
+  return getCandidateMelodyAuditionState(`Auditioning elite phrase ${candidate.id}.`);
+}
+
+async function auditionElitePhraseCandidate(
+  options: CandidateMelodyAuditionOptions = {},
+): Promise<CandidateMelodyAuditionState> {
+  const candidates = await persistence.listCandidates({
+    kind: "phrase",
+    status: "elite",
+    branchId: options.branchId,
+    limit: 500,
+  });
+  const sorted = [...candidates].sort(compareCandidateAuditionRank);
+  const selected = options.candidateId
+    ? sorted.find((candidate) => candidate.id === options.candidateId)
+    : sorted[0];
+
+  if (!selected) {
+    return getCandidateMelodyAuditionState(
+      options.candidateId
+        ? `No elite phrase candidate matched ${options.candidateId}.`
+        : "No elite phrase candidate is available to audition.",
+    );
+  }
+
+  return applyCandidateMelodyAudition(selected);
+}
+
+function clearCandidateMelodyAudition(): CandidateMelodyAuditionState {
+  if (!candidateMelodyAudition.candidate) {
+    return getCandidateMelodyAuditionState("No elite phrase candidate was active.");
+  }
+  const previousId = candidateMelodyAudition.candidate.id;
+  candidateMelodyAudition = {};
+  cancelSlowThinkingControllers("candidate melody audition cleared before the thought could land");
+  clearSlowThoughtPlayback();
+  refreshLookaheadSchedule();
+  renderWorld();
+  return getCandidateMelodyAuditionState(`Cleared elite phrase audition ${previousId}.`);
 }
 
 function prosodySeedForSong(nextSongId: SongId): number {
@@ -3213,6 +3327,9 @@ declare global {
       validate(candidate: unknown): SongGoalValidationResult;
     };
     prosody?: {
+      auditionEliteCandidate(options?: CandidateMelodyAuditionOptions): Promise<CandidateMelodyAuditionState>;
+      clearCandidateAudition(): CandidateMelodyAuditionState;
+      getAudition(): CandidateMelodyAuditionState;
       isEnabled(): boolean;
       setEnabled(enabled: boolean): boolean;
       getPattern(): PlayerPatternSource | undefined;
@@ -3409,6 +3526,9 @@ window.songGoal = {
 };
 
 window.prosody = {
+  auditionEliteCandidate: (options) => auditionElitePhraseCandidate(options),
+  clearCandidateAudition: () => clearCandidateMelodyAudition(),
+  getAudition: () => getCandidateMelodyAuditionState(),
   isEnabled: () => prosodyEnabled,
   setEnabled: (enabled) => setProsodyEnabled(Boolean(enabled)),
   getPattern: () => getActiveMelodyPhrasing(),

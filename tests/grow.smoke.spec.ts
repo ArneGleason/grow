@@ -191,6 +191,17 @@ type SlowThoughtPlayback = {
   summary: string;
 };
 
+type CandidateMelodyAuditionState = {
+  enabled: boolean;
+  message: string;
+  candidateId?: string;
+  branchId?: string;
+  fitness?: number;
+  generation?: number;
+  seed?: number;
+  pattern?: PlayerPatternSource;
+};
+
 type PersistenceClientState = {
   sessionId: string;
   branchId: string;
@@ -512,6 +523,55 @@ async function runCandidateCycleInApp(
   }
 
   return result;
+}
+
+async function listCandidatesInApp(
+  page: Page,
+  options: { kind?: "phrase"; status?: "alive" | "elite" | "purged"; branchId?: string; limit?: number },
+): Promise<StoredCandidate[]> {
+  const result = await page.evaluate(async (nextOptions) => {
+    const appWindow = window as unknown as {
+      persistence?: {
+        listCandidates(options?: typeof nextOptions): Promise<StoredCandidate[]>;
+      };
+    };
+    return appWindow.persistence?.listCandidates(nextOptions);
+  }, options);
+
+  if (!result) {
+    throw new Error("window.persistence.listCandidates() was not available");
+  }
+
+  return result;
+}
+
+async function auditionEliteCandidateInApp(
+  page: Page,
+  options: { branchId?: string; candidateId?: string },
+): Promise<CandidateMelodyAuditionState> {
+  const result = await page.evaluate(async (nextOptions) => {
+    const appWindow = window as unknown as {
+      prosody?: {
+        auditionEliteCandidate(options?: typeof nextOptions): Promise<CandidateMelodyAuditionState>;
+      };
+    };
+    return appWindow.prosody?.auditionEliteCandidate(nextOptions);
+  }, options);
+
+  if (!result) {
+    throw new Error("window.prosody.auditionEliteCandidate() was not available");
+  }
+
+  return result;
+}
+
+async function getActiveProsodyPattern(page: Page): Promise<PlayerPatternSource | undefined> {
+  return page.evaluate(() => {
+    const appWindow = window as unknown as {
+      prosody?: { getPattern(): PlayerPatternSource | undefined };
+    };
+    return appWindow.prosody?.getPattern();
+  });
 }
 
 async function getTimingDiagnostics(page: Page): Promise<readonly AudioFireTimingDiagnostic[]> {
@@ -3731,6 +3791,71 @@ test("candidate cycle produces scores selects elites develops children and stays
   expect(secondEvents.map((event) => event.id).sort()).toEqual(
     firstEvents.map((event) => event.id).sort(),
   );
+});
+
+test("elite phrase candidates can be auditioned as the active melody phrasing", async ({ page }) => {
+  await page.goto("/");
+  await flushPersistenceUntilIdle(page);
+
+  const uniqueSeed = 2_000_000 + Math.trunc(Date.now() % 1_000_000);
+  const branchId = `candidate-audition-${uniqueSeed}`;
+  const cycle = await runCandidateCycleInApp(page, {
+    seed: uniqueSeed,
+    kind: "phrase",
+    count: 5,
+    eliteLimit: 2,
+    branchId,
+  });
+
+  const audition = await auditionEliteCandidateInApp(page, { branchId });
+  expect(audition.enabled).toBe(true);
+  expect(audition.branchId).toBe(branchId);
+  expect(audition.candidateId).toBe(cycle.elite[0].id);
+
+  const eliteCandidates = await listCandidatesInApp(page, {
+    kind: "phrase",
+    status: "elite",
+    branchId,
+    limit: 5,
+  });
+  const selected = eliteCandidates.find((candidate) => candidate.id === audition.candidateId);
+  expect(selected).toBeTruthy();
+
+  const activePattern = await getActiveProsodyPattern(page);
+  expect(activePattern).toEqual(selected?.genome);
+  expect(audition.pattern).toEqual(selected?.genome);
+
+  const button = page.getByTestId("transport-toggle");
+  await button.click();
+  await expect(button).toHaveText("Stop");
+  await expect.poll(async () => page.evaluate(() => {
+    const appWindow = window as unknown as {
+      listening?: {
+        getEvents(): Array<{ playerId: string; kind: string }>;
+      };
+    };
+    return appWindow.listening?.getEvents()
+      .filter((event) => event.playerId === "melody" && event.kind === "note").length ?? 0;
+  }), { timeout: 8_000 }).toBeGreaterThan(0);
+
+  await button.click();
+  await expect(button).toHaveText("Start");
+
+  const cleared = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      prosody?: {
+        clearCandidateAudition(): CandidateMelodyAuditionState;
+        getPattern(): PlayerPatternSource | undefined;
+      };
+    };
+    const state = appWindow.prosody?.clearCandidateAudition();
+    return {
+      state,
+      pattern: appWindow.prosody?.getPattern(),
+    };
+  });
+  expect(cleared.state?.enabled).toBe(false);
+  expect(cleared.pattern).toBeUndefined();
 });
 
 test("persistence records musical events through an off-callback buffer", async ({ page }) => {
