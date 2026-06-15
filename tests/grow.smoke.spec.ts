@@ -238,6 +238,28 @@ type EvolvingElitePerformanceState = {
   lastError?: string;
 };
 
+type WrittenEvolvingControlState = {
+  value: number;
+  regime: "written" | "speaking" | "evolving";
+  thresholds: {
+    speaking: number;
+    evolving: number;
+  };
+  prosodyEnabled: boolean;
+  evolvingPerformanceStatus: EvolvingElitePerformanceState["status"];
+  auditionEnabled: boolean;
+  evolvingOptions: {
+    seed: number;
+    branchId: string;
+    generations: number;
+    batch: number;
+    intervalMs: number;
+    count: number;
+    eliteLimit: number;
+    diversity: { enabled: boolean };
+  };
+};
+
 type PersistenceClientState = {
   sessionId: string;
   branchId: string;
@@ -674,6 +696,29 @@ async function getEvolvingElitePerformanceState(page: Page): Promise<EvolvingEli
   }
 
   return result;
+}
+
+async function getWrittenEvolvingControlState(page: Page): Promise<WrittenEvolvingControlState> {
+  const result = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      prosody?: { getControlDial(): WrittenEvolvingControlState };
+    };
+    return appWindow.prosody?.getControlDial();
+  });
+
+  if (!result) {
+    throw new Error("window.prosody.getControlDial() was not available");
+  }
+
+  return result;
+}
+
+async function setWrittenEvolvingDial(page: Page, value: number): Promise<void> {
+  await page.getByTestId("written-evolving-dial").evaluate((node, nextValue) => {
+    const input = node as HTMLInputElement;
+    input.value = String(nextValue);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  }, value);
 }
 
 async function stopEvolvingEliteInApp(page: Page): Promise<EvolvingElitePerformanceState> {
@@ -1543,6 +1588,94 @@ test("inspect drawer keeps dense panels mounted while closed by default", async 
   await expect(page.getByTestId("inspect-toggle")).toHaveAttribute("aria-expanded", "false");
   await expect(page.getByTestId("player-inspector")).toHaveAttribute("data-open", "false");
   await expect(page.getByTestId("song-goal-status")).toBeHidden();
+});
+
+test("written-to-evolving dial orchestrates prosody and evolving performance", async ({ page }) => {
+  test.setTimeout(25_000);
+  await page.goto("/");
+  await flushPersistenceUntilIdle(page);
+
+  await expect(page.getByTestId("transport-toggle")).toBeVisible();
+  await expect(page.getByTestId("session-mode-control")).toBeVisible();
+  await expect(page.getByTestId("control-tempo-readout")).toHaveText("90 BPM");
+  await expect(page.getByTestId("control-key-readout")).toHaveText("C mixolydian");
+  await expect(page.getByTestId("written-evolving-control")).toBeVisible();
+  await expect(page.getByTestId("written-evolving-dial")).toBeVisible();
+  await expect(page.getByTestId("written-evolving-regime")).toHaveText("written");
+
+  const initial = await getWrittenEvolvingControlState(page);
+  expect(initial).toMatchObject({
+    value: 0,
+    regime: "written",
+    prosodyEnabled: false,
+    evolvingPerformanceStatus: "idle",
+    auditionEnabled: false,
+  });
+  expect(initial.evolvingOptions.branchId).toBe("dial-lantern");
+  expect(await getActiveProsodyPattern(page)).toBeUndefined();
+
+  await setWrittenEvolvingDial(page, 0.5);
+  await expect(page.getByTestId("written-evolving-regime")).toHaveText("speaking");
+  const speaking = await getWrittenEvolvingControlState(page);
+  expect(speaking.regime).toBe("speaking");
+  expect(speaking.prosodyEnabled).toBe(true);
+  expect(speaking.evolvingPerformanceStatus).toBe("idle");
+  expect(await getActiveProsodyPattern(page)).toBeTruthy();
+
+  await setWrittenEvolvingDial(page, 0);
+  await expect(page.getByTestId("written-evolving-regime")).toHaveText("written");
+  const written = await getWrittenEvolvingControlState(page);
+  expect(written.regime).toBe("written");
+  expect(written.prosodyEnabled).toBe(false);
+  expect(written.evolvingPerformanceStatus).toBe("idle");
+  expect(await getActiveProsodyPattern(page)).toBeUndefined();
+
+  await setWrittenEvolvingDial(page, 0.85);
+  await expect(page.getByTestId("written-evolving-regime")).toHaveText("evolving");
+  const evolving = await getWrittenEvolvingControlState(page);
+  expect(evolving.regime).toBe("evolving");
+  expect(evolving.prosodyEnabled).toBe(true);
+  expect(evolving.evolvingOptions).toMatchObject({
+    branchId: "dial-lantern",
+    generations: 50,
+    batch: 2,
+    count: 5,
+    eliteLimit: 3,
+    diversity: { enabled: true },
+  });
+
+  await expect.poll(async () => {
+    const state = await getEvolvingElitePerformanceState(page);
+    return state.currentCandidateId;
+  }, { timeout: 12_000 }).toBeTruthy();
+  const evolvingState = await getEvolvingElitePerformanceState(page);
+  const audition = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      prosody?: { getAudition(): CandidateMelodyAuditionState };
+    };
+    return appWindow.prosody?.getAudition();
+  });
+  expect(audition?.enabled).toBe(true);
+  expect(audition?.candidateId).toBe(evolvingState.currentCandidateId);
+  expect(await getActiveProsodyPattern(page)).toEqual(audition?.pattern);
+
+  await setWrittenEvolvingDial(page, 0.5);
+  await expect(page.getByTestId("written-evolving-regime")).toHaveText("speaking");
+  const backToSpeaking = await getWrittenEvolvingControlState(page);
+  expect(backToSpeaking.regime).toBe("speaking");
+  expect(backToSpeaking.prosodyEnabled).toBe(true);
+  expect(backToSpeaking.evolvingPerformanceStatus).toBe("idle");
+  expect(backToSpeaking.auditionEnabled).toBe(false);
+  expect(await getActiveProsodyPattern(page)).toBeTruthy();
+
+  await setWrittenEvolvingDial(page, 0);
+  await expect(page.getByTestId("written-evolving-regime")).toHaveText("written");
+  const backToWritten = await getWrittenEvolvingControlState(page);
+  expect(backToWritten.regime).toBe("written");
+  expect(backToWritten.prosodyEnabled).toBe(false);
+  expect(backToWritten.evolvingPerformanceStatus).toBe("idle");
+  expect(backToWritten.auditionEnabled).toBe(false);
+  expect(await getActiveProsodyPattern(page)).toBeUndefined();
 });
 
 test("performed offsets replay across transport restarts", async ({ page }) => {

@@ -206,6 +206,9 @@ const DEFAULT_EVOLVING_PERFORMANCE_INTERVAL_MS = 350;
 const MAX_EVOLVING_PERFORMANCE_BATCH = 50;
 const MIN_EVOLVING_PERFORMANCE_INTERVAL_MS = 0;
 const MAX_EVOLVING_PERFORMANCE_INTERVAL_MS = 30_000;
+const WRITTEN_EVOLVING_DIAL_DEFAULT = 0;
+const WRITTEN_EVOLVING_SPEAKING_THRESHOLD = 0.34;
+const WRITTEN_EVOLVING_EVOLVING_THRESHOLD = 0.68;
 let evolvingPerformanceTimerId = 0;
 let evolvingPerformanceRunSerial = 0;
 let evolvingPerformanceState: EvolvingElitePerformanceState = {
@@ -219,6 +222,9 @@ let evolvingPerformanceState: EvolvingElitePerformanceState = {
   eliteLimit: 0,
   swaps: [],
 };
+type WrittenEvolvingRegime = "written" | "speaking" | "evolving";
+let writtenEvolvingDialValue = WRITTEN_EVOLVING_DIAL_DEFAULT;
+let writtenEvolvingRegime: WrittenEvolvingRegime = "written";
 let activeTempoBpm = DEFAULT_TRANSPORT_BPM;
 let songGoalInterpretation = interpretSongGoal("Build a balanced modal terrarium piece.");
 let appliedSongGoal: SongGoal | undefined;
@@ -487,6 +493,26 @@ ${timingFeelControls}
             <strong data-testid="control-key-readout">C mixolydian</strong>
           </span>
         </div>
+        <fieldset class="written-evolving-control" data-testid="written-evolving-control">
+          <legend class="visually-hidden">Written to evolving control</legend>
+          <div class="written-evolving-control__header">
+            <span>Line</span>
+            <strong data-testid="written-evolving-regime">written</strong>
+          </div>
+          <label class="written-evolving-slider">
+            <span>Written</span>
+            <input
+              id="written-evolving-dial"
+              data-testid="written-evolving-dial"
+              type="range"
+              min="0"
+              max="1"
+              step="0.01"
+              value="0"
+            />
+            <span>Evolving</span>
+          </label>
+        </fieldset>
       </div>
     </header>
 
@@ -836,6 +862,8 @@ const inspectDrawer = requireElement<HTMLElement>("[data-testid='inspect-drawer'
 const inspectToggle = requireElement<HTMLButtonElement>("[data-testid='inspect-toggle']");
 const controlTempoReadout = requireElement<HTMLElement>("[data-testid='control-tempo-readout']");
 const controlKeyReadout = requireElement<HTMLElement>("[data-testid='control-key-readout']");
+const writtenEvolvingDialInput = requireElement<HTMLInputElement>("[data-testid='written-evolving-dial']");
+const writtenEvolvingRegimeReadout = requireElement<HTMLElement>("[data-testid='written-evolving-regime']");
 const helpPanel = requireElement<HTMLElement>("[data-testid='inspector-help-panel']");
 const helpTitle = requireElement<HTMLElement>("[data-testid='inspector-help-title']");
 const helpBody = requireElement<HTMLElement>("[data-testid='inspector-help-body']");
@@ -1998,6 +2026,24 @@ interface EvolvingElitePerformanceState {
   lastError?: string;
 }
 
+interface WrittenEvolvingControlState {
+  value: number;
+  regime: WrittenEvolvingRegime;
+  thresholds: {
+    speaking: number;
+    evolving: number;
+  };
+  prosodyEnabled: boolean;
+  evolvingPerformanceStatus: EvolvingElitePerformanceState["status"];
+  auditionEnabled: boolean;
+  evolvingOptions: Required<Pick<
+    EvolvingElitePerformanceOptions,
+    "seed" | "branchId" | "generations" | "batch" | "intervalMs" | "count" | "eliteLimit"
+  >> & {
+    diversity: { enabled: boolean };
+  };
+}
+
 function getCurrentFormVariant(): FormVariant {
   return getFormVariant(formVariantId);
 }
@@ -2314,6 +2360,74 @@ function prosodySeedForSong(nextSongId: SongId): number {
   return hash >>> 0;
 }
 
+function evolvingDialSeedForSong(nextSongId: SongId): number {
+  const seed = (prosodySeedForSong(nextSongId) ^ 0x6d2b79f5) >>> 0;
+  return seed === 0 ? 1 : seed;
+}
+
+function getWrittenEvolvingRegime(value: number): WrittenEvolvingRegime {
+  if (value >= WRITTEN_EVOLVING_EVOLVING_THRESHOLD) return "evolving";
+  if (value >= WRITTEN_EVOLVING_SPEAKING_THRESHOLD) return "speaking";
+  return "written";
+}
+
+function createWrittenEvolvingOptions(nextSongId: SongId = songId): WrittenEvolvingControlState["evolvingOptions"] {
+  return {
+    seed: evolvingDialSeedForSong(nextSongId),
+    branchId: `dial-${nextSongId}`,
+    generations: 50,
+    batch: 2,
+    intervalMs: DEFAULT_EVOLVING_PERFORMANCE_INTERVAL_MS,
+    count: 5,
+    eliteLimit: 3,
+    diversity: { enabled: true },
+  };
+}
+
+function getWrittenEvolvingControlState(): WrittenEvolvingControlState {
+  return {
+    value: writtenEvolvingDialValue,
+    regime: writtenEvolvingRegime,
+    thresholds: {
+      speaking: WRITTEN_EVOLVING_SPEAKING_THRESHOLD,
+      evolving: WRITTEN_EVOLVING_EVOLVING_THRESHOLD,
+    },
+    prosodyEnabled,
+    evolvingPerformanceStatus: evolvingPerformanceState.status,
+    auditionEnabled: Boolean(candidateMelodyAudition.candidate),
+    evolvingOptions: createWrittenEvolvingOptions(),
+  };
+}
+
+function applyWrittenEvolvingDialValue(value: number): WrittenEvolvingControlState {
+  const nextValue = Number.isFinite(value)
+    ? Math.max(0, Math.min(1, value))
+    : WRITTEN_EVOLVING_DIAL_DEFAULT;
+  const previousRegime = writtenEvolvingRegime;
+  const nextRegime = getWrittenEvolvingRegime(nextValue);
+  writtenEvolvingDialValue = nextValue;
+  writtenEvolvingRegime = nextRegime;
+
+  if (nextRegime === "evolving") {
+    if (!prosodyEnabled) {
+      setProsodyEnabled(true);
+    }
+    if (previousRegime !== "evolving" || evolvingPerformanceState.status === "idle") {
+      startEvolvingElitePerformance(createWrittenEvolvingOptions());
+    } else {
+      renderWorld();
+    }
+    return getWrittenEvolvingControlState();
+  }
+
+  if (previousRegime === "evolving" || evolvingPerformanceState.status !== "idle") {
+    stopEvolvingElitePerformance("Leaving evolving dial regime.");
+  }
+  setProsodyEnabled(nextRegime === "speaking");
+  renderWorld();
+  return getWrittenEvolvingControlState();
+}
+
 function setProsodyEnabled(enabled: boolean): boolean {
   if (prosodyEnabled === enabled) return prosodyEnabled;
   prosodyEnabled = enabled;
@@ -2563,12 +2677,21 @@ function formatMusicalEventBufferState(state: MusicalEventRecordBufferState): st
   return `${state.pendingCount} queued, ${state.enqueuedCount} heard${dropped}${lastFlush}`;
 }
 
+function renderWrittenEvolvingControl(): void {
+  const value = writtenEvolvingDialValue.toFixed(2);
+  if (writtenEvolvingDialInput.value !== value) {
+    writtenEvolvingDialInput.value = value;
+  }
+  writtenEvolvingRegimeReadout.textContent = writtenEvolvingRegime;
+}
+
 function renderStatus(state: GrowTransportState): void {
   button.textContent = state.status === "playing" ? "Stop" : "Start";
   status.value = `mode ${getSessionModeLabel(state.sessionMode).toLowerCase()} | song ${getSongLabel(state.songId)} | section ${formatSongSection(state.songForm).toLowerCase()} | ${state.status} | ${state.bpm} BPM | bar ${state.bar} | beat ${state.currentBeat.toFixed(1)} | lookahead ${state.lookahead.health} ${state.lookahead.leadBeats.toFixed(1)}/${state.lookahead.targetBeats.toFixed(0)} | pending slots ${state.lookahead.pendingSlotCount}`;
   const tonalContext = world.getTonalContext();
   controlTempoReadout.textContent = `${state.bpm} BPM`;
   controlKeyReadout.textContent = `${tonalContext.tonic} ${tonalContext.mode}`;
+  renderWrittenEvolvingControl();
 }
 
 function getCurrentListeningFrame(): ListeningFrame {
@@ -3466,6 +3589,10 @@ timingFeelControl.addEventListener("change", (event) => {
   applyTimingFeelMode(input.value);
 });
 
+writtenEvolvingDialInput.addEventListener("input", () => {
+  applyWrittenEvolvingDialValue(Number(writtenEvolvingDialInput.value));
+});
+
 melodyDevelopmentControl.addEventListener("change", (event) => {
   const input = event.target;
   if (!(input instanceof HTMLInputElement) || input.name !== "melody-development") return;
@@ -3644,10 +3771,12 @@ declare global {
     prosody?: {
       auditionEliteCandidate(options?: CandidateMelodyAuditionOptions): Promise<CandidateMelodyAuditionState>;
       clearCandidateAudition(): CandidateMelodyAuditionState;
+      getControlDial(): WrittenEvolvingControlState;
       getEvolvingPerformance(): EvolvingElitePerformanceState;
       getAudition(): CandidateMelodyAuditionState;
       isEnabled(): boolean;
       performEvolvingElite(options?: EvolvingElitePerformanceOptions): EvolvingElitePerformanceState;
+      setControlDial(value: number): WrittenEvolvingControlState;
       setEnabled(enabled: boolean): boolean;
       stopEvolvingElite(): EvolvingElitePerformanceState;
       getPattern(): PlayerPatternSource | undefined;
@@ -3848,10 +3977,12 @@ window.songGoal = {
 window.prosody = {
   auditionEliteCandidate: (options) => auditionElitePhraseCandidate(options),
   clearCandidateAudition: () => clearCandidateMelodyAudition(),
+  getControlDial: () => getWrittenEvolvingControlState(),
   getEvolvingPerformance: () => getEvolvingPerformanceState(),
   getAudition: () => getCandidateMelodyAuditionState(),
   isEnabled: () => prosodyEnabled,
   performEvolvingElite: (options) => startEvolvingElitePerformance(options),
+  setControlDial: (value) => applyWrittenEvolvingDialValue(Number(value)),
   setEnabled: (enabled) => setProsodyEnabled(Boolean(enabled)),
   stopEvolvingElite: () => stopEvolvingElitePerformance(),
   getPattern: () => getActiveMelodyPhrasing(),

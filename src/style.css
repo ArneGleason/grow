@@ -252,6 +252,60 @@ button {
   white-space: nowrap;
 }
 
+.written-evolving-control {
+  display: grid;
+  gap: 5px;
+  min-width: min(320px, 100%);
+  min-height: 42px;
+  margin: 0;
+  border: 1px solid rgba(174, 183, 165, 0.22);
+  border-radius: 8px;
+  padding: 6px 10px;
+  background: rgba(10, 14, 12, 0.66);
+}
+
+.written-evolving-control__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  line-height: 1;
+}
+
+.written-evolving-control__header span {
+  color: #aeb7a5;
+  font-size: 0.72rem;
+}
+
+.written-evolving-control__header strong {
+  min-width: 64px;
+  color: #eef3e5;
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-align: right;
+}
+
+.written-evolving-slider {
+  display: grid;
+  grid-template-columns: auto minmax(120px, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  color: #aeb7a5;
+  font-size: 0.72rem;
+  line-height: 1;
+}
+
+.written-evolving-slider input {
+  inline-size: 100%;
+  min-inline-size: 120px;
+  accent-color: #d9f7a7;
+}
+
+.written-evolving-slider input:focus-visible {
+  outline: 3px solid #f6cc6b;
+  outline-offset: 3px;
+}
+
 .stage {
   --inspector-width: 320px;
   --stage-resizer-width: 16px;
