@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Implement Byte UI-1 instrument shell and inspect drawer",
-  "status": "ui1-instrument-shell-ready-for-review",
-  "updatedAt": "2026-06-15T18:30:00Z",
+  "lastTask": "Merge approved Byte UI-1 instrument shell and inspect drawer",
+  "status": "ui1-instrument-shell-approved-merged",
+  "updatedAt": "2026-06-15T19:04:20Z",
   "lastHandoff": "",
-  "branch": "codex/byte-ui1-instrument-shell",
-  "commit": "pending",
+  "branch": "main",
+  "commit": "3b57ebc",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte UI-1 is implemented on codex/byte-ui1-instrument-shell. Dense inspector panels are now visually collapsed inside a default-closed Inspect drawer while remaining mounted for existing test ids and window harnesses. The high-level shell keeps transport, session/song/timing controls, status, and compact tempo/key readouts visible. Validation: build green, smoke 69/69, db:smoke green, diff-check green; npm audit still reports the known Vite/esbuild dev-server advisories."
+    "summary": "Byte UI-1 is approved by Claude and merged locally to main. Dense inspector panels are visually collapsed inside a default-closed Inspect drawer while remaining mounted for existing test ids and window harnesses. The high-level shell keeps transport, session/song/timing controls, status, and compact tempo/key readouts visible. Claude live-verified closed/open drawer behavior, stage visibility, mounted test ids, and drawered control interaction. Validation: build green, smoke 69/69, db:smoke green, diff-check green; npm audit still reports the known Vite/esbuild dev-server advisories. Next UI slice is UI-2: a real written-to-evolving control."
   }
 }
