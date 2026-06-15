@@ -477,6 +477,16 @@ ${timingFeelControls}
           data-testid="transport-status"
           aria-live="polite"
         ></output>
+        <div class="control-readouts" aria-label="Current musical setup">
+          <span class="control-readout">
+            <span>Tempo</span>
+            <strong data-testid="control-tempo-readout">90 BPM</strong>
+          </span>
+          <span class="control-readout">
+            <span>Key</span>
+            <strong data-testid="control-key-readout">C mixolydian</strong>
+          </span>
+        </div>
       </div>
     </header>
 
@@ -506,11 +516,31 @@ ${timingFeelControls}
       </div>
 
       <aside
-        class="inspector"
+        class="inspector inspect-drawer"
         id="player-inspector"
         data-testid="player-inspector"
+        data-open="false"
         aria-label="Player inspector"
       >
+        <div class="inspect-drawer__header">
+          <div>
+            <h2>Inspect</h2>
+            <p>Detailed state, probes, scores, and persistence</p>
+          </div>
+          <button
+            class="inspect-toggle"
+            data-testid="inspect-toggle"
+            type="button"
+            aria-expanded="false"
+            aria-controls="inspect-drawer-content"
+          >Inspect</button>
+        </div>
+
+        <div
+          class="inspect-drawer__content"
+          id="inspect-drawer-content"
+          data-testid="inspect-drawer"
+        >
         <section
           class="inspector-help-panel"
           id="inspector-help-panel"
@@ -790,6 +820,7 @@ ${renderHelpButton("lookahead", "lookahead buffer")}
             <dd data-testid="lookahead-pending-slots">0</dd>
           </dl>
         </section>
+        </div>
       </aside>
     </section>
   </section>
@@ -801,6 +832,10 @@ const status = requireElement<HTMLOutputElement>("#transport-status");
 const stage = requireElement<HTMLElement>("[data-testid='stage']");
 const stageResizer = requireElement<HTMLElement>("[data-testid='stage-resizer']");
 const inspector = requireElement<HTMLElement>("[data-testid='player-inspector']");
+const inspectDrawer = requireElement<HTMLElement>("[data-testid='inspect-drawer']");
+const inspectToggle = requireElement<HTMLButtonElement>("[data-testid='inspect-toggle']");
+const controlTempoReadout = requireElement<HTMLElement>("[data-testid='control-tempo-readout']");
+const controlKeyReadout = requireElement<HTMLElement>("[data-testid='control-key-readout']");
 const helpPanel = requireElement<HTMLElement>("[data-testid='inspector-help-panel']");
 const helpTitle = requireElement<HTMLElement>("[data-testid='inspector-help-title']");
 const helpBody = requireElement<HTMLElement>("[data-testid='inspector-help-body']");
@@ -893,6 +928,7 @@ let renderedPlayerIds = "";
 let renderedThoughtSeedIds = "";
 let renderFrameId: number | null = null;
 let isTearingDown = false;
+let isInspectDrawerOpen = false;
 const playerStateNodes = new Map<string, HTMLElement>();
 const playerTasteActionNodes = new Map<string, HTMLElement>();
 const playerTasteSummaryNodes = new Map<string, HTMLElement>();
@@ -968,6 +1004,19 @@ function hideHelpTopic(): void {
   helpPanel.hidden = true;
   for (const button of helpButtons) {
     button.setAttribute("aria-expanded", "false");
+  }
+}
+
+function setInspectDrawerOpen(isOpen: boolean): void {
+  isInspectDrawerOpen = isOpen;
+  inspector.classList.toggle("is-open", isOpen);
+  inspector.dataset.open = String(isOpen);
+  inspectDrawer.dataset.open = String(isOpen);
+  stage.classList.toggle("stage--inspect-open", isOpen);
+  inspectToggle.setAttribute("aria-expanded", String(isOpen));
+  inspectToggle.textContent = isOpen ? "Hide" : "Inspect";
+  if (!isOpen) {
+    hideHelpTopic();
   }
 }
 
@@ -2517,6 +2566,9 @@ function formatMusicalEventBufferState(state: MusicalEventRecordBufferState): st
 function renderStatus(state: GrowTransportState): void {
   button.textContent = state.status === "playing" ? "Stop" : "Start";
   status.value = `mode ${getSessionModeLabel(state.sessionMode).toLowerCase()} | song ${getSongLabel(state.songId)} | section ${formatSongSection(state.songForm).toLowerCase()} | ${state.status} | ${state.bpm} BPM | bar ${state.bar} | beat ${state.currentBeat.toFixed(1)} | lookahead ${state.lookahead.health} ${state.lookahead.leadBeats.toFixed(1)}/${state.lookahead.targetBeats.toFixed(0)} | pending slots ${state.lookahead.pendingSlotCount}`;
+  const tonalContext = world.getTonalContext();
+  controlTempoReadout.textContent = `${state.bpm} BPM`;
+  controlKeyReadout.textContent = `${tonalContext.tonic} ${tonalContext.mode}`;
 }
 
 function getCurrentListeningFrame(): ListeningFrame {
@@ -3364,6 +3416,10 @@ initTransport({
 recordSessionStarted();
 renderWorld();
 
+inspectToggle.addEventListener("click", () => {
+  setInspectDrawerOpen(!isInspectDrawerOpen);
+});
+
 button.addEventListener("click", async () => {
   button.disabled = true;
   try {
@@ -3534,6 +3590,7 @@ musicalEventFlushTimerId = window.setInterval(() => {
   flushMusicalEventBufferToPersistence("interval");
 }, MUSICAL_EVENT_FLUSH_INTERVAL_MS);
 setInspectorWidth(DEFAULT_INSPECTOR_WIDTH);
+setInspectDrawerOpen(false);
 
 terrarium = await createTerrariumView(container, world.getPlayers());
 renderWorld();

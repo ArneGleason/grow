@@ -441,6 +441,15 @@ async function getTransportState(page: Page): Promise<TransportState> {
   return state;
 }
 
+async function openInspectDrawer(page: Page): Promise<void> {
+  const toggle = page.getByTestId("inspect-toggle");
+  if (await toggle.getAttribute("aria-expanded") !== "true") {
+    await toggle.click();
+  }
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByTestId("player-inspector")).toHaveAttribute("data-open", "true");
+}
+
 async function getPersistenceState(page: Page): Promise<PersistenceClientState> {
   const state = await page.evaluate(() => {
     const appWindow = window as unknown as {
@@ -1510,6 +1519,32 @@ test("session mode refill policy is explicit", () => {
   });
 });
 
+test("inspect drawer keeps dense panels mounted while closed by default", async ({ page }) => {
+  await page.goto("/");
+
+  await expect(page.getByTestId("transport-toggle")).toBeVisible();
+  await expect(page.getByTestId("session-mode-control")).toBeVisible();
+  await expect(page.getByTestId("control-tempo-readout")).toHaveText("90 BPM");
+  await expect(page.getByTestId("control-key-readout")).toHaveText("C mixolydian");
+  await expect(page.getByTestId("inspect-toggle")).toBeVisible();
+  await expect(page.getByTestId("inspect-toggle")).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByTestId("player-inspector")).toHaveAttribute("data-open", "false");
+
+  await expect(page.getByTestId("inspect-drawer")).toBeAttached();
+  await expect(page.getByTestId("song-goal-status")).toBeAttached();
+  await expect(page.getByTestId("form-score-total")).toBeAttached();
+  await expect(page.getByTestId("song-goal-status")).toBeHidden();
+
+  await openInspectDrawer(page);
+  await expect(page.getByTestId("song-goal-status")).toBeVisible();
+  await expect(page.getByTestId("form-score-total")).toBeVisible();
+
+  await page.getByTestId("inspect-toggle").click();
+  await expect(page.getByTestId("inspect-toggle")).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByTestId("player-inspector")).toHaveAttribute("data-open", "false");
+  await expect(page.getByTestId("song-goal-status")).toBeHidden();
+});
+
 test("performed offsets replay across transport restarts", async ({ page }) => {
   test.setTimeout(25_000);
   await page.goto("/");
@@ -1543,6 +1578,7 @@ test("performed offsets replay across transport restarts", async ({ page }) => {
 test("timing feel control can square playback to the grid", async ({ page }) => {
   test.setTimeout(30_000);
   await page.goto("/");
+  await openInspectDrawer(page);
 
   await expect(page.getByTestId("timing-feel-current")).toHaveText("Feel");
   await expect(page.getByTestId("timing-feel-feel")).toBeChecked();
@@ -1620,6 +1656,7 @@ test("timing feel control can square playback to the grid", async ({ page }) => 
 test("song material control switches deterministic loops", async ({ page }) => {
   test.setTimeout(30_000);
   await page.goto("/");
+  await openInspectDrawer(page);
 
   await expect(page.getByTestId("song-current")).toHaveText("Lantern");
   await expect(page.getByTestId("song-lantern")).toBeChecked();
@@ -2344,6 +2381,7 @@ test("song goal setup derives a bounded tonal context", () => {
 
 test("song goal inspector interprets prose without driving playback", async ({ page }) => {
   await page.goto("/");
+  await openInspectDrawer(page);
   await flushPersistence(page);
   await expect(page.getByTestId("song-goal-status")).toContainText("deterministic | valid");
   await expect(page.getByTestId("song-goal-setup")).toContainText("C mixolydian");
@@ -2386,6 +2424,7 @@ test("song goal inspector interprets prose without driving playback", async ({ p
 
 test("song goal setup applies tonal context tempo form and persists the structured goal", async ({ page }) => {
   await page.goto("/");
+  await openInspectDrawer(page);
   await flushPersistence(page);
   const beforeState = await getTransportState(page);
   expect(beforeState.bpm).toBe(90);
@@ -2499,6 +2538,7 @@ test("song goal setup applies tonal context tempo form and persists the structur
 
 test("form variant selector scores candidates and drives the transport form", async ({ page }) => {
   await page.goto("/");
+  await openInspectDrawer(page);
   await flushPersistence(page);
   await expect(page.getByTestId("form-variant-current")).toContainText("Classic Arc");
   await expect(page.getByTestId("form-variant-candidates")).toContainText("Classic Arc");
@@ -2552,6 +2592,7 @@ test("form variant selector scores candidates and drives the transport form", as
 
 test("melody repair readout supports A/B audition and remembered feedback", async ({ page }) => {
   await page.goto("/");
+  await openInspectDrawer(page);
   await flushPersistence(page);
   await expect(page.getByTestId("melody-development-current")).toHaveText("Repaired");
   await expect(page.getByTestId("melody-score-total")).toContainText("repaired");
@@ -2637,6 +2678,7 @@ test("manual Ollama melody critic selects a validated local chorus candidate", a
   });
 
   await page.goto("/");
+  await openInspectDrawer(page);
   await expect(page.getByTestId("melody-candidate-current")).toContainText("chorus-candidate");
   const take = await getMelodyRepairTake(page);
   const alternate = take.candidates.find((candidate) =>
@@ -2742,6 +2784,7 @@ test("manual Ollama melody critic keeps deterministic fallback for invalid candi
   });
 
   await page.goto("/");
+  await openInspectDrawer(page);
   await expect(page.getByTestId("melody-candidate-current")).toContainText("chorus-candidate");
   const take = await getMelodyRepairTake(page);
   await expect(page.getByTestId("melody-candidate-current")).toContainText(take.deterministicCandidateId);
@@ -2848,6 +2891,7 @@ test("manual Ollama thought probe is inspectable with a mocked local endpoint", 
   });
 
   await page.goto("/");
+  await openInspectDrawer(page);
   await page.getByTestId("ollama-health-check").click();
   await expect(page.getByTestId("ollama-health-status")).toContainText("ready");
   await expect(page.getByTestId("ollama-latency")).toContainText("ms");
@@ -2932,6 +2976,7 @@ test("manual Ollama thought probe keeps mock fallback when proxy chat fails", as
   });
 
   await page.goto("/");
+  await openInspectDrawer(page);
   await page.getByTestId("ollama-send-thought").click();
   await expect(page.getByTestId("ollama-parse-result")).toHaveText("error (1)");
   await expect(page.getByTestId("ollama-validation-result")).toHaveText("invalid (1)");
@@ -2993,6 +3038,7 @@ test("manual Ollama thought probe keeps mock fallback for invalid model JSON", a
   });
 
   await page.goto("/");
+  await openInspectDrawer(page);
   await page.getByTestId("ollama-send-thought").click();
   await expect(page.getByTestId("ollama-parse-result")).toHaveText("ok");
   await expect(page.getByTestId("ollama-validation-result")).toHaveText("invalid (1)");
@@ -3066,6 +3112,7 @@ test("manual Ollama proposal text probe rewrites text without changing proposal 
   });
 
   await page.goto("/");
+  await openInspectDrawer(page);
   await expect(page.getByTestId("song-sketch-proposal")).toContainText("mock/");
   const beforeProposal = await getSongProposal(page);
 
@@ -3157,6 +3204,7 @@ test("manual Ollama proposal text probe keeps mock fallback for invalid model te
   });
 
   await page.goto("/");
+  await openInspectDrawer(page);
   await expect(page.getByTestId("song-sketch-proposal")).toContainText("mock/");
   const beforeProposal = await getSongProposal(page);
   await page.getByTestId("ollama-send-proposal").click();
@@ -3274,6 +3322,7 @@ test("slow thinking loop asks melody once and compiles a bounded rest", async ({
   });
 
   await page.goto("/");
+  await openInspectDrawer(page);
   await page.getByTestId("ollama-health-check").click();
   await expect(page.getByTestId("ollama-health-status")).toContainText("ready");
 
@@ -3402,6 +3451,7 @@ test("slow thinking loop compiles a bounded register shift for existing melody n
   });
 
   await page.goto("/");
+  await openInspectDrawer(page);
   await page.getByTestId("ollama-health-check").click();
   await expect(page.getByTestId("ollama-health-status")).toContainText("ready");
 
@@ -3528,6 +3578,7 @@ test("slow thinking loops keep independent melody and bass playback windows", as
   });
 
   await page.goto("/");
+  await openInspectDrawer(page);
   await page.getByTestId("ollama-health-check").click();
   await expect(page.getByTestId("ollama-health-status")).toContainText("ready");
 
@@ -3594,6 +3645,7 @@ test("local Ollama proxy rejects non-local targets", async ({ request }) => {
 
 test("persistence records low-frequency decisions off the audio path", async ({ page, request }) => {
   await page.goto("/");
+  await openInspectDrawer(page);
   await flushPersistence(page);
   await expect.poll(async () => (await getPersistenceState(page)).appendedCount).toBeGreaterThanOrEqual(1);
 
@@ -4624,6 +4676,7 @@ test("elite phrase candidates can be auditioned as the active melody phrasing", 
 
 test("persistence records musical events through an off-callback buffer", async ({ page }) => {
   await page.goto("/");
+  await openInspectDrawer(page);
   await flushPersistenceUntilIdle(page);
 
   const button = page.getByTestId("transport-toggle");
@@ -4724,6 +4777,7 @@ test("persistence failure stays soft and retries are bounded", async ({ page }) 
   });
 
   await page.goto("/");
+  await openInspectDrawer(page);
   await waitForPersistenceDebugApi(page);
 
   await expect.poll(async () => (await getPersistenceState(page)).status, {
@@ -4746,6 +4800,7 @@ test("persistence failure stays soft and retries are bounded", async ({ page }) 
 
 test("inspector help icons explain current controls", async ({ page }) => {
   await page.goto("/");
+  await openInspectDrawer(page);
 
   await expect(page.getByTestId("inspector-help-panel")).toBeHidden();
 
@@ -4770,6 +4825,7 @@ test("inspector help icons explain current controls", async ({ page }) => {
 
 test("stage resizer changes the inspector width within bounds", async ({ page }) => {
   await page.goto("/");
+  await openInspectDrawer(page);
 
   const stage = page.getByTestId("stage");
   const inspector = page.getByTestId("player-inspector");
@@ -4820,6 +4876,7 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   });
 
   await page.goto("/");
+  await openInspectDrawer(page);
 
   const button = page.getByTestId("transport-toggle");
   const status = page.getByTestId("transport-status");
