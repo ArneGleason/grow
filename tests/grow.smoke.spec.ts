@@ -1923,6 +1923,27 @@ test("candidate fitness aggregation is pure weighted bounded scoring", () => {
   expect(bounded.contributions.map((entry) => entry.key)).toEqual(["landing", "monotony", "surprise"]);
   expect(bounded.contributions.map((entry) => entry.score)).toEqual([1, 0, 0]);
 
+  const phraseAggregate = aggregateCandidateFitness({
+    richness: 0.5,
+    anacrusis: 1,
+    questionAnswer: 0.25,
+    anchorContrast: 0.75,
+  });
+  expect(phraseAggregate.fitness).toBe(0.5375);
+  expect(phraseAggregate.ignoredScoreKeys).toEqual([]);
+  expect(phraseAggregate.contributions.map((entry) => entry.key)).toEqual([
+    "anacrusis",
+    "anchorContrast",
+    "questionAnswer",
+    "richness",
+  ]);
+  expect(aggregateCandidateFitness({
+    richness: 0.5,
+    anacrusis: 1,
+    questionAnswer: 0.25,
+    anchorContrast: 0.75,
+  }, { kind: "phrase" })).toEqual(phraseAggregate);
+
   const candidate = assertValidCandidate({
     kind: "phrase",
     genome: SONG_MATERIALS[0].patterns[0],
@@ -3728,8 +3749,10 @@ test("candidate cycle produces scores selects elites develops children and stays
   const eliteIds = new Set(first.elite.map((candidate) => candidate.id));
   const purgedIds = new Set(first.purged.map((candidate) => candidate.id));
   for (const candidate of first.produced) {
-    const expectedFitness = aggregateCandidateFitness(candidate.scores).fitness;
+    const aggregate = aggregateCandidateFitness(candidate.scores, { kind: "phrase" });
+    const expectedFitness = aggregate.fitness;
     expect(candidate.fitness).toBeCloseTo(expectedFitness, 4);
+    expect(aggregate.ignoredScoreKeys).toEqual([]);
     if (candidate.status === "elite") {
       expect(eliteIds.has(candidate.id)).toBe(true);
     }
@@ -3737,6 +3760,10 @@ test("candidate cycle produces scores selects elites develops children and stays
       expect(purgedIds.has(candidate.id)).toBe(true);
     }
   }
+  expect(new Set(first.produced.map((candidate) => candidate.fitness)).size).toBeGreaterThan(1);
+  expect(Math.min(...first.elite.map((candidate) => candidate.fitness))).toBeGreaterThanOrEqual(
+    Math.max(...first.purged.map((candidate) => candidate.fitness)),
+  );
 
   for (const child of first.children) {
     const parent = first.elite.find((candidate) => candidate.id === child.parentId);

@@ -1,8 +1,9 @@
-import type { Candidate, CandidateScores } from "./candidate-store";
+import type { Candidate, CandidateKind, CandidateScores } from "./candidate-store";
 
 export type CandidateFitnessWeights = Record<string, number>;
 
 export interface CandidateFitnessOptions {
+  kind?: CandidateKind;
   weights?: CandidateFitnessWeights;
   missingScore?: number;
 }
@@ -43,13 +44,23 @@ export const DEFAULT_CANDIDATE_FITNESS_WEIGHTS: CandidateFitnessWeights = Object
   goal: 0.08,
 });
 
+export const PHRASE_CANDIDATE_FITNESS_WEIGHTS: CandidateFitnessWeights = Object.freeze({
+  richness: 0.3,
+  anacrusis: 0.15,
+  questionAnswer: 0.35,
+  anchorContrast: 0.2,
+});
+
 const DEFAULT_MISSING_SCORE = 0;
+const PHRASE_SCORE_KEYS = new Set(Object.keys(PHRASE_CANDIDATE_FITNESS_WEIGHTS));
+const DEFAULT_SCORE_KEYS = new Set(Object.keys(DEFAULT_CANDIDATE_FITNESS_WEIGHTS));
 
 export function aggregateCandidateFitness(
   scores: CandidateScores,
   options: CandidateFitnessOptions = {},
 ): CandidateFitnessResult {
-  const weights = normalizeWeights(options.weights ?? DEFAULT_CANDIDATE_FITNESS_WEIGHTS);
+  const fallbackWeights = getDefaultWeightsForScores(scores, options.kind);
+  const weights = normalizeWeights(options.weights ?? fallbackWeights, fallbackWeights);
   const missingScore = clamp01(options.missingScore ?? DEFAULT_MISSING_SCORE);
   const totalWeight = Object.values(weights).reduce((sum, weight) => sum + weight, 0);
   const contributions = Object.entries(weights)
@@ -89,7 +100,10 @@ export function previewCandidateFitness(
   candidate: Candidate,
   options: CandidateFitnessOptions = {},
 ): CandidateFitnessPreview {
-  const fitness = aggregateCandidateFitness(candidate.scores, options);
+  const fitness = aggregateCandidateFitness(candidate.scores, {
+    ...options,
+    kind: options.kind ?? candidate.kind,
+  });
   return {
     candidate: {
       ...candidate,
@@ -100,7 +114,24 @@ export function previewCandidateFitness(
   };
 }
 
-function normalizeWeights(weights: CandidateFitnessWeights): CandidateFitnessWeights {
+function getDefaultWeightsForScores(
+  scores: CandidateScores,
+  kind?: CandidateKind,
+): CandidateFitnessWeights {
+  if (kind === "phrase") return PHRASE_CANDIDATE_FITNESS_WEIGHTS;
+
+  const keys = Object.keys(scores);
+  const hasPhraseScore = keys.some((key) => PHRASE_SCORE_KEYS.has(key));
+  const hasDefaultScore = keys.some((key) => DEFAULT_SCORE_KEYS.has(key));
+  if (hasPhraseScore && !hasDefaultScore) return PHRASE_CANDIDATE_FITNESS_WEIGHTS;
+
+  return DEFAULT_CANDIDATE_FITNESS_WEIGHTS;
+}
+
+function normalizeWeights(
+  weights: CandidateFitnessWeights,
+  fallbackWeights: CandidateFitnessWeights,
+): CandidateFitnessWeights {
   const normalized = Object.fromEntries(
     Object.entries(weights)
       .filter(([, weight]) => Number.isFinite(weight) && weight > 0)
@@ -109,7 +140,7 @@ function normalizeWeights(weights: CandidateFitnessWeights): CandidateFitnessWei
   );
   return Object.keys(normalized).length > 0
     ? normalized
-    : { ...DEFAULT_CANDIDATE_FITNESS_WEIGHTS };
+    : { ...fallbackWeights };
 }
 
 function clamp01(value: number): number {

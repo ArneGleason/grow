@@ -99,7 +99,7 @@ export async function runCandidateCycle(
   const scoredProduced: StoredCandidate[] = [];
 
   for (const candidate of producedCandidates) {
-    const fitness = aggregateCandidateFitness(candidate.scores).fitness;
+    const fitness = aggregateCandidateFitness(candidate.scores, { kind: candidate.kind }).fitness;
     const written = await persistence.writeCandidate(candidate, branchId);
     const scored = needsFitnessUpdate(written, candidate.scores, fitness)
       ? await persistence.scoreCandidate(written.id, candidate.scores, fitness, branchId)
@@ -291,7 +291,7 @@ function needsFitnessUpdate(
   scores: CandidateScores,
   fitness: number,
 ): boolean {
-  if (Math.abs(candidate.fitness - fitness) > 0.0001) return true;
+  if (Math.abs(candidate.fitness - fitness) > 0.0000005) return true;
   return stableJson(candidate.scores) !== stableJson(scores);
 }
 
