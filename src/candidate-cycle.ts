@@ -21,6 +21,7 @@ import {
   type ContourVariation,
 } from "./prosody-development";
 import { produceProsodyCandidates } from "./prosody-candidates";
+import { scoreProsody } from "./prosody-scoring";
 import type { PlayerPatternSource } from "./song-material";
 
 export interface CandidateCycleOptions {
@@ -29,6 +30,10 @@ export interface CandidateCycleOptions {
   eliteLimit?: number;
   count?: number;
   branchId?: string;
+}
+
+export interface CandidateEvolutionOptions extends CandidateCycleOptions {
+  generations?: number;
 }
 
 export interface CandidateCyclePersistence {
@@ -78,10 +83,32 @@ export interface CandidateCycleResult {
   children: readonly CandidateCycleChildSummary[];
 }
 
+export interface CandidateEvolutionGenerationSummary {
+  generation: number;
+  seed: number;
+  topFitness: number;
+  meanEliteFitness: number;
+  eliteCount: number;
+  populationSize: number;
+}
+
+export interface CandidateEvolutionResult {
+  kind: "phrase";
+  branchId: string;
+  seed: number;
+  generations: number;
+  count: number;
+  eliteLimit: number;
+  summaries: readonly CandidateEvolutionGenerationSummary[];
+  finalElite: readonly CandidateCycleCandidateSummary[];
+}
+
 const DEFAULT_CYCLE_COUNT = 8;
 const DEFAULT_ELITE_LIMIT = 3;
+const DEFAULT_EVOLUTION_GENERATIONS = 3;
 const MAX_CYCLE_COUNT = 64;
 const MAX_ELITE_LIMIT = 24;
+const MAX_EVOLUTION_GENERATIONS = 12;
 
 export async function runCandidateCycle(
   options: CandidateCycleOptions,
@@ -117,14 +144,24 @@ export async function runCandidateCycle(
   const children: CandidateCycleChildSummary[] = [];
   for (const elite of selection.elite) {
     const mutation = createProsodyDevelopmentMutation(elite);
-    const developed = await persistence.developCandidate({
-      parentId: elite.id,
-      branchId,
-      seed: createDevelopmentSeed(elite, mutation),
-      mutation,
-    });
+    if (!mutation) continue;
+
+    let developed: CandidateDevelopmentResult;
+    try {
+      developed = await persistence.developCandidate({
+        parentId: elite.id,
+        branchId,
+        seed: createDevelopmentSeed(elite, mutation),
+        mutation,
+      });
+    } catch (error) {
+      if (isNoOpDevelopmentError(error)) continue;
+      throw error;
+    }
+
+    const scoredChild = await scoreStoredPhraseCandidate(developed.child, persistence, branchId);
     children.push({
-      ...summarizeCandidate(developed.child),
+      ...summarizeCandidate(scoredChild),
       parentId: elite.id,
       mutation: developed.mutation,
     });
@@ -166,6 +203,129 @@ export async function runCandidateCycle(
   };
 }
 
+export async function runEvolution(
+  options: CandidateEvolutionOptions,
+  persistence: CandidateCyclePersistence,
+): Promise<CandidateEvolutionResult> {
+  if (options.kind !== "phrase") {
+    throw new Error("Candidate evolution D3 only supports phrase candidates");
+  }
+
+  const seed = normalizeSeed(options.seed);
+  const count = normalizePositiveInteger(options.count, DEFAULT_CYCLE_COUNT, MAX_CYCLE_COUNT);
+  const eliteLimit = normalizePositiveInteger(options.eliteLimit, DEFAULT_ELITE_LIMIT, MAX_ELITE_LIMIT);
+  const generations = normalizePositiveInteger(
+    options.generations,
+    DEFAULT_EVOLUTION_GENERATIONS,
+    MAX_EVOLUTION_GENERATIONS,
+  );
+  const branchId = normalizeBranchId(options.branchId);
+  const summaries: CandidateEvolutionGenerationSummary[] = [];
+
+  for (let generationIndex = 0; generationIndex < generations; generationIndex += 1) {
+    const generationSeed = createGenerationSeed(seed, generationIndex);
+    await runCandidateCycle({
+      seed: generationSeed,
+      kind: "phrase",
+      count,
+      eliteLimit,
+      branchId,
+    }, persistence);
+    summaries.push(await summarizeEvolutionGeneration(
+      persistence,
+      branchId,
+      generationIndex + 1,
+      generationSeed,
+      eliteLimit,
+    ));
+  }
+
+  const finalElite = await readRankedElite(persistence, branchId, eliteLimit);
+
+  return {
+    kind: "phrase",
+    branchId,
+    seed,
+    generations,
+    count,
+    eliteLimit,
+    summaries,
+    finalElite: finalElite.map(summarizeCandidate),
+  };
+}
+
+async function scoreStoredPhraseCandidate(
+  candidate: StoredCandidate,
+  persistence: CandidateCyclePersistence,
+  branchId: string,
+): Promise<StoredCandidate> {
+  const score = scoreProsody(candidate.genome as unknown as PlayerPatternSource, [4, 4]);
+  const scores = { ...score.subscores };
+  const fitness = aggregateCandidateFitness(scores, { kind: "phrase" }).fitness;
+  return needsFitnessUpdate(candidate, scores, fitness)
+    ? persistence.scoreCandidate(candidate.id, scores, fitness, branchId)
+    : candidate;
+}
+
+async function summarizeEvolutionGeneration(
+  persistence: CandidateCyclePersistence,
+  branchId: string,
+  generation: number,
+  seed: number,
+  eliteLimit: number,
+): Promise<CandidateEvolutionGenerationSummary> {
+  const candidates = await persistence.listCandidates({
+    kind: "phrase",
+    branchId,
+    limit: 500,
+  });
+  const activeCandidates = candidates.filter((candidate) => candidate.status !== "purged");
+  const elite = await readRankedElite(persistence, branchId, eliteLimit);
+  const topFitness = activeCandidates.reduce(
+    (best, candidate) => Math.max(best, candidate.fitness),
+    0,
+  );
+  const meanEliteFitness = elite.length > 0
+    ? elite.reduce((sum, candidate) => sum + candidate.fitness, 0) / elite.length
+    : 0;
+
+  return {
+    generation,
+    seed,
+    topFitness: roundTo(topFitness, 6),
+    meanEliteFitness: roundTo(meanEliteFitness, 6),
+    eliteCount: elite.length,
+    populationSize: activeCandidates.length,
+  };
+}
+
+async function readRankedElite(
+  persistence: CandidateCyclePersistence,
+  branchId: string,
+  eliteLimit: number,
+): Promise<readonly StoredCandidate[]> {
+  const candidates = await persistence.listCandidates({
+    kind: "phrase",
+    status: "elite",
+    branchId,
+    limit: 500,
+  });
+  return [...candidates].sort(rankCandidate).slice(0, eliteLimit);
+}
+
+function createGenerationSeed(seed: number, generationIndex: number): number {
+  return hashText(`${seed}:d3-generation:${generationIndex}`);
+}
+
+function isNoOpDevelopmentError(error: unknown): boolean {
+  return error instanceof Error && /did not change the genome|unchanged genome|no-op/i.test(error.message);
+}
+
+function roundTo(value: number, places: number): number {
+  const scale = 10 ** places;
+  return Math.round(value * scale) / scale;
+}
+
 async function readExistingSelection(
   persistence: CandidateCyclePersistence,
   branchId: string,
@@ -195,7 +355,7 @@ async function readExistingSelection(
   };
 }
 
-function createProsodyDevelopmentMutation(elite: StoredCandidate): CandidateDevelopmentMutation {
+function createProsodyDevelopmentMutation(elite: StoredCandidate): CandidateDevelopmentMutation | undefined {
   const phrase = elite.genome as unknown as PlayerPatternSource;
   const choices = createProsodyDevelopmentChoices(elite, phrase);
   const original = stableJson(phrase);
@@ -210,6 +370,8 @@ function createProsodyDevelopmentMutation(elite: StoredCandidate): CandidateDeve
   }
 
   const fallback = varyContour(phrase, "transposeUp");
+  if (stableJson(fallback) === original) return undefined;
+
   return {
     type: "phrase.replace",
     operator: { type: "varyContour", action: "transposeUp" },

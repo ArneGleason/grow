@@ -2,13 +2,20 @@ import { expect, test, type Page } from "@playwright/test";
 import {
   assertValidCandidate,
   validateCandidate,
+  type CandidateDevelopmentOptions,
   type CandidateDevelopmentResult,
+  type CandidateInput,
   type CandidateSelectionResult,
   type StoredCandidate,
 } from "../src/candidate-store";
-import type {
-  CandidateCycleOptions,
-  CandidateCycleResult,
+import {
+  runCandidateCycle,
+  runEvolution,
+  type CandidateCyclePersistence,
+  type CandidateCycleOptions,
+  type CandidateCycleResult,
+  type CandidateEvolutionOptions,
+  type CandidateEvolutionResult,
 } from "../src/candidate-cycle";
 import {
   aggregateCandidateFitness,
@@ -525,6 +532,26 @@ async function runCandidateCycleInApp(
   return result;
 }
 
+async function runEvolutionInApp(
+  page: Page,
+  options: CandidateEvolutionOptions,
+): Promise<CandidateEvolutionResult> {
+  const result = await page.evaluate(async (nextOptions) => {
+    const appWindow = window as unknown as {
+      persistence?: {
+        runEvolution(options: CandidateEvolutionOptions): Promise<CandidateEvolutionResult>;
+      };
+    };
+    return appWindow.persistence?.runEvolution(nextOptions);
+  }, options);
+
+  if (!result) {
+    throw new Error("window.persistence.runEvolution() was not available");
+  }
+
+  return result;
+}
+
 async function listCandidatesInApp(
   page: Page,
   options: { kind?: "phrase"; status?: "alive" | "elite" | "purged"; branchId?: string; limit?: number },
@@ -572,6 +599,167 @@ async function getActiveProsodyPattern(page: Page): Promise<PlayerPatternSource 
     };
     return appWindow.prosody?.getPattern();
   });
+}
+
+function createMemoryCyclePersistence(options: {
+  noOpDevelopAttempts?: number;
+} = {}): CandidateCyclePersistence {
+  const candidates = new Map<string, StoredCandidate>();
+  let serial = 0;
+  let noOpDevelopAttempts = options.noOpDevelopAttempts ?? 0;
+  const nextTimestamp = () => `2026-01-01T00:00:${String(serial++).padStart(4, "0")}Z`;
+  const defaultBranch = "main";
+  const listStored = (filters: {
+    kind?: StoredCandidate["kind"];
+    status?: StoredCandidate["status"];
+    branchId?: string;
+    limit?: number;
+  } = {}) => [...candidates.values()]
+    .filter((candidate) => !filters.kind || candidate.kind === filters.kind)
+    .filter((candidate) => !filters.status || candidate.status === filters.status)
+    .filter((candidate) => !filters.branchId || candidate.branchId === filters.branchId)
+    .sort(rankStoredCandidateForTest)
+    .slice(0, filters.limit ?? 500)
+    .map(cloneStoredCandidateForTest);
+  const findStored = (candidateId: string, branchId = defaultBranch) => {
+    const candidate = candidates.get(candidateId);
+    if (!candidate || candidate.branchId !== branchId) {
+      throw new Error(`Missing candidate ${candidateId}`);
+    }
+    return candidate;
+  };
+
+  return {
+    writeCandidate: async (candidate: CandidateInput, branchId = defaultBranch) => {
+      const normalized = assertValidCandidate(candidate);
+      const existing = candidates.get(normalized.id);
+      if (existing) return cloneStoredCandidateForTest(existing);
+
+      const timestamp = nextTimestamp();
+      const stored: StoredCandidate = {
+        ...normalized,
+        branchId,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        scores: { ...normalized.scores },
+        genome: cloneJsonForTest(normalized.genome),
+      };
+      candidates.set(stored.id, stored);
+      return cloneStoredCandidateForTest(stored);
+    },
+    listCandidates: async (filters) => listStored(filters),
+    scoreCandidate: async (candidateId, scores, fitness, branchId = defaultBranch) => {
+      const candidate = findStored(candidateId, branchId);
+      candidate.scores = { ...scores };
+      candidate.fitness = fitness;
+      candidate.updatedAt = nextTimestamp();
+      return cloneStoredCandidateForTest(candidate);
+    },
+    selectCandidates: async (selection) => {
+      const branchId = selection.branchId ?? defaultBranch;
+      const ranked = listStored({
+        kind: selection.kind,
+        branchId,
+      }).filter((candidate) => candidate.status !== "purged");
+      const eliteIds = new Set(ranked.slice(0, selection.eliteLimit).map((candidate) => candidate.id));
+      const elite: StoredCandidate[] = [];
+      const purged: StoredCandidate[] = [];
+
+      for (const candidate of ranked) {
+        const stored = findStored(candidate.id, branchId);
+        if (eliteIds.has(candidate.id)) {
+          stored.status = "elite";
+          elite.push(cloneStoredCandidateForTest(stored));
+        } else {
+          stored.status = "purged";
+          purged.push(cloneStoredCandidateForTest(stored));
+        }
+        stored.updatedAt = nextTimestamp();
+      }
+
+      return {
+        kind: selection.kind,
+        branchId,
+        eliteLimit: selection.eliteLimit,
+        evaluatedCount: ranked.length,
+        elite,
+        purged,
+      } satisfies CandidateSelectionResult;
+    },
+    developCandidate: async (development: CandidateDevelopmentOptions): Promise<CandidateDevelopmentResult> => {
+      const branchId = development.branchId ?? defaultBranch;
+      const parent = findStored(development.parentId, branchId);
+      if (parent.status !== "elite") {
+        throw new Error("Parent candidate must be elite");
+      }
+      if (noOpDevelopAttempts > 0) {
+        noOpDevelopAttempts -= 1;
+        throw new Error("Candidate development did not change the genome");
+      }
+
+      const genome = development.mutation.type === "phrase.replace"
+        ? development.mutation.genome
+        : parent.genome;
+      if (JSON.stringify(genome) === JSON.stringify(parent.genome)) {
+        throw new Error("Candidate development did not change the genome");
+      }
+
+      const child = assertValidCandidate({
+        kind: "phrase",
+        genome,
+        scores: {},
+        fitness: 0,
+        parentId: parent.id,
+        generation: parent.generation + 1,
+        seed: development.seed ?? 0,
+        status: "alive",
+        createdAtBeat: development.createdAtBeat,
+      });
+      const existing = candidates.get(child.id);
+      if (existing) {
+        return {
+          parent: cloneStoredCandidateForTest(parent),
+          child: cloneStoredCandidateForTest(existing),
+          mutation: development.mutation,
+        };
+      }
+
+      const timestamp = nextTimestamp();
+      const stored: StoredCandidate = {
+        ...child,
+        branchId,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        scores: { ...child.scores },
+        genome: cloneJsonForTest(child.genome),
+      };
+      candidates.set(stored.id, stored);
+      return {
+        parent: cloneStoredCandidateForTest(parent),
+        child: cloneStoredCandidateForTest(stored),
+        mutation: development.mutation,
+      };
+    },
+  };
+}
+
+function rankStoredCandidateForTest(left: StoredCandidate, right: StoredCandidate): number {
+  return right.fitness - left.fitness ||
+    left.generation - right.generation ||
+    left.createdAt.localeCompare(right.createdAt) ||
+    left.id.localeCompare(right.id);
+}
+
+function cloneStoredCandidateForTest(candidate: StoredCandidate): StoredCandidate {
+  return {
+    ...candidate,
+    scores: { ...candidate.scores },
+    genome: cloneJsonForTest(candidate.genome),
+  };
+}
+
+function cloneJsonForTest<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
 }
 
 async function getTimingDiagnostics(page: Page): Promise<readonly AudioFireTimingDiagnostic[]> {
@@ -3770,8 +3958,14 @@ test("candidate cycle produces scores selects elites develops children and stays
     expect(parent).toBeTruthy();
     expect(child.status).toBe("alive");
     expect(child.generation).toBe((parent?.generation ?? 0) + 1);
-    expect(child.fitness).toBe(0);
-    expect(child.scores).toEqual({});
+    expect(child.fitness).toBeGreaterThan(0);
+    expect(child.fitness).toBeCloseTo(aggregateCandidateFitness(child.scores, { kind: "phrase" }).fitness, 4);
+    expect(Object.keys(child.scores).sort()).toEqual([
+      "anacrusis",
+      "anchorContrast",
+      "questionAnswer",
+      "richness",
+    ]);
     expect(child.mutation.type).toBe("phrase.replace");
     if (child.mutation.type !== "phrase.replace") {
       throw new Error("Expected D1b child to use phrase.replace");
@@ -3793,7 +3987,12 @@ test("candidate cycle produces scores selects elites develops children and stays
     event.branchId === branchId && event.type.startsWith("candidate.")
   );
   expect(firstEvents.filter((event) => event.type === "candidate.created")).toHaveLength(7);
-  expect(firstEvents.filter((event) => event.type === "candidate.scored")).toHaveLength(5);
+  const scoredEventCandidateIds = firstEvents
+    .filter((event) => event.type === "candidate.scored")
+    .map((event) => event.payload.candidateId);
+  expect(scoredEventCandidateIds).toEqual(expect.arrayContaining(
+    first.children.map((child) => child.id),
+  ));
   expect(firstEvents.filter((event) => event.type === "candidate.retained")).toHaveLength(2);
   expect(firstEvents.filter((event) => event.type === "candidate.purged")).toHaveLength(3);
   expect(firstEvents.filter((event) =>
@@ -3815,9 +4014,114 @@ test("candidate cycle produces scores selects elites develops children and stays
   const secondEvents = secondDump.events.filter((event) =>
     event.branchId === branchId && event.type.startsWith("candidate.")
   );
-  expect(secondEvents.map((event) => event.id).sort()).toEqual(
-    firstEvents.map((event) => event.id).sort(),
-  );
+  expect(secondEvents.filter((event) => event.type === "candidate.created")).toHaveLength(7);
+  expect(secondEvents.filter((event) => event.type === "candidate.retained")).toHaveLength(2);
+  expect(secondEvents.filter((event) => event.type === "candidate.purged")).toHaveLength(3);
+  const secondScoredCandidateIds = secondEvents
+    .filter((event) => event.type === "candidate.scored")
+    .map((event) => String(event.payload.candidateId));
+  expect(secondScoredCandidateIds).toEqual(expect.arrayContaining(
+    first.children.map((child) => child.id),
+  ));
+  expect(new Set(secondScoredCandidateIds).size).toBe(secondScoredCandidateIds.length);
+  const secondMutationSignatures = secondEvents
+    .filter((event) => event.type !== "candidate.scored")
+    .map((event) => `${event.type}:${event.payload.candidateId}:${event.payload.reason ?? ""}`);
+  expect(new Set(secondMutationSignatures).size).toBe(secondMutationSignatures.length);
+});
+
+test("candidate cycle skips no-op development without aborting selection", async () => {
+  const result = await runCandidateCycle({
+    seed: 8128,
+    kind: "phrase",
+    count: 3,
+    eliteLimit: 1,
+    branchId: "memory-no-op",
+  }, createMemoryCyclePersistence({ noOpDevelopAttempts: 1 }));
+
+  expect(result.elite).toHaveLength(1);
+  expect(result.children).toHaveLength(0);
+  expect(result.produced.some((candidate) => candidate.status === "elite")).toBe(true);
+});
+
+test("candidate evolution is deterministic against fresh stores", async () => {
+  const options = {
+    seed: 4242,
+    kind: "phrase" as const,
+    generations: 4,
+    count: 5,
+    eliteLimit: 2,
+    branchId: "memory-evolution",
+  };
+
+  const first = await runEvolution(options, createMemoryCyclePersistence());
+  const second = await runEvolution(options, createMemoryCyclePersistence());
+
+  expect(first).toEqual(second);
+  expect(first.summaries).toHaveLength(4);
+  for (let index = 1; index < first.summaries.length; index += 1) {
+    expect(first.summaries[index].topFitness).toBeGreaterThanOrEqual(
+      first.summaries[index - 1].topFitness,
+    );
+  }
+  expect(first.finalElite).toHaveLength(2);
+});
+
+test("candidate evolution scores children and keeps top fitness nondecreasing", async ({ page }) => {
+  await page.goto("/");
+  await flushPersistenceUntilIdle(page);
+
+  const uniqueSeed = 3_000_000 + Math.trunc(Date.now() % 1_000_000);
+  const branchId = `candidate-evolution-${uniqueSeed}`;
+  const result = await runEvolutionInApp(page, {
+    seed: uniqueSeed,
+    kind: "phrase",
+    generations: 4,
+    count: 5,
+    eliteLimit: 2,
+    branchId,
+  });
+
+  expect(result).toMatchObject({
+    kind: "phrase",
+    branchId,
+    seed: uniqueSeed,
+    generations: 4,
+    count: 5,
+    eliteLimit: 2,
+  });
+  expect(result.summaries).toHaveLength(4);
+  expect(result.finalElite).toHaveLength(2);
+
+  for (let index = 1; index < result.summaries.length; index += 1) {
+    expect(result.summaries[index].topFitness).toBeGreaterThanOrEqual(
+      result.summaries[index - 1].topFitness,
+    );
+  }
+  for (const summary of result.summaries) {
+    expect(summary.topFitness).toBeGreaterThan(0);
+    expect(summary.meanEliteFitness).toBeGreaterThan(0);
+    expect(summary.eliteCount).toBe(2);
+    expect(summary.populationSize).toBeGreaterThanOrEqual(2);
+  }
+
+  const candidates = await listCandidatesInApp(page, {
+    kind: "phrase",
+    branchId,
+    limit: 500,
+  });
+  const children = candidates.filter((candidate) => Boolean(candidate.parentId));
+  expect(children.length).toBeGreaterThan(0);
+  for (const child of children) {
+    expect(child.fitness).toBeGreaterThan(0);
+    expect(child.fitness).toBeCloseTo(aggregateCandidateFitness(child.scores, { kind: "phrase" }).fitness, 4);
+    expect(Object.keys(child.scores).sort()).toEqual([
+      "anacrusis",
+      "anchorContrast",
+      "questionAnswer",
+      "richness",
+    ]);
+  }
 });
 
 test("elite phrase candidates can be auditioned as the active melody phrasing", async ({ page }) => {

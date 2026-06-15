@@ -241,6 +241,7 @@ Resume work:
 - Before runtime key/mode changes, remember that transport patterns currently materialize from tonal context at `initTransport`/start time; tonal changes will need pattern re-materialization.
 - PixiJS v8 clamps alpha to 1.0, so note-on flashes should not rely on `alpha > 1`. Use scale, tint, or a resting alpha below 1.0 so the flash has visible headroom.
 - Use `git ls-files --cached --others --exclude-standard | sort` for the file inventory now that ignored `node_modules/` and `dist/` trees exist.
+- Track D3 adds `window.persistence.runEvolution({ seed, kind: "phrase", generations, count, eliteLimit, branchId })` for inspect-only candidate evolution. It runs bounded deterministic generations, scores developed children, and returns per-generation `topFitness`/`meanEliteFitness`; use D2's `window.prosody.auditionEliteCandidate({ branchId })` separately to hear the current elite.
 
 ## Known Gotchas
 

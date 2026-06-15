@@ -11,8 +11,11 @@ import type {
 } from "./candidate-store";
 import {
   runCandidateCycle,
+  runEvolution,
   type CandidateCycleOptions,
   type CandidateCycleResult,
+  type CandidateEvolutionOptions,
+  type CandidateEvolutionResult,
 } from "./candidate-cycle";
 import {
   aggregateCandidateFitness,
@@ -3383,6 +3386,7 @@ declare global {
       selectCandidates(options: CandidateSelectionOptions): ReturnType<typeof persistence.selectCandidates>;
       developCandidate(options: CandidateDevelopmentOptions): ReturnType<typeof persistence.developCandidate>;
       runCandidateCycle(options: CandidateCycleOptions): Promise<CandidateCycleResult>;
+      runEvolution(options: CandidateEvolutionOptions): Promise<CandidateEvolutionResult>;
     };
     ollama?: {
       getConfig(): OllamaConfig;
@@ -3591,6 +3595,7 @@ window.persistence = {
   selectCandidates: (options) => persistence.selectCandidates(options),
   developCandidate: (options) => persistence.developCandidate(options),
   runCandidateCycle: (options) => runCandidateCycle(options, persistence),
+  runEvolution: (options) => runEvolution(options, persistence),
 };
 
 window.ollama = {
