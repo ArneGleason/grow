@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Implement branch-scoped candidate identity",
-  "status": "branch-scoped-candidate-id-ready-for-review",
-  "updatedAt": "2026-06-15T14:43:51Z",
+  "lastTask": "Merge approved branch-scoped candidate identity",
+  "status": "branch-scoped-candidate-id-approved-merged",
+  "updatedAt": "2026-06-15T15:29:01Z",
   "lastHandoff": "",
-  "branch": "codex/byte-branch-scoped-candidate-id",
-  "commit": "working-tree",
+  "branch": "main",
+  "commit": "8be9b68",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Branch-scoped candidate identity is implemented on codex/byte-branch-scoped-candidate-id and ready for review. The chosen mechanism keeps the existing single-column id primary key and prefixes explicit/generated candidate ids with a deterministic branch hash at write/develop time. Parent ids are scoped to the same branch, score/status/develop operations enforce branch ownership, and the browser pre-scopes writes while the server independently scopes and validates. Focused candidate smoke is green, including same-seed cross-branch isolation, same-branch no-duplicate reruns, and matched diversity-on/off branches in one store. Full validation remains to run before handoff."
+    "summary": "Branch-scoped candidate identity is approved by Claude and merged locally to main. The single-column id primary key remains; candidate ids are branch-scoped with a deterministic b<hash(branchId)>: prefix, parent ids are scoped, and score/status/develop operations enforce branch ownership. Claude verified cross-branch isolation, same-branch idempotence, explicit/generated id scoping, scoped lineage, and matched diversity A/B in one store. First matched 10-generation A/B: diversity-on was never worse across 5 seeds and beat strict elitism on seed 4242 (0.8654 vs 0.8199). Next likely work: longer/more-seed diversity A/B with tuned reservoir knobs, plus shared client/server modules for duplicated helpers and B2 operators before trusted/untrusted provenance."
   }
 }
