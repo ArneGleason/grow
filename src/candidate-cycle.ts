@@ -40,6 +40,7 @@ export interface CandidateCycleOptions {
 
 export interface CandidateEvolutionOptions extends CandidateCycleOptions {
   generations?: number;
+  startGenerationIndex?: number;
 }
 
 export interface CandidateDiversityOptions {
@@ -161,7 +162,8 @@ const DEFAULT_ELITE_LIMIT = 3;
 const DEFAULT_EVOLUTION_GENERATIONS = 3;
 const MAX_CYCLE_COUNT = 64;
 const MAX_ELITE_LIMIT = 24;
-const MAX_EVOLUTION_GENERATIONS = 12;
+const MAX_EVOLUTION_GENERATIONS = 500;
+const STORED_CANDIDATE_FITNESS_PLACES = 4;
 const DEFAULT_DIVERSITY_MIN_DISTANCE = 0.18;
 const DEFAULT_RESERVOIR_LIMIT = 2;
 const DEFAULT_RESERVOIR_PARENT_FRACTION = 0.5;
@@ -184,7 +186,9 @@ export async function runCandidateCycle(
   const scoredProduced: StoredCandidate[] = [];
 
   for (const candidate of producedCandidates) {
-    const fitness = aggregateCandidateFitness(candidate.scores, { kind: candidate.kind }).fitness;
+    const fitness = normalizeStoredCandidateFitness(
+      aggregateCandidateFitness(candidate.scores, { kind: candidate.kind }).fitness,
+    );
     const written = await persistence.writeCandidate(candidate, branchId);
     const scored = needsFitnessUpdate(written, candidate.scores, fitness)
       ? await persistence.scoreCandidate(written.id, candidate.scores, fitness, branchId)
@@ -284,12 +288,14 @@ export async function runEvolution(
     DEFAULT_EVOLUTION_GENERATIONS,
     MAX_EVOLUTION_GENERATIONS,
   );
+  const startGenerationIndex = normalizeNonnegativeInteger(options.startGenerationIndex, 0, 1_000_000);
   const branchId = normalizeBranchId(options.branchId);
   const diversity = normalizeDiversityOptions(options.diversity, eliteLimit);
   const summaries: CandidateEvolutionGenerationSummary[] = [];
 
   for (let generationIndex = 0; generationIndex < generations; generationIndex += 1) {
-    const generationSeed = createGenerationSeed(seed, generationIndex);
+    const absoluteGenerationIndex = startGenerationIndex + generationIndex;
+    const generationSeed = createGenerationSeed(seed, absoluteGenerationIndex);
     const cycle = await runCandidateCycle({
       seed: generationSeed,
       kind: "phrase",
@@ -301,7 +307,7 @@ export async function runEvolution(
     summaries.push(await summarizeEvolutionGeneration(
       persistence,
       branchId,
-      generationIndex + 1,
+      absoluteGenerationIndex + 1,
       generationSeed,
       eliteLimit,
       cycle,
@@ -336,7 +342,7 @@ async function scoreStoredPhraseCandidate(
 ): Promise<StoredCandidate> {
   const score = scoreProsody(candidate.genome as unknown as PlayerPatternSource, [4, 4]);
   const scores = { ...score.subscores };
-  const fitness = aggregateCandidateFitness(scores, { kind: "phrase" }).fitness;
+  const fitness = normalizeStoredCandidateFitness(aggregateCandidateFitness(scores, { kind: "phrase" }).fitness);
   return needsFitnessUpdate(candidate, scores, fitness)
     ? persistence.scoreCandidate(candidate.id, scores, fitness, branchId)
     : candidate;
@@ -770,8 +776,12 @@ function needsFitnessUpdate(
   scores: CandidateScores,
   fitness: number,
 ): boolean {
-  if (Math.abs(candidate.fitness - fitness) > 0.0000005) return true;
+  if (Math.abs(candidate.fitness - normalizeStoredCandidateFitness(fitness)) > 0.0000005) return true;
   return stableJson(candidate.scores) !== stableJson(scores);
+}
+
+function normalizeStoredCandidateFitness(value: number): number {
+  return roundTo(value, STORED_CANDIDATE_FITNESS_PLACES);
 }
 
 function summarizeCandidate(candidate: StoredCandidate): CandidateCycleCandidateSummary {
@@ -843,6 +853,15 @@ function normalizePositiveInteger(
   maximum: number,
 ): number {
   if (value === undefined || !Number.isFinite(value) || value <= 0) return fallback;
+  return Math.min(maximum, Math.trunc(value));
+}
+
+function normalizeNonnegativeInteger(
+  value: number | undefined,
+  fallback: number,
+  maximum: number,
+): number {
+  if (value === undefined || !Number.isFinite(value) || value < 0) return fallback;
   return Math.min(maximum, Math.trunc(value));
 }
 

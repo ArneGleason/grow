@@ -18,6 +18,10 @@ import {
   type CandidateEvolutionResult,
 } from "./candidate-cycle";
 import {
+  selectStrictlyBetterElite,
+  type EvolvingEliteSelection,
+} from "./evolving-performance";
+import {
   aggregateCandidateFitness,
   previewCandidateFitness,
   type CandidateFitnessOptions,
@@ -197,6 +201,24 @@ let candidateMelodyAudition: {
   candidate?: StoredCandidate;
   pattern?: PlayerPatternSource;
 } = {};
+const DEFAULT_EVOLVING_PERFORMANCE_BATCH = 1;
+const DEFAULT_EVOLVING_PERFORMANCE_INTERVAL_MS = 350;
+const MAX_EVOLVING_PERFORMANCE_BATCH = 50;
+const MIN_EVOLVING_PERFORMANCE_INTERVAL_MS = 0;
+const MAX_EVOLVING_PERFORMANCE_INTERVAL_MS = 30_000;
+let evolvingPerformanceTimerId = 0;
+let evolvingPerformanceRunSerial = 0;
+let evolvingPerformanceState: EvolvingElitePerformanceState = {
+  status: "idle",
+  message: "Evolving performance is idle.",
+  targetGenerations: 0,
+  completedGenerations: 0,
+  batch: DEFAULT_EVOLVING_PERFORMANCE_BATCH,
+  intervalMs: DEFAULT_EVOLVING_PERFORMANCE_INTERVAL_MS,
+  count: 0,
+  eliteLimit: 0,
+  swaps: [],
+};
 let activeTempoBpm = DEFAULT_TRANSPORT_BPM;
 let songGoalInterpretation = interpretSongGoal("Build a balanced modal terrarium piece.");
 let appliedSongGoal: SongGoal | undefined;
@@ -1896,6 +1918,37 @@ interface CandidateMelodyAuditionState {
   pattern?: PlayerPatternSource;
 }
 
+interface EvolvingElitePerformanceOptions extends Omit<Partial<CandidateEvolutionOptions>, "kind"> {
+  kind?: "phrase";
+  batch?: number;
+  intervalMs?: number;
+}
+
+interface EvolvingElitePerformanceSwap {
+  generation: number;
+  candidateId: string;
+  fitness: number;
+}
+
+interface EvolvingElitePerformanceState {
+  status: "idle" | "running" | "complete" | "error";
+  message: string;
+  seed?: number;
+  branchId?: string;
+  targetGenerations: number;
+  completedGenerations: number;
+  batch: number;
+  intervalMs: number;
+  count: number;
+  eliteLimit: number;
+  currentCandidateId?: string;
+  currentFitness?: number;
+  bestFitness?: number;
+  swaps: readonly EvolvingElitePerformanceSwap[];
+  lastSelectionReason?: EvolvingEliteSelection["reason"];
+  lastError?: string;
+}
+
 function getCurrentFormVariant(): FormVariant {
   return getFormVariant(formVariantId);
 }
@@ -1998,6 +2051,208 @@ function clearCandidateMelodyAudition(): CandidateMelodyAuditionState {
   refreshLookaheadSchedule();
   renderWorld();
   return getCandidateMelodyAuditionState(`Cleared elite phrase audition ${previousId}.`);
+}
+
+function getEvolvingPerformanceState(): EvolvingElitePerformanceState {
+  return {
+    ...evolvingPerformanceState,
+    swaps: evolvingPerformanceState.swaps.map((swap) => ({ ...swap })),
+  };
+}
+
+function normalizeEvolvingPerformancePositiveInteger(
+  value: number | undefined,
+  fallback: number,
+  maximum: number,
+): number {
+  if (value === undefined || !Number.isFinite(value) || value <= 0) return fallback;
+  return Math.min(maximum, Math.trunc(value));
+}
+
+function normalizeEvolvingPerformanceIntervalMs(value: number | undefined): number {
+  if (value === undefined || !Number.isFinite(value)) return DEFAULT_EVOLVING_PERFORMANCE_INTERVAL_MS;
+  return Math.max(
+    MIN_EVOLVING_PERFORMANCE_INTERVAL_MS,
+    Math.min(MAX_EVOLVING_PERFORMANCE_INTERVAL_MS, Math.trunc(value)),
+  );
+}
+
+function normalizeEvolvingPerformanceBranchId(value: string | undefined, seed: number): string {
+  if (value && /^[a-zA-Z0-9:_-]{1,120}$/.test(value)) return value;
+  return `evolving-${seed}`;
+}
+
+function clearEvolvingPerformanceTimer(): void {
+  if (evolvingPerformanceTimerId !== 0) {
+    window.clearTimeout(evolvingPerformanceTimerId);
+    evolvingPerformanceTimerId = 0;
+  }
+}
+
+function stopEvolvingElitePerformance(message = "Evolving performance stopped."): EvolvingElitePerformanceState {
+  evolvingPerformanceRunSerial += 1;
+  clearEvolvingPerformanceTimer();
+  const previous = evolvingPerformanceState;
+  evolvingPerformanceState = {
+    ...previous,
+    status: "idle",
+    message,
+    swaps: previous.swaps.map((swap) => ({ ...swap })),
+  };
+  clearCandidateMelodyAudition();
+  return getEvolvingPerformanceState();
+}
+
+function startEvolvingElitePerformance(
+  options: EvolvingElitePerformanceOptions = {},
+): EvolvingElitePerformanceState {
+  stopEvolvingElitePerformance("Restarting evolving performance.");
+
+  const seed = normalizeEvolvingPerformancePositiveInteger(options.seed, 1, 0xffffffff);
+  const branchId = normalizeEvolvingPerformanceBranchId(options.branchId, seed);
+  const targetGenerations = normalizeEvolvingPerformancePositiveInteger(options.generations, 12, 500);
+  const batch = normalizeEvolvingPerformancePositiveInteger(
+    options.batch,
+    DEFAULT_EVOLVING_PERFORMANCE_BATCH,
+    MAX_EVOLVING_PERFORMANCE_BATCH,
+  );
+  const intervalMs = normalizeEvolvingPerformanceIntervalMs(options.intervalMs);
+  const count = normalizeEvolvingPerformancePositiveInteger(options.count, 8, 64);
+  const eliteLimit = normalizeEvolvingPerformancePositiveInteger(options.eliteLimit, 3, 24);
+  const runSerial = evolvingPerformanceRunSerial + 1;
+  evolvingPerformanceRunSerial = runSerial;
+  evolvingPerformanceState = {
+    status: "running",
+    message: `Evolving phrase performance on ${branchId}.`,
+    seed,
+    branchId,
+    targetGenerations,
+    completedGenerations: 0,
+    batch,
+    intervalMs,
+    count,
+    eliteLimit,
+    swaps: [],
+  };
+  queueEvolvingPerformanceStep(runSerial, 0, options.diversity);
+  return getEvolvingPerformanceState();
+}
+
+function queueEvolvingPerformanceStep(
+  runSerial: number,
+  delayMs: number,
+  diversity: CandidateEvolutionOptions["diversity"],
+): void {
+  clearEvolvingPerformanceTimer();
+  evolvingPerformanceTimerId = window.setTimeout(() => {
+    evolvingPerformanceTimerId = 0;
+    void runEvolvingPerformanceStep(runSerial, diversity);
+  }, delayMs);
+}
+
+async function runEvolvingPerformanceStep(
+  runSerial: number,
+  diversity: CandidateEvolutionOptions["diversity"],
+): Promise<void> {
+  if (runSerial !== evolvingPerformanceRunSerial || evolvingPerformanceState.status !== "running") {
+    return;
+  }
+
+  const {
+    seed,
+    branchId,
+    targetGenerations,
+    completedGenerations,
+    batch,
+    count,
+    eliteLimit,
+    intervalMs,
+  } = evolvingPerformanceState;
+  if (seed === undefined || branchId === undefined) return;
+
+  const remainingGenerations = Math.max(0, targetGenerations - completedGenerations);
+  if (remainingGenerations === 0) {
+    evolvingPerformanceState = {
+      ...evolvingPerformanceState,
+      status: "complete",
+      message: `Evolving performance complete after ${completedGenerations} generations.`,
+    };
+    return;
+  }
+
+  try {
+    const generationsThisStep = Math.min(batch, remainingGenerations);
+    const result = await runEvolution({
+      seed,
+      kind: "phrase",
+      generations: generationsThisStep,
+      startGenerationIndex: completedGenerations,
+      count,
+      eliteLimit,
+      branchId,
+      ...(diversity?.enabled ? { diversity } : {}),
+    }, persistence);
+
+    if (runSerial !== evolvingPerformanceRunSerial || evolvingPerformanceState.status !== "running") {
+      return;
+    }
+
+    const nextCompletedGenerations = completedGenerations + result.summaries.length;
+    const candidates = await persistence.listCandidates({
+      kind: "phrase",
+      status: "elite",
+      branchId,
+      limit: 500,
+    });
+    const selection = selectStrictlyBetterElite(candidateMelodyAudition.candidate, candidates);
+    let message = `Evolved through generation ${nextCompletedGenerations}.`;
+    const swaps = [...evolvingPerformanceState.swaps];
+    if (selection.shouldSwap && selection.candidate) {
+      applyCandidateMelodyAudition(selection.candidate);
+      swaps.push({
+        generation: nextCompletedGenerations,
+        candidateId: selection.candidate.id,
+        fitness: selection.candidate.fitness,
+      });
+      message = `Auditioning improved elite ${selection.candidate.id}.`;
+    }
+
+    const currentCandidate = candidateMelodyAudition.candidate;
+    const peakFitness = Math.max(
+      evolvingPerformanceState.bestFitness ?? 0,
+      ...result.summaries.map((summary) => summary.topFitness),
+      currentCandidate?.fitness ?? 0,
+    );
+    evolvingPerformanceState = {
+      ...evolvingPerformanceState,
+      completedGenerations: nextCompletedGenerations,
+      currentCandidateId: currentCandidate?.id,
+      currentFitness: currentCandidate?.fitness,
+      bestFitness: peakFitness,
+      swaps,
+      lastSelectionReason: selection.reason,
+      message,
+    };
+
+    if (nextCompletedGenerations >= targetGenerations) {
+      evolvingPerformanceState = {
+        ...evolvingPerformanceState,
+        status: "complete",
+        message: `Evolving performance complete at fitness ${currentCandidate?.fitness.toFixed(3) ?? "n/a"}.`,
+      };
+      return;
+    }
+
+    queueEvolvingPerformanceStep(runSerial, intervalMs, diversity);
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    evolvingPerformanceState = {
+      ...evolvingPerformanceState,
+      status: "error",
+      message: `Evolving performance failed: ${errorMessage}`,
+      lastError: errorMessage,
+    };
+  }
 }
 
 function prosodySeedForSong(nextSongId: SongId): number {
@@ -3332,9 +3587,12 @@ declare global {
     prosody?: {
       auditionEliteCandidate(options?: CandidateMelodyAuditionOptions): Promise<CandidateMelodyAuditionState>;
       clearCandidateAudition(): CandidateMelodyAuditionState;
+      getEvolvingPerformance(): EvolvingElitePerformanceState;
       getAudition(): CandidateMelodyAuditionState;
       isEnabled(): boolean;
+      performEvolvingElite(options?: EvolvingElitePerformanceOptions): EvolvingElitePerformanceState;
       setEnabled(enabled: boolean): boolean;
+      stopEvolvingElite(): EvolvingElitePerformanceState;
       getPattern(): PlayerPatternSource | undefined;
     };
     timing?: {
@@ -3533,9 +3791,12 @@ window.songGoal = {
 window.prosody = {
   auditionEliteCandidate: (options) => auditionElitePhraseCandidate(options),
   clearCandidateAudition: () => clearCandidateMelodyAudition(),
+  getEvolvingPerformance: () => getEvolvingPerformanceState(),
   getAudition: () => getCandidateMelodyAuditionState(),
   isEnabled: () => prosodyEnabled,
+  performEvolvingElite: (options) => startEvolvingElitePerformance(options),
   setEnabled: (enabled) => setProsodyEnabled(Boolean(enabled)),
+  stopEvolvingElite: () => stopEvolvingElitePerformance(),
   getPattern: () => getActiveMelodyPhrasing(),
 };
 
@@ -3628,6 +3889,8 @@ window.terrarium = {
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
     isTearingDown = true;
+    evolvingPerformanceRunSerial += 1;
+    clearEvolvingPerformanceTimer();
     cancelSlowThinkingControllers("hot module replacement");
     if (renderFrameId !== null) {
       cancelAnimationFrame(renderFrameId);

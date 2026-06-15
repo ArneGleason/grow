@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Merge approved branch-scoped candidate identity",
-  "status": "branch-scoped-candidate-id-approved-merged",
-  "updatedAt": "2026-06-15T15:29:01Z",
+  "lastTask": "Implement Track D5 autonomous evolving performance",
+  "status": "d5-evolving-performance-implemented",
+  "updatedAt": "2026-06-15T15:47:57Z",
   "lastHandoff": "",
-  "branch": "main",
-  "commit": "8be9b68",
+  "branch": "codex/byte-d5-evolving-performance",
+  "commit": "HEAD",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Branch-scoped candidate identity is approved by Claude and merged locally to main. The single-column id primary key remains; candidate ids are branch-scoped with a deterministic b<hash(branchId)>: prefix, parent ids are scoped, and score/status/develop operations enforce branch ownership. Claude verified cross-branch isolation, same-branch idempotence, explicit/generated id scoping, scoped lineage, and matched diversity A/B in one store. First matched 10-generation A/B: diversity-on was never worse across 5 seeds and beat strict elitism on seed 4242 (0.8654 vs 0.8199). Next likely work: longer/more-seed diversity A/B with tuned reservoir knobs, plus shared client/server modules for duplicated helpers and B2 operators before trusted/untrusted provenance."
+    "summary": "Track D5 is implemented on codex/byte-d5-evolving-performance. Evolution now supports a bounded 500-generation cap plus startGenerationIndex for timer-batched runs. The new default-off window.prosody.performEvolvingElite() driver evolves phrase candidates in batches, auditions the current best through the existing D2 melody override, and swaps only to strictly higher-fitness elites; stopEvolvingElite() cancels the timer and clears the audition override. The cycle normalizes aggregate fitness to the four-decimal precision persisted by the server before comparing/scoring, closing a repeated-run rescoring bug. Validation: build green, smoke 68/68, db:smoke green, diff-check green; npm audit still reports the known Vite/esbuild advisories."
   }
 }
