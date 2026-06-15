@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Fix phrase candidate fitness before D3",
-  "status": "track-d2b-implementation-ready-for-review",
-  "updatedAt": "2026-06-15T02:13:50Z",
+  "lastTask": "Merge Track D2b phrase candidate fitness",
+  "status": "track-d2b-approved-merged",
+  "updatedAt": "2026-06-15T02:30:50Z",
   "lastHandoff": "",
-  "branch": "codex/byte-d2b-phrase-fitness",
+  "branch": "main",
   "commit": "branch-head",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Track D2 is approved and merged locally. Track D2b is implemented on codex/byte-d2b-phrase-fitness and ready for Claude review. It fixes Claude's cross-cutting finding that phrase candidate fitness was always 0 because A2's default weights ignored prosody keys. aggregateCandidateFitness now uses phrase weights for kind:'phrase' or prosody-shaped score objects, D1 passes candidate.kind into aggregation, and needsFitnessUpdate compares at six-decimal aggregate precision so provisional B4 fitness is replaced by A2 fitness. Validation: build green, db:smoke green, smoke 59/59. Carry forward: score developed children before a true next selection, fix branch-scoped candidate ids before parallel populations, handle rare no-op operator fallback, and later share/recompute B2 operators server-side before trusting operator provenance."
+    "summary": "Track D2b is approved by Claude and merged locally to main. Phrase candidate selection is now quality-driven: aggregateCandidateFitness uses prosody weights for kind:'phrase' or prosody-shaped score objects, D1 passes candidate.kind into aggregation, and provisional B4 rounded fitness is replaced by A2 aggregate fitness. Validation for the code branch was build green, db:smoke green, smoke 59/59. Next recommended work is D3: score developed children with scoreProsody -> aggregateCandidateFitness({ kind:'phrase' }) -> scoreCandidate, then run one or more deterministic generations so lineages compete and fitness improvement can be measured. Carry forward: fix branch-scoped candidate ids before parallel populations, handle rare no-op operator fallback, and later share/recompute B2 operators server-side before trusting operator provenance."
   }
 }
