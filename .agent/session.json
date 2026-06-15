@@ -23,13 +23,13 @@
     }
   },
   "lastTask": "Implement Track D1b prosody development bridge",
-  "status": "track-d1b-implemented-ready-for-review",
-  "updatedAt": "2026-06-14T23:56:05Z",
+  "status": "track-d1b-approved-merged",
+  "updatedAt": "2026-06-15T01:36:52Z",
   "lastHandoff": "",
-  "branch": "codex/byte-d1b-prosody-development",
+  "branch": "main",
   "commit": "branch-head",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Track D1b is implemented on codex/byte-d1b-prosody-development. D1 cycle children now use deterministic B2 prosody operators rather than generic phrase.nudge. The cycle computes a B2-developed PlayerPatternSource and routes child creation through A4 developCandidate() using a closed phrase.replace mutation with operator metadata plus the replacement genome. The server still validates/normalizes the phrase genome and owns same-branch elite checks, lineage, child id/status, and candidate.created development audit. Repeated identical cycle idempotence is still covered. No audio/model/playback/transport path consumes children. Validation: build green, db:smoke green, smoke 58/58, diff-check green; npm audit still reports the known Vite/esbuild advisories."
+    "summary": "Track D1b is approved and merged to main with Claude's durable review artifact. D1 cycle children now use deterministic B2 prosody operators rather than generic phrase.nudge, routed through A4 developCandidate() via a closed phrase.replace mutation. Claude accepted the dev-only inspect-only trust split where the app computes the B2 transform and the server validates/persists the replacement phrase. Carry forward: server recompute/shared B2 module before untrusted clients or trusted operator provenance, handle rare no-op operator fallback, score developed children before a true next selection, fix branch-scoped candidate ids before parallel populations. Next planned payoff is D2: perform/audition the current elite phrase candidate through the existing melody phrasing handler."
   }
 }
