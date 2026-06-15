@@ -24,6 +24,7 @@ export type PersistenceRecordType =
   | "candidate.created"
   | "candidate.scored"
   | "candidate.retained"
+  | "candidate.reserved"
   | "candidate.purged";
 
 export type PersistenceStatus = "idle" | "scheduled" | "flushing" | "retrying" | "error";
@@ -81,8 +82,9 @@ export interface PersistenceClient {
     fitness: number,
     branchId?: string,
   ): Promise<StoredCandidate>;
-  retainCandidates(candidateIds: readonly string[]): Promise<readonly StoredCandidate[]>;
-  purgeCandidates(candidateIds: readonly string[]): Promise<readonly StoredCandidate[]>;
+  retainCandidates(candidateIds: readonly string[], branchId?: string): Promise<readonly StoredCandidate[]>;
+  reserveCandidates(candidateIds: readonly string[], branchId?: string): Promise<readonly StoredCandidate[]>;
+  purgeCandidates(candidateIds: readonly string[], branchId?: string): Promise<readonly StoredCandidate[]>;
   capCandidates(options: CandidateCapOptions): Promise<CandidateCapResult>;
   selectCandidates(options: CandidateSelectionOptions): Promise<CandidateSelectionResult>;
   developCandidate(options: CandidateDevelopmentOptions): Promise<CandidateDevelopmentResult>;
@@ -342,17 +344,24 @@ export function createPersistenceClient(
       );
       return payload.candidate;
     },
-    retainCandidates: async (candidateIds) => {
+    retainCandidates: async (candidateIds, branchId) => {
       const payload = await postPersistenceJson<{ candidates: StoredCandidate[] }>(
         `${CANDIDATES_ENDPOINT}/retain`,
-        { session, candidateIds },
+        { session, branchId, candidateIds },
       );
       return payload.candidates;
     },
-    purgeCandidates: async (candidateIds) => {
+    reserveCandidates: async (candidateIds, branchId) => {
+      const payload = await postPersistenceJson<{ candidates: StoredCandidate[] }>(
+        `${CANDIDATES_ENDPOINT}/reserve`,
+        { session, branchId, candidateIds },
+      );
+      return payload.candidates;
+    },
+    purgeCandidates: async (candidateIds, branchId) => {
       const payload = await postPersistenceJson<{ candidates: StoredCandidate[] }>(
         `${CANDIDATES_ENDPOINT}/purge`,
-        { session, candidateIds },
+        { session, branchId, candidateIds },
       );
       return payload.candidates;
     },

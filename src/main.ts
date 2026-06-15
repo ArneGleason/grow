@@ -3380,8 +3380,9 @@ declare global {
         fitness: number,
         branchId?: string,
       ): ReturnType<typeof persistence.scoreCandidate>;
-      retainCandidates(candidateIds: readonly string[]): ReturnType<typeof persistence.retainCandidates>;
-      purgeCandidates(candidateIds: readonly string[]): ReturnType<typeof persistence.purgeCandidates>;
+      retainCandidates(candidateIds: readonly string[], branchId?: string): ReturnType<typeof persistence.retainCandidates>;
+      reserveCandidates(candidateIds: readonly string[], branchId?: string): ReturnType<typeof persistence.reserveCandidates>;
+      purgeCandidates(candidateIds: readonly string[], branchId?: string): ReturnType<typeof persistence.purgeCandidates>;
       capCandidates(options: CandidateCapOptions): ReturnType<typeof persistence.capCandidates>;
       selectCandidates(options: CandidateSelectionOptions): ReturnType<typeof persistence.selectCandidates>;
       developCandidate(options: CandidateDevelopmentOptions): ReturnType<typeof persistence.developCandidate>;
@@ -3589,8 +3590,9 @@ window.persistence = {
   listCandidates: (options) => persistence.listCandidates(options),
   scoreCandidate: (candidateId, scores, fitness, branchId) =>
     persistence.scoreCandidate(candidateId, scores, fitness, branchId),
-  retainCandidates: (candidateIds) => persistence.retainCandidates(candidateIds),
-  purgeCandidates: (candidateIds) => persistence.purgeCandidates(candidateIds),
+  retainCandidates: (candidateIds, branchId) => persistence.retainCandidates(candidateIds, branchId),
+  reserveCandidates: (candidateIds, branchId) => persistence.reserveCandidates(candidateIds, branchId),
+  purgeCandidates: (candidateIds, branchId) => persistence.purgeCandidates(candidateIds, branchId),
   capCandidates: (options) => persistence.capCandidates(options),
   selectCandidates: (options) => persistence.selectCandidates(options),
   developCandidate: (options) => persistence.developCandidate(options),

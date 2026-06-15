@@ -10,6 +10,11 @@ import type {
   CandidateSelectionResult,
   StoredCandidate,
 } from "./candidate-store";
+import {
+  calculateCandidateDiversityMetrics,
+  calculateMeanPairwiseProsodyDistance,
+  calculateProsodyScoreDistance,
+} from "./candidate-diversity";
 import { aggregateCandidateFitness } from "./candidate-fitness";
 import {
   alterCadence,
@@ -30,10 +35,29 @@ export interface CandidateCycleOptions {
   eliteLimit?: number;
   count?: number;
   branchId?: string;
+  diversity?: CandidateDiversityOptions;
 }
 
 export interface CandidateEvolutionOptions extends CandidateCycleOptions {
   generations?: number;
+}
+
+export interface CandidateDiversityOptions {
+  enabled?: boolean;
+  fitnessEliteLimit?: number;
+  minDistance?: number;
+  reservoirLimit?: number;
+  reservoirParentFraction?: number;
+  interestingnessThreshold?: number;
+}
+
+export interface CandidateDiversityConfig {
+  enabled: boolean;
+  fitnessEliteLimit: number;
+  minDistance: number;
+  reservoirLimit: number;
+  reservoirParentFraction: number;
+  interestingnessThreshold: number;
 }
 
 export interface CandidateCyclePersistence {
@@ -50,6 +74,9 @@ export interface CandidateCyclePersistence {
     fitness: number,
     branchId?: string,
   ): Promise<StoredCandidate>;
+  retainCandidates?(candidateIds: readonly string[], branchId?: string): Promise<readonly StoredCandidate[]>;
+  reserveCandidates?(candidateIds: readonly string[], branchId?: string): Promise<readonly StoredCandidate[]>;
+  purgeCandidates?(candidateIds: readonly string[], branchId?: string): Promise<readonly StoredCandidate[]>;
   selectCandidates(options: CandidateSelectionOptions): Promise<CandidateSelectionResult>;
   developCandidate(options: CandidateDevelopmentOptions): Promise<CandidateDevelopmentResult>;
 }
@@ -79,8 +106,10 @@ export interface CandidateCycleResult {
   generation: number;
   produced: readonly CandidateCycleCandidateSummary[];
   elite: readonly CandidateCycleCandidateSummary[];
+  reserved?: readonly CandidateCycleCandidateSummary[];
   purged: readonly CandidateCycleCandidateSummary[];
   children: readonly CandidateCycleChildSummary[];
+  diversity?: CandidateCycleDiversitySummary;
 }
 
 export interface CandidateEvolutionGenerationSummary {
@@ -90,6 +119,10 @@ export interface CandidateEvolutionGenerationSummary {
   meanEliteFitness: number;
   eliteCount: number;
   populationSize: number;
+  eliteMeanDistance?: number;
+  reservedCount?: number;
+  reservedParentChildCount?: number;
+  reservoirMeanInterestingness?: number;
 }
 
 export interface CandidateEvolutionResult {
@@ -101,6 +134,26 @@ export interface CandidateEvolutionResult {
   eliteLimit: number;
   summaries: readonly CandidateEvolutionGenerationSummary[];
   finalElite: readonly CandidateCycleCandidateSummary[];
+  finalReserved?: readonly CandidateCycleCandidateSummary[];
+  diversity?: CandidateDiversityConfig;
+}
+
+export interface CandidateCycleDiversitySummary extends CandidateDiversityConfig {
+  evaluatedCount: number;
+  eliteMeanDistance: number;
+  reservedCount: number;
+  reservoirMeanInterestingness: number;
+}
+
+interface CandidateCycleSelectionResult {
+  kind: "phrase";
+  branchId: string;
+  eliteLimit: number;
+  evaluatedCount: number;
+  elite: readonly StoredCandidate[];
+  reserved: readonly StoredCandidate[];
+  purged: readonly StoredCandidate[];
+  diversity?: CandidateCycleDiversitySummary;
 }
 
 const DEFAULT_CYCLE_COUNT = 8;
@@ -109,6 +162,10 @@ const DEFAULT_EVOLUTION_GENERATIONS = 3;
 const MAX_CYCLE_COUNT = 64;
 const MAX_ELITE_LIMIT = 24;
 const MAX_EVOLUTION_GENERATIONS = 12;
+const DEFAULT_DIVERSITY_MIN_DISTANCE = 0.18;
+const DEFAULT_RESERVOIR_LIMIT = 2;
+const DEFAULT_RESERVOIR_PARENT_FRACTION = 0.5;
+const DEFAULT_INTERESTINGNESS_THRESHOLD = 0.42;
 
 export async function runCandidateCycle(
   options: CandidateCycleOptions,
@@ -122,6 +179,7 @@ export async function runCandidateCycle(
   const count = normalizePositiveInteger(options.count, DEFAULT_CYCLE_COUNT, MAX_CYCLE_COUNT);
   const eliteLimit = normalizePositiveInteger(options.eliteLimit, DEFAULT_ELITE_LIMIT, MAX_ELITE_LIMIT);
   const branchId = normalizeBranchId(options.branchId);
+  const diversity = normalizeDiversityOptions(options.diversity, eliteLimit);
   const producedCandidates = produceProsodyCandidates({ seed, count });
   const scoredProduced: StoredCandidate[] = [];
 
@@ -134,24 +192,27 @@ export async function runCandidateCycle(
     scoredProduced.push(scored);
   }
 
-  // Diversity seam for Track D: replace strict fitness-only selection here with
-  // a novelty reservoir or fitness+novelty blend once convergence is observable.
   const shouldSelect = scoredProduced.some((candidate) => candidate.status === "alive");
   const selection = shouldSelect
-    ? await persistence.selectCandidates({ kind: "phrase", eliteLimit, branchId })
-    : await readExistingSelection(persistence, branchId, eliteLimit);
+    ? diversity.enabled
+      ? await selectDiverseCandidates(persistence, branchId, eliteLimit, diversity)
+      : await adaptSelectionResult(await persistence.selectCandidates({ kind: "phrase", eliteLimit, branchId }))
+    : diversity.enabled
+      ? await readExistingDiverseSelection(persistence, branchId, eliteLimit, diversity)
+      : await adaptSelectionResult(await readExistingSelection(persistence, branchId, eliteLimit));
 
   const children: CandidateCycleChildSummary[] = [];
-  for (const elite of selection.elite) {
-    const mutation = createProsodyDevelopmentMutation(elite);
+  const reservedParents = chooseReservedDevelopmentParents(selection.reserved, selection.elite.length, diversity);
+  for (const parent of [...selection.elite, ...reservedParents]) {
+    const mutation = createProsodyDevelopmentMutation(parent);
     if (!mutation) continue;
 
     let developed: CandidateDevelopmentResult;
     try {
       developed = await persistence.developCandidate({
-        parentId: elite.id,
+        parentId: parent.id,
         branchId,
-        seed: createDevelopmentSeed(elite, mutation),
+        seed: createDevelopmentSeed(parent, mutation),
         mutation,
       });
     } catch (error) {
@@ -162,7 +223,7 @@ export async function runCandidateCycle(
     const scoredChild = await scoreStoredPhraseCandidate(developed.child, persistence, branchId);
     children.push({
       ...summarizeCandidate(scoredChild),
-      parentId: elite.id,
+      parentId: parent.id,
       mutation: developed.mutation,
     });
   }
@@ -177,6 +238,9 @@ export async function runCandidateCycle(
     summarizeCandidate(finalById.get(candidate.id) ?? candidate)
   );
   const elite = selection.elite.map((candidate) =>
+    summarizeCandidate(finalById.get(candidate.id) ?? candidate)
+  );
+  const reserved = selection.reserved.map((candidate) =>
     summarizeCandidate(finalById.get(candidate.id) ?? candidate)
   );
   const purged = selection.purged.map((candidate) =>
@@ -198,6 +262,7 @@ export async function runCandidateCycle(
     generation,
     produced,
     elite,
+    ...(diversity.enabled ? { reserved, diversity: selection.diversity } : {}),
     purged,
     children,
   };
@@ -220,16 +285,18 @@ export async function runEvolution(
     MAX_EVOLUTION_GENERATIONS,
   );
   const branchId = normalizeBranchId(options.branchId);
+  const diversity = normalizeDiversityOptions(options.diversity, eliteLimit);
   const summaries: CandidateEvolutionGenerationSummary[] = [];
 
   for (let generationIndex = 0; generationIndex < generations; generationIndex += 1) {
     const generationSeed = createGenerationSeed(seed, generationIndex);
-    await runCandidateCycle({
+    const cycle = await runCandidateCycle({
       seed: generationSeed,
       kind: "phrase",
       count,
       eliteLimit,
       branchId,
+      ...(diversity.enabled ? { diversity } : {}),
     }, persistence);
     summaries.push(await summarizeEvolutionGeneration(
       persistence,
@@ -237,10 +304,14 @@ export async function runEvolution(
       generationIndex + 1,
       generationSeed,
       eliteLimit,
+      cycle,
     ));
   }
 
   const finalElite = await readRankedElite(persistence, branchId, eliteLimit);
+  const finalReserved = diversity.enabled
+    ? await readRankedReserved(persistence, branchId, diversity.reservoirLimit)
+    : [];
 
   return {
     kind: "phrase",
@@ -251,6 +322,10 @@ export async function runEvolution(
     eliteLimit,
     summaries,
     finalElite: finalElite.map(summarizeCandidate),
+    ...(diversity.enabled ? {
+      finalReserved: finalReserved.map(summarizeCandidate),
+      diversity,
+    } : {}),
   };
 }
 
@@ -267,12 +342,181 @@ async function scoreStoredPhraseCandidate(
     : candidate;
 }
 
+async function selectDiverseCandidates(
+  persistence: CandidateCyclePersistence,
+  branchId: string,
+  eliteLimit: number,
+  diversity: CandidateDiversityConfig,
+): Promise<CandidateCycleSelectionResult> {
+  const retainCandidates = requireStatusMutator(persistence.retainCandidates, "retainCandidates");
+  const reserveCandidates = requireStatusMutator(persistence.reserveCandidates, "reserveCandidates");
+  const purgeCandidates = requireStatusMutator(persistence.purgeCandidates, "purgeCandidates");
+  const candidates = (await persistence.listCandidates({
+    kind: "phrase",
+    branchId,
+    limit: 500,
+  }))
+    .filter((candidate) => candidate.status !== "purged")
+    .sort(rankCandidate);
+  const eliteTargets = chooseDiverseElite(candidates, eliteLimit, diversity);
+  const eliteTargetIds = new Set(eliteTargets.map((candidate) => candidate.id));
+  const eliteFloor = eliteTargets.length > 0
+    ? Math.min(...eliteTargets.map((candidate) => candidate.fitness))
+    : 0;
+  const reservedTargets = chooseReservoir(candidates, eliteTargets, eliteFloor, diversity);
+  const reservedTargetIds = new Set(reservedTargets.map((candidate) => candidate.id));
+  const purgeTargets = candidates.filter((candidate) =>
+    !eliteTargetIds.has(candidate.id) && !reservedTargetIds.has(candidate.id)
+  );
+
+  const retained = await updateStatusIfNeeded(
+    retainCandidates,
+    eliteTargets
+      .filter((candidate) => candidate.status !== "elite")
+      .map((candidate) => candidate.id),
+    branchId,
+  );
+  const reserved = await updateStatusIfNeeded(
+    reserveCandidates,
+    reservedTargets
+      .filter((candidate) => candidate.status !== "reserved")
+      .map((candidate) => candidate.id),
+    branchId,
+  );
+  const purged = await updateStatusIfNeeded(
+    purgeCandidates,
+    purgeTargets
+      .filter((candidate) => candidate.status !== "purged")
+      .map((candidate) => candidate.id),
+    branchId,
+  );
+  const finalCandidates = await persistence.listCandidates({
+    kind: "phrase",
+    branchId,
+    limit: 500,
+  });
+  const finalById = new Map(finalCandidates.map((candidate) => [candidate.id, candidate]));
+  const finalElite = eliteTargets
+    .map((candidate) => finalById.get(candidate.id) ?? retained.find((item) => item.id === candidate.id) ?? candidate)
+    .sort(rankCandidate);
+  const finalReserved = reservedTargets
+    .map((candidate) => finalById.get(candidate.id) ?? reserved.find((item) => item.id === candidate.id) ?? candidate)
+    .sort(rankReservoirCandidate(finalElite));
+
+  return {
+    kind: "phrase",
+    branchId,
+    eliteLimit,
+    evaluatedCount: candidates.length,
+    elite: finalElite,
+    reserved: finalReserved,
+    purged,
+    diversity: {
+      ...diversity,
+      evaluatedCount: candidates.length,
+      eliteMeanDistance: calculateMeanPairwiseProsodyDistance(finalElite),
+      reservedCount: finalReserved.length,
+      reservoirMeanInterestingness: finalReserved.length > 0
+        ? roundTo(finalReserved.reduce((sum, candidate) =>
+            sum + calculateCandidateDiversityMetrics(candidate, finalElite).interestingness, 0) / finalReserved.length, 6)
+        : 0,
+    },
+  };
+}
+
+function chooseDiverseElite(
+  candidates: readonly StoredCandidate[],
+  eliteLimit: number,
+  diversity: CandidateDiversityConfig,
+): readonly StoredCandidate[] {
+  const kept: StoredCandidate[] = [];
+  const fitnessEliteLimit = Math.min(eliteLimit, diversity.fitnessEliteLimit);
+  for (const candidate of candidates.slice(0, fitnessEliteLimit)) {
+    kept.push(candidate);
+  }
+  for (const candidate of candidates) {
+    if (kept.length >= eliteLimit) break;
+    if (kept.some((elite) => elite.id === candidate.id)) continue;
+    const nearestDistance = kept.length > 0
+      ? Math.min(...kept.map((elite) => calculateProsodyScoreDistance(candidate, elite)))
+      : Number.POSITIVE_INFINITY;
+    if (nearestDistance >= diversity.minDistance) {
+      kept.push(candidate);
+    }
+  }
+  return kept;
+}
+
+function chooseReservoir(
+  candidates: readonly StoredCandidate[],
+  eliteTargets: readonly StoredCandidate[],
+  eliteFloor: number,
+  diversity: CandidateDiversityConfig,
+): readonly StoredCandidate[] {
+  const eliteIds = new Set(eliteTargets.map((candidate) => candidate.id));
+  return candidates
+    .filter((candidate) => !eliteIds.has(candidate.id))
+    .filter((candidate) => candidate.fitness < eliteFloor)
+    .map((candidate) => ({
+      candidate,
+      metrics: calculateCandidateDiversityMetrics(candidate, eliteTargets),
+    }))
+    .filter((entry) => entry.metrics.interestingness >= diversity.interestingnessThreshold)
+    .sort((left, right) =>
+      right.metrics.interestingness - left.metrics.interestingness ||
+      right.metrics.novelty - left.metrics.novelty ||
+      left.candidate.fitness - right.candidate.fitness ||
+      rankCandidate(left.candidate, right.candidate)
+    )
+    .slice(0, diversity.reservoirLimit)
+    .map((entry) => entry.candidate);
+}
+
+function chooseReservedDevelopmentParents(
+  reserved: readonly StoredCandidate[],
+  eliteCount: number,
+  diversity: CandidateDiversityConfig,
+): readonly StoredCandidate[] {
+  if (!diversity.enabled || diversity.reservoirParentFraction <= 0 || reserved.length === 0) return [];
+  const targetCount = Math.max(1, Math.ceil(eliteCount * diversity.reservoirParentFraction));
+  return reserved.slice(0, Math.min(reserved.length, targetCount));
+}
+
+function adaptSelectionResult(selection: CandidateSelectionResult): CandidateCycleSelectionResult {
+  return {
+    kind: "phrase",
+    branchId: selection.branchId,
+    eliteLimit: selection.eliteLimit,
+    evaluatedCount: selection.evaluatedCount,
+    elite: selection.elite,
+    reserved: [],
+    purged: selection.purged,
+  };
+}
+
+function requireStatusMutator(
+  mutator: CandidateCyclePersistence["retainCandidates"],
+  label: string,
+): NonNullable<CandidateCyclePersistence["retainCandidates"]> {
+  if (mutator) return mutator;
+  throw new Error(`D4 diversity selection requires persistence.${label}`);
+}
+
+function updateStatusIfNeeded(
+  mutator: NonNullable<CandidateCyclePersistence["retainCandidates"]>,
+  candidateIds: readonly string[],
+  branchId: string,
+): Promise<readonly StoredCandidate[]> {
+  return candidateIds.length > 0 ? mutator(candidateIds, branchId) : Promise.resolve([]);
+}
+
 async function summarizeEvolutionGeneration(
   persistence: CandidateCyclePersistence,
   branchId: string,
   generation: number,
   seed: number,
   eliteLimit: number,
+  cycle: CandidateCycleResult,
 ): Promise<CandidateEvolutionGenerationSummary> {
   const candidates = await persistence.listCandidates({
     kind: "phrase",
@@ -281,6 +525,7 @@ async function summarizeEvolutionGeneration(
   });
   const activeCandidates = candidates.filter((candidate) => candidate.status !== "purged");
   const elite = await readRankedElite(persistence, branchId, eliteLimit);
+  const reserved = await readRankedReserved(persistence, branchId, 500);
   const topFitness = activeCandidates.reduce(
     (best, candidate) => Math.max(best, candidate.fitness),
     0,
@@ -289,7 +534,13 @@ async function summarizeEvolutionGeneration(
     ? elite.reduce((sum, candidate) => sum + candidate.fitness, 0) / elite.length
     : 0;
 
-  return {
+  const reservedParentIds = new Set(reserved.map((candidate) => candidate.id));
+  const reservoirMeanInterestingness = reserved.length > 0
+    ? reserved.reduce((sum, candidate) =>
+        sum + calculateCandidateDiversityMetrics(candidate, elite).interestingness, 0) / reserved.length
+    : 0;
+
+  const summary: CandidateEvolutionGenerationSummary = {
     generation,
     seed,
     topFitness: roundTo(topFitness, 6),
@@ -297,6 +548,20 @@ async function summarizeEvolutionGeneration(
     eliteCount: elite.length,
     populationSize: activeCandidates.length,
   };
+
+  if (cycle.diversity) {
+    return {
+      ...summary,
+      eliteMeanDistance: calculateMeanPairwiseProsodyDistance(elite),
+      reservedCount: reserved.length,
+      reservedParentChildCount: cycle.children.filter((child) =>
+        reservedParentIds.has(child.parentId)
+      ).length,
+      reservoirMeanInterestingness: roundTo(reservoirMeanInterestingness, 6),
+    };
+  }
+
+  return summary;
 }
 
 async function readRankedElite(
@@ -311,6 +576,21 @@ async function readRankedElite(
     limit: 500,
   });
   return [...candidates].sort(rankCandidate).slice(0, eliteLimit);
+}
+
+async function readRankedReserved(
+  persistence: CandidateCyclePersistence,
+  branchId: string,
+  reservoirLimit: number,
+  elite: readonly StoredCandidate[] = [],
+): Promise<readonly StoredCandidate[]> {
+  const candidates = await persistence.listCandidates({
+    kind: "phrase",
+    status: "reserved",
+    branchId,
+    limit: 500,
+  });
+  return [...candidates].sort(rankReservoirCandidate(elite)).slice(0, reservoirLimit);
 }
 
 function createGenerationSeed(seed: number, generationIndex: number): number {
@@ -352,6 +632,43 @@ async function readExistingSelection(
     evaluatedCount: ranked.length,
     elite,
     purged,
+  };
+}
+
+async function readExistingDiverseSelection(
+  persistence: CandidateCyclePersistence,
+  branchId: string,
+  eliteLimit: number,
+  diversity: CandidateDiversityConfig,
+): Promise<CandidateCycleSelectionResult> {
+  const elite = await readRankedElite(persistence, branchId, eliteLimit);
+  const reserved = await readRankedReserved(persistence, branchId, diversity.reservoirLimit, elite);
+  const candidates = await persistence.listCandidates({
+    kind: "phrase",
+    branchId,
+    limit: 500,
+  });
+  const purged = candidates
+    .filter((candidate) => candidate.status === "purged")
+    .sort(rankCandidate);
+  return {
+    kind: "phrase",
+    branchId,
+    eliteLimit,
+    evaluatedCount: candidates.filter((candidate) => candidate.status !== "purged").length,
+    elite,
+    reserved,
+    purged,
+    diversity: {
+      ...diversity,
+      evaluatedCount: candidates.filter((candidate) => candidate.status !== "purged").length,
+      eliteMeanDistance: calculateMeanPairwiseProsodyDistance(elite),
+      reservedCount: reserved.length,
+      reservoirMeanInterestingness: reserved.length > 0
+        ? roundTo(reserved.reduce((sum, candidate) =>
+            sum + calculateCandidateDiversityMetrics(candidate, elite).interestingness, 0) / reserved.length, 6)
+        : 0,
+    },
   };
 }
 
@@ -477,6 +794,44 @@ function rankCandidate(left: StoredCandidate, right: StoredCandidate): number {
     left.id.localeCompare(right.id);
 }
 
+function rankReservoirCandidate(
+  elite: readonly StoredCandidate[],
+): (left: StoredCandidate, right: StoredCandidate) => number {
+  return (left, right) => {
+    const leftMetrics = calculateCandidateDiversityMetrics(left, elite);
+    const rightMetrics = calculateCandidateDiversityMetrics(right, elite);
+    return rightMetrics.interestingness - leftMetrics.interestingness ||
+      rightMetrics.novelty - leftMetrics.novelty ||
+      left.fitness - right.fitness ||
+      rankCandidate(left, right);
+  };
+}
+
+function normalizeDiversityOptions(
+  options: CandidateDiversityOptions | undefined,
+  eliteLimit: number,
+): CandidateDiversityConfig {
+  const enabled = options?.enabled === true;
+  return {
+    enabled,
+    fitnessEliteLimit: enabled
+      ? normalizePositiveInteger(options?.fitnessEliteLimit, 1, Math.max(1, eliteLimit))
+      : 1,
+    minDistance: enabled
+      ? normalizeUnitishNumber(options?.minDistance, DEFAULT_DIVERSITY_MIN_DISTANCE, 0, 2)
+      : DEFAULT_DIVERSITY_MIN_DISTANCE,
+    reservoirLimit: enabled
+      ? normalizePositiveInteger(options?.reservoirLimit, DEFAULT_RESERVOIR_LIMIT, MAX_ELITE_LIMIT)
+      : 0,
+    reservoirParentFraction: enabled
+      ? normalizeUnitishNumber(options?.reservoirParentFraction, DEFAULT_RESERVOIR_PARENT_FRACTION, 0, 1)
+      : 0,
+    interestingnessThreshold: enabled
+      ? normalizeUnitishNumber(options?.interestingnessThreshold, DEFAULT_INTERESTINGNESS_THRESHOLD, 0, 1)
+      : DEFAULT_INTERESTINGNESS_THRESHOLD,
+  };
+}
+
 function normalizeSeed(value: number): number {
   if (!Number.isFinite(value)) return 1;
   return Math.min(0xffffffff, Math.max(0, Math.trunc(value)));
@@ -489,6 +844,16 @@ function normalizePositiveInteger(
 ): number {
   if (value === undefined || !Number.isFinite(value) || value <= 0) return fallback;
   return Math.min(maximum, Math.trunc(value));
+}
+
+function normalizeUnitishNumber(
+  value: number | undefined,
+  fallback: number,
+  minimum: number,
+  maximum: number,
+): number {
+  if (value === undefined || !Number.isFinite(value)) return fallback;
+  return Math.max(minimum, Math.min(maximum, value));
 }
 
 function normalizeBranchId(value: string | undefined): string {

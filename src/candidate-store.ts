@@ -16,6 +16,7 @@ export const CANDIDATE_KINDS = [
 export const CANDIDATE_STATUSES = [
   "alive",
   "elite",
+  "reserved",
   "purged",
 ] as const;
 

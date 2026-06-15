@@ -21,6 +21,10 @@ import {
   aggregateCandidateFitness,
   previewCandidateFitness,
 } from "../src/candidate-fitness";
+import {
+  calculateCandidateDiversityMetrics,
+  calculateMeanPairwiseProsodyDistance,
+} from "../src/candidate-diversity";
 import { calculatePlayerExpression } from "../src/expression";
 import { createFormScore } from "../src/form-scoring";
 import { FORM_VARIANTS, getFormVariant } from "../src/form-variants";
@@ -554,7 +558,7 @@ async function runEvolutionInApp(
 
 async function listCandidatesInApp(
   page: Page,
-  options: { kind?: "phrase"; status?: "alive" | "elite" | "purged"; branchId?: string; limit?: number },
+  options: { kind?: "phrase"; status?: "alive" | "elite" | "reserved" | "purged"; branchId?: string; limit?: number },
 ): Promise<StoredCandidate[]> {
   const result = await page.evaluate(async (nextOptions) => {
     const appWindow = window as unknown as {
@@ -655,6 +659,12 @@ function createMemoryCyclePersistence(options: {
       candidate.updatedAt = nextTimestamp();
       return cloneStoredCandidateForTest(candidate);
     },
+    retainCandidates: async (candidateIds, branchId = defaultBranch) =>
+      updateMemoryCandidateStatuses(candidates, candidateIds, branchId, "elite", nextTimestamp),
+    reserveCandidates: async (candidateIds, branchId = defaultBranch) =>
+      updateMemoryCandidateStatuses(candidates, candidateIds, branchId, "reserved", nextTimestamp),
+    purgeCandidates: async (candidateIds, branchId = defaultBranch) =>
+      updateMemoryCandidateStatuses(candidates, candidateIds, branchId, "purged", nextTimestamp),
     selectCandidates: async (selection) => {
       const branchId = selection.branchId ?? defaultBranch;
       const ranked = listStored({
@@ -689,8 +699,8 @@ function createMemoryCyclePersistence(options: {
     developCandidate: async (development: CandidateDevelopmentOptions): Promise<CandidateDevelopmentResult> => {
       const branchId = development.branchId ?? defaultBranch;
       const parent = findStored(development.parentId, branchId);
-      if (parent.status !== "elite") {
-        throw new Error("Parent candidate must be elite");
+      if (parent.status !== "elite" && parent.status !== "reserved") {
+        throw new Error("Parent candidate must be elite or reserved");
       }
       if (noOpDevelopAttempts > 0) {
         noOpDevelopAttempts -= 1;
@@ -741,6 +751,26 @@ function createMemoryCyclePersistence(options: {
       };
     },
   };
+}
+
+function updateMemoryCandidateStatuses(
+  candidates: Map<string, StoredCandidate>,
+  candidateIds: readonly string[],
+  branchId: string,
+  status: StoredCandidate["status"],
+  nextTimestamp: () => string,
+): readonly StoredCandidate[] {
+  const updated: StoredCandidate[] = [];
+  for (const candidateId of candidateIds) {
+    const candidate = candidates.get(candidateId);
+    if (!candidate || candidate.branchId !== branchId) {
+      throw new Error(`Missing candidate ${candidateId}`);
+    }
+    candidate.status = status;
+    candidate.updatedAt = nextTimestamp();
+    updated.push(cloneStoredCandidateForTest(candidate));
+  }
+  return updated;
 }
 
 function rankStoredCandidateForTest(left: StoredCandidate, right: StoredCandidate): number {
@@ -4122,6 +4152,108 @@ test("candidate evolution scores children and keeps top fitness nondecreasing", 
       "richness",
     ]);
   }
+});
+
+test("candidate evolution stays D3-identical when diversity is disabled", async () => {
+  const options = {
+    seed: 4242,
+    kind: "phrase" as const,
+    generations: 4,
+    count: 5,
+    eliteLimit: 2,
+    branchId: "memory-evolution-default-off",
+  };
+
+  const baseline = await runEvolution(options, createMemoryCyclePersistence());
+  const disabled = await runEvolution({
+    ...options,
+    diversity: {
+      enabled: false,
+      fitnessEliteLimit: 1,
+      minDistance: 0.9,
+      reservoirLimit: 4,
+      reservoirParentFraction: 1,
+      interestingnessThreshold: 0,
+    },
+  }, createMemoryCyclePersistence());
+
+  expect(disabled).toEqual(baseline);
+});
+
+test("candidate evolution can preserve a diverse elite and breed a latent reservoir", async ({ page }) => {
+  await page.goto("/");
+  await flushPersistenceUntilIdle(page);
+
+  const diversity = {
+    enabled: true,
+    fitnessEliteLimit: 1,
+    minDistance: 0.12,
+    reservoirLimit: 2,
+    reservoirParentFraction: 0.5,
+    interestingnessThreshold: 0.35,
+  };
+  const candidateSeeds = [515151, 606060, 707070, 9091];
+  let branchId = "";
+  let result: CandidateEvolutionResult | undefined;
+  for (const seed of candidateSeeds) {
+    branchId = `candidate-diversity-${seed}-${Date.now().toString(36)}`;
+    const candidateResult = await runEvolutionInApp(page, {
+      seed,
+      kind: "phrase",
+      generations: 5,
+      count: 5,
+      eliteLimit: 3,
+      branchId,
+      diversity,
+    });
+    if (
+      candidateResult.summaries.some((summary) => (summary.reservedCount ?? 0) > 0) &&
+      candidateResult.summaries.some((summary) => (summary.reservedParentChildCount ?? 0) > 0)
+    ) {
+      result = candidateResult;
+      break;
+    }
+  }
+
+  if (!result) {
+    throw new Error("Expected one D4 seed to avoid the known branch-id candidate collision and create a reservoir");
+  }
+
+  expect(result.diversity).toMatchObject(diversity);
+  expect(result.summaries).toHaveLength(5);
+  for (let index = 1; index < result.summaries.length; index += 1) {
+    expect(result.summaries[index].topFitness).toBeGreaterThanOrEqual(
+      result.summaries[index - 1].topFitness,
+    );
+  }
+  expect(result.summaries.some((summary) => (summary.reservedCount ?? 0) > 0)).toBe(true);
+  expect(result.summaries.some((summary) => (summary.reservedParentChildCount ?? 0) > 0)).toBe(true);
+  expect(result.summaries.slice(1).every((summary) =>
+    (summary.eliteMeanDistance ?? 0) >= diversity.minDistance
+  )).toBe(true);
+  expect(result.finalReserved?.length).toBeGreaterThan(0);
+
+  const candidates = await listCandidatesInApp(page, {
+    kind: "phrase",
+    branchId,
+    limit: 500,
+  });
+  const elite = candidates.filter((candidate) => candidate.status === "elite");
+  const reserved = candidates.filter((candidate) => candidate.status === "reserved");
+  expect(elite).toHaveLength(3);
+  expect(reserved.length).toBeGreaterThan(0);
+  expect(calculateMeanPairwiseProsodyDistance(elite)).toBeGreaterThanOrEqual(diversity.minDistance);
+
+  const eliteFloor = Math.min(...elite.map((candidate) => candidate.fitness));
+  expect(reserved.some((candidate) =>
+    candidate.fitness < eliteFloor &&
+    calculateCandidateDiversityMetrics(candidate, elite).interestingness >= diversity.interestingnessThreshold
+  )).toBe(true);
+
+  const reservedParentIds = new Set(reserved.map((candidate) => candidate.id));
+  expect(candidates.some((candidate) =>
+    Boolean(candidate.parentId) && reservedParentIds.has(candidate.parentId ?? "")
+  )).toBe(true);
 });
 
 test("elite phrase candidates can be auditioned as the active melody phrasing", async ({ page }) => {

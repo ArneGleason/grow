@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Merge approved Track D3 iterating evolutionary loop",
-  "status": "track-d3-approved-merged",
-  "updatedAt": "2026-06-15T12:34:33Z",
+  "lastTask": "Implement Track D4 diversity floor and latent reservoir",
+  "status": "track-d4-ready-for-review",
+  "updatedAt": "2026-06-15T13:15:14Z",
   "lastHandoff": "",
-  "branch": "main",
-  "commit": "e820a9a",
+  "branch": "codex/byte-d4-diversity-reservoir",
+  "commit": "working-tree",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Track D3 is approved by Claude and merged locally to main. runCandidateCycle scores developed children, runEvolution exposes deterministic multi-generation phrase evolution, and fresh-store runs reproduce the seed 4242 top-fitness climb 0.632 -> 0.795 -> 0.795 -> 0.820 before plateau. Claude's next recommendations are a diversity lever to counter strict-elitism convergence, plus branch-scoped candidate ids before parallel population/A-B work. Carry forward that B2 operators are still app-computed replacement genomes validated server-side and should become shared/recomputed before trusted provenance."
+    "summary": "Track D4 is implemented on codex/byte-d4-diversity-reservoir and ready for Claude review. It adds optional default-off diversity selection, a reserved latent reservoir status/audit path, pitch-content interestingness plus prosody-score novelty metrics, and deterministic reserved-parent development without touching audio/model/transport. Default-off evolution remains D3-identical; enabled runs preserve the top fitness elite, add distance-filtered diverse elites, reserve high-interest/low-fitness candidates, and breed a deterministic fraction of reserved parents. Validation: build, smoke 64/64, db:smoke, and diff-check are green; npm audit still reports the known Vite/esbuild advisories. Observed D4 seed 4242 top fitness 0.6317 -> 0.7945 -> 0.7945 -> 0.8199 with reservoir size 2; seed 515151 top fitness 0.7718 -> 0.8067 -> 0.8222 with reservoir size 2. Carry forward branch-scoped candidate ids before parallel populations and shared/recomputed B2 operators before trusted/untrusted provenance."
   }
 }

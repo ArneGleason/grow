@@ -15,11 +15,12 @@ export const INITIAL_RECORD_TYPES = Object.freeze([
   "candidate.created",
   "candidate.scored",
   "candidate.retained",
+  "candidate.reserved",
   "candidate.purged",
 ]);
 
 const CANDIDATE_KINDS = Object.freeze(["song", "phrase", "groove", "harmony", "form"]);
-const CANDIDATE_STATUSES = Object.freeze(["alive", "elite", "purged"]);
+const CANDIDATE_STATUSES = Object.freeze(["alive", "elite", "reserved", "purged"]);
 const MAX_CANDIDATE_LIMIT = 500;
 const MAX_SCORE_KEYS = 32;
 
@@ -409,6 +410,10 @@ export function purgeCandidates(database, request) {
   return setCandidateStatus(database, request, "purged", "candidate.purged");
 }
 
+export function reserveCandidates(database, request) {
+  return setCandidateStatus(database, request, "reserved", "candidate.reserved");
+}
+
 export function capCandidates(database, request) {
   const session = getRequiredSession(database, request.sessionId);
   const kind = normalizeCandidateKind(request.kind);
@@ -525,8 +530,8 @@ export function developCandidate(database, request) {
     if (parent.branchId !== branchId) {
       throw new Error("Cannot develop a candidate from another branch");
     }
-    if (parent.status !== "elite") {
-      throw new Error("Candidate development requires an elite parent");
+    if (parent.status !== "elite" && parent.status !== "reserved") {
+      throw new Error("Candidate development requires an elite or reserved parent");
     }
     if (parent.kind !== "phrase") {
       throw new Error("Candidate development currently supports phrase genomes only");

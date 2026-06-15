@@ -11,6 +11,7 @@ import {
   openGrowDatabase,
   purgeCandidates,
   retainCandidates,
+  reserveCandidates,
   resolveDatabasePath,
   scoreCandidate,
   selectCandidates,
@@ -243,6 +244,23 @@ async function handlePersistenceRequest(request, response, persistence, signal) 
     const payload = await readJsonBody(request, signal);
     const session = ensureCandidateSession(database, payload);
     const candidates = purgeCandidates(database, {
+      sessionId: session.id,
+      branchId: payload.branchId ?? session.branchId,
+      candidateIds: payload.candidateIds,
+    });
+    sendPersistenceJson(response, 200, {
+      ok: true,
+      session,
+      candidates,
+    });
+    return;
+  }
+
+  if (path === `${PERSISTENCE_PREFIX}/candidates/reserve` && request.method === "POST") {
+    const database = persistence.getDatabase();
+    const payload = await readJsonBody(request, signal);
+    const session = ensureCandidateSession(database, payload);
+    const candidates = reserveCandidates(database, {
       sessionId: session.id,
       branchId: payload.branchId ?? session.branchId,
       candidateIds: payload.candidateIds,
