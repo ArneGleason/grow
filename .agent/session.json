@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Merge approved Track D4 diversity floor and latent reservoir",
-  "status": "track-d4-approved-merged",
-  "updatedAt": "2026-06-15T14:24:46Z",
+  "lastTask": "Implement branch-scoped candidate identity",
+  "status": "branch-scoped-candidate-id-ready-for-review",
+  "updatedAt": "2026-06-15T14:43:51Z",
   "lastHandoff": "",
-  "branch": "main",
-  "commit": "40f0262",
+  "branch": "codex/byte-branch-scoped-candidate-id",
+  "commit": "working-tree",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Track D4 is approved by Claude and merged locally to main. D4 adds optional default-off diversity selection, a reserved latent reservoir status/audit path, pitch-content interestingness plus prosody-score novelty metrics, and deterministic reserved-parent development without touching audio/model/transport. Claude verified default-off D3 identity, top-fitness elitism plus diverse elites, high-interest/low-fitness reserved candidates, reserved-parent breeding, and interestingness orthogonality. Carry forward: expose per-generation elite mean-pairwise distance, fix branch-scoped candidate ids before matched same-seed A/B experiments, run longer diversity-on/off comparisons, and eventually make B2 development operators shared/recomputed before trusted/untrusted provenance."
+    "summary": "Branch-scoped candidate identity is implemented on codex/byte-branch-scoped-candidate-id and ready for review. The chosen mechanism keeps the existing single-column id primary key and prefixes explicit/generated candidate ids with a deterministic branch hash at write/develop time. Parent ids are scoped to the same branch, score/status/develop operations enforce branch ownership, and the browser pre-scopes writes while the server independently scopes and validates. Focused candidate smoke is green, including same-seed cross-branch isolation, same-branch no-duplicate reruns, and matched diversity-on/off branches in one store. Full validation remains to run before handoff."
   }
 }

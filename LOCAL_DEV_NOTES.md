@@ -243,7 +243,7 @@ Resume work:
 - Use `git ls-files --cached --others --exclude-standard | sort` for the file inventory now that ignored `node_modules/` and `dist/` trees exist.
 - Track D3 adds `window.persistence.runEvolution({ seed, kind: "phrase", generations, count, eliteLimit, branchId })` for inspect-only candidate evolution. It runs bounded deterministic generations, scores developed children, and returns per-generation `topFitness`/`meanEliteFitness`; use D2's `window.prosody.auditionEliteCandidate({ branchId })` separately to hear the current elite.
 - Track D4 adds optional default-off diversity for inspect-only evolution. Example: `window.persistence.runEvolution({ seed: 4242, kind: "phrase", generations: 8, count: 5, eliteLimit: 3, branchId: "d4-audition", diversity: { enabled: true, fitnessEliteLimit: 1, minDistance: 0.12, reservoirLimit: 2, reservoirParentFraction: 0.5, interestingnessThreshold: 0.35 } })`. The result includes per-generation `eliteMeanDistance`, `reservedCount`, `reservedParentChildCount`, and final `reserved` candidates.
-- Candidate ids still omit `branchId`; same-seed cycles in one SQLite store can collide across branches. Until branch-scoped ids or a composite key lands, use a fresh DB or distinct seeds when comparing branches/populations.
+- Branch-scoped candidate ids are implemented by prefixing ids with a deterministic branch hash at write time. Same-seed runs can now be compared in one SQLite store by using different `branchId` values, e.g. `branchId: "strict-4242"` versus `branchId: "diverse-4242"`.
 
 ## Known Gotchas
 

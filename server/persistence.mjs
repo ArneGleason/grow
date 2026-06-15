@@ -325,7 +325,7 @@ function appendEventsInTransaction(database, events) {
 export function writeCandidate(database, request) {
   const session = getRequiredSession(database, request.sessionId);
   const branchId = request.branchId ?? session.branchId ?? "main";
-  const candidate = normalizeCandidateInput(request.candidate);
+  const candidate = normalizeCandidateInput(request.candidate, branchId);
   const createdAt = request.createdAt ?? new Date().toISOString();
 
   return withImmediateTransaction(database, () => {
@@ -386,6 +386,9 @@ export function scoreCandidate(database, request) {
     if (!existingCandidate) {
       throw new Error(`Cannot score missing candidate: ${candidateId}`);
     }
+    if (existingCandidate.branchId !== branchId) {
+      throw new Error("Cannot score a candidate from another branch");
+    }
     database.prepare(`
       UPDATE candidates
       SET scores_json = ?,
@@ -431,7 +434,13 @@ export function capCandidates(database, request) {
     });
     const kept = candidates.slice(0, limit);
     const overflow = candidates.slice(limit);
-    const purged = updateCandidateStatusesInTransaction(database, overflow.map((candidate) => candidate.id), "purged", updatedAt);
+    const purged = updateCandidateStatusesInTransaction(
+      database,
+      overflow.map((candidate) => candidate.id),
+      "purged",
+      updatedAt,
+      branchId,
+    );
     if (purged.length > 0) {
       appendEventsInTransaction(
         database,
@@ -475,12 +484,14 @@ export function selectCandidates(database, request) {
         .map((candidate) => candidate.id),
       "elite",
       updatedAt,
+      branchId,
     );
     const purged = updateCandidateStatusesInTransaction(
       database,
       overflow.map((candidate) => candidate.id),
       "purged",
       updatedAt,
+      branchId,
     );
     const auditEvents = [
       ...retained.map((candidate) =>
@@ -554,7 +565,7 @@ export function developCandidate(database, request) {
       seed: childSeed,
       status: "alive",
       createdAtBeat: request.createdAtBeat ?? parent.createdAtBeat,
-    });
+    }, branchId);
     const existingChild = readCandidateById(database, child.id);
     if (existingChild) {
       return {
@@ -757,7 +768,7 @@ function setCandidateStatus(database, request, status, auditType) {
   const candidateIds = normalizeCandidateIds(request.candidateIds);
   const updatedAt = request.updatedAt ?? new Date().toISOString();
   return withImmediateTransaction(database, () => {
-    const candidates = updateCandidateStatusesInTransaction(database, candidateIds, status, updatedAt);
+    const candidates = updateCandidateStatusesInTransaction(database, candidateIds, status, updatedAt, branchId);
     appendEventsInTransaction(
       database,
       candidates.map((candidate) =>
@@ -768,13 +779,16 @@ function setCandidateStatus(database, request, status, auditType) {
   });
 }
 
-function updateCandidateStatusesInTransaction(database, candidateIds, status, updatedAt) {
+function updateCandidateStatusesInTransaction(database, candidateIds, status, updatedAt, branchId) {
   const normalizedStatus = normalizeCandidateStatus(status);
   const candidates = [];
   for (const candidateId of candidateIds) {
     const existingCandidate = readCandidateById(database, candidateId);
     if (!existingCandidate) {
       throw new Error(`Cannot update missing candidate: ${candidateId}`);
+    }
+    if (existingCandidate.branchId !== branchId) {
+      throw new Error("Cannot update a candidate from another branch");
     }
     database.prepare(`
       UPDATE candidates
@@ -889,7 +903,7 @@ function parseCandidateRow(row) {
   return candidate;
 }
 
-function normalizeCandidateInput(input) {
+function normalizeCandidateInput(input, branchId = "main") {
   if (!isRecord(input)) {
     throw new Error("Candidate must be an object");
   }
@@ -900,7 +914,9 @@ function normalizeCandidateInput(input) {
   const generation = clampInteger(input.generation ?? 0, 0, 10_000, "generation");
   const seed = clampInteger(input.seed ?? 0, 0, 0xffffffff, "seed");
   const status = normalizeCandidateStatus(input.status ?? "alive");
-  const parentId = input.parentId === undefined ? undefined : requireCandidateId(input.parentId, "parentId");
+  const parentId = input.parentId === undefined
+    ? undefined
+    : scopeCandidateIdForBranch(requireCandidateId(input.parentId, "parentId"), branchId);
   const createdAtBeat = input.createdAtBeat === undefined
     ? undefined
     : clampFiniteNumber(input.createdAtBeat, 0, 1_000_000, "createdAtBeat");
@@ -915,9 +931,12 @@ function normalizeCandidateInput(input) {
     status,
     createdAtBeat,
   });
-  const id = input.id === undefined
-    ? `candidate-${stableHash(stableJson(candidateWithoutId))}`
-    : requireCandidateId(input.id);
+  const id = scopeCandidateIdForBranch(
+    input.id === undefined
+      ? `candidate-${stableHash(stableJson(candidateWithoutId))}`
+      : requireCandidateId(input.id),
+    branchId,
+  );
   const candidate = removeUndefined({
     id,
     ...candidateWithoutId,
@@ -927,6 +946,20 @@ function normalizeCandidateInput(input) {
     throw new Error("Candidate genome JSON exceeds 20000 characters");
   }
   return candidate;
+}
+
+function scopeCandidateIdForBranch(candidateId, branchId = "main") {
+  const safeBranchId = normalizeBranchId(branchId);
+  const prefix = `b${stableHash(safeBranchId)}:`;
+  if (candidateId.startsWith(prefix)) return candidateId;
+  const readableId = `${prefix}${candidateId}`;
+  return readableId.length <= 120
+    ? readableId
+    : `${prefix}${stableHash(candidateId)}`;
+}
+
+function normalizeBranchId(value) {
+  return typeof value === "string" && /^[a-zA-Z0-9:_-]{1,120}$/.test(value) ? value : "main";
 }
 
 function normalizeCandidateGenome(kind, genome) {

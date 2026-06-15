@@ -207,6 +207,32 @@ export function assertValidCandidate(input: unknown): Candidate {
   return result.candidate;
 }
 
+export function scopeCandidateIdForBranch(candidateId: string, branchId = "main"): string {
+  const safeBranchId = normalizeBranchId(branchId);
+  const prefix = `b${stableHash(safeBranchId)}:`;
+  if (candidateId.startsWith(prefix)) return candidateId;
+  const readableId = `${prefix}${candidateId}`;
+  return readableId.length <= 120
+    ? readableId
+    : `${prefix}${stableHash(candidateId)}`;
+}
+
+export function scopeCandidateInputForBranch(candidate: CandidateInput, branchId = "main"): CandidateInput {
+  const scopedCandidate = removeUndefined({
+    ...candidate,
+    parentId: candidate.parentId === undefined
+      ? undefined
+      : scopeCandidateIdForBranch(candidate.parentId, branchId),
+  });
+  const id = candidate.id === undefined
+    ? validateCandidate(scopedCandidate).candidate.id
+    : candidate.id;
+  return removeUndefined({
+    ...scopedCandidate,
+    id: scopeCandidateIdForBranch(id, branchId),
+  });
+}
+
 export function isCandidateKind(value: string): value is CandidateKind {
   return (CANDIDATE_KINDS as readonly string[]).includes(value);
 }
@@ -217,6 +243,10 @@ export function isCandidateStatus(value: string): value is CandidateStatus {
 
 function createCandidateId(candidate: Omit<Candidate, "id">): string {
   return `candidate-${stableHash(JSON.stringify(candidate))}`;
+}
+
+function normalizeBranchId(value: string): string {
+  return /^[a-zA-Z0-9:_-]{1,120}$/.test(value) ? value : "main";
 }
 
 function readKind(value: unknown, errors: string[]): CandidateKind {

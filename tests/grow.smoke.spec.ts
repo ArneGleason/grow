@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import {
   assertValidCandidate,
+  scopeCandidateInputForBranch,
   validateCandidate,
   type CandidateDevelopmentOptions,
   type CandidateDevelopmentResult,
@@ -635,7 +636,7 @@ function createMemoryCyclePersistence(options: {
 
   return {
     writeCandidate: async (candidate: CandidateInput, branchId = defaultBranch) => {
-      const normalized = assertValidCandidate(candidate);
+      const normalized = assertValidCandidate(scopeCandidateInputForBranch(candidate, branchId));
       const existing = candidates.get(normalized.id);
       if (existing) return cloneStoredCandidateForTest(existing);
 
@@ -714,7 +715,7 @@ function createMemoryCyclePersistence(options: {
         throw new Error("Candidate development did not change the genome");
       }
 
-      const child = assertValidCandidate({
+      const childInput: CandidateInput = {
         kind: "phrase",
         genome,
         scores: {},
@@ -724,7 +725,8 @@ function createMemoryCyclePersistence(options: {
         seed: development.seed ?? 0,
         status: "alive",
         createdAtBeat: development.createdAtBeat,
-      });
+      };
+      const child = assertValidCandidate(scopeCandidateInputForBranch(childInput, branchId));
       const existing = candidates.get(child.id);
       if (existing) {
         return {
@@ -3615,8 +3617,13 @@ test("candidate store writes queries scores retains and caps audited phrase cand
   expect(writeResponse.status()).toBe(200);
   expect(writeResponse.headers()["x-grow-persistence"]).toBe("vite-dev");
   const written = await writeResponse.json() as { candidate: StoredCandidate };
+  const alphaId = written.candidate.id;
   expect(written.candidate).toMatchObject({
-    id: `${sessionId}-alpha`,
+    id: scopeCandidateInputForBranch({
+      id: `${sessionId}-alpha`,
+      kind: "phrase",
+      genome: phraseGenome,
+    }, branchId).id,
     kind: "phrase",
     status: "alive",
     createdAtBeat: 12,
@@ -3661,6 +3668,8 @@ test("candidate store writes queries scores retains and caps audited phrase cand
     },
   });
   expect(writeLowerResponse.status()).toBe(200);
+  const writtenLower = await writeLowerResponse.json() as { candidate: StoredCandidate };
+  const betaId = writtenLower.candidate.id;
 
   const capResponse = await request.post("/api/persistence/candidates/cap", {
     data: {
@@ -3671,15 +3680,15 @@ test("candidate store writes queries scores retains and caps audited phrase cand
   });
   expect(capResponse.status()).toBe(200);
   const capped = await capResponse.json() as { kept: StoredCandidate[]; purged: StoredCandidate[] };
-  expect(capped.kept.map((candidate) => candidate.id)).toEqual([written.candidate.id]);
-  expect(capped.purged.map((candidate) => candidate.id)).toEqual([`${sessionId}-beta`]);
+  expect(capped.kept.map((candidate) => candidate.id)).toEqual([alphaId]);
+  expect(capped.purged.map((candidate) => candidate.id)).toEqual([betaId]);
   expect(capped.purged[0].status).toBe("purged");
 
   const listResponse = await request.get(`/api/persistence/candidates?kind=phrase&branchId=${branchId}&limit=10`);
   expect(listResponse.status()).toBe(200);
   const listed = await listResponse.json() as { candidates: StoredCandidate[] };
-  expect(listed.candidates.some((candidate) => candidate.id === written.candidate.id)).toBe(true);
-  expect(listed.candidates.some((candidate) => candidate.id === `${sessionId}-beta`)).toBe(true);
+  expect(listed.candidates.some((candidate) => candidate.id === alphaId)).toBe(true);
+  expect(listed.candidates.some((candidate) => candidate.id === betaId)).toBe(true);
 
   const dumpResponse = await request.get("/api/persistence/dump?limit=500");
   expect(dumpResponse.status()).toBe(200);
@@ -3695,8 +3704,8 @@ test("candidate store writes queries scores retains and caps audited phrase cand
     "candidate.created",
     "candidate.purged",
   ]);
-  expect(dump.candidates.find((candidate) => candidate.id === written.candidate.id)?.status).toBe("elite");
-  expect(dump.candidates.find((candidate) => candidate.id === `${sessionId}-beta`)?.status).toBe("purged");
+  expect(dump.candidates.find((candidate) => candidate.id === alphaId)?.status).toBe("elite");
+  expect(dump.candidates.find((candidate) => candidate.id === betaId)?.status).toBe("purged");
 });
 
 test("candidate selection promotes top candidates per kind and purges overflow", async ({ request }) => {
@@ -3714,6 +3723,11 @@ test("candidate selection promotes top candidates per kind and purges overflow",
   if (!phraseGenome) {
     throw new Error("Expected a melody phrase genome fixture");
   }
+  const scopedId = (suffix: string) => scopeCandidateInputForBranch({
+    id: `${sessionId}-${suffix}`,
+    kind: "phrase",
+    genome: phraseGenome,
+  }, branchId).id ?? "";
   const writeCandidate = async (
     suffix: string,
     fitness: number,
@@ -3759,13 +3773,13 @@ test("candidate selection promotes top candidates per kind and purges overflow",
     evaluatedCount: 4,
   });
   expect(selection.elite.map((candidate) => candidate.id)).toEqual([
-    `${sessionId}-best-young`,
-    `${sessionId}-best-older`,
+    scopedId("best-young"),
+    scopedId("best-older"),
   ]);
   expect(selection.elite.every((candidate) => candidate.status === "elite")).toBe(true);
   expect(selection.purged.map((candidate) => candidate.id)).toEqual([
-    `${sessionId}-middle`,
-    `${sessionId}-stale-elite`,
+    scopedId("middle"),
+    scopedId("stale-elite"),
   ]);
   expect(selection.purged.every((candidate) => candidate.status === "purged")).toBe(true);
 
@@ -3775,10 +3789,10 @@ test("candidate selection promotes top candidates per kind and purges overflow",
   const statusById = Object.fromEntries(
     listed.candidates.map((candidate) => [candidate.id, candidate.status]),
   );
-  expect(statusById[`${sessionId}-best-young`]).toBe("elite");
-  expect(statusById[`${sessionId}-best-older`]).toBe("elite");
-  expect(statusById[`${sessionId}-middle`]).toBe("purged");
-  expect(statusById[`${sessionId}-stale-elite`]).toBe("purged");
+  expect(statusById[scopedId("best-young")]).toBe("elite");
+  expect(statusById[scopedId("best-older")]).toBe("elite");
+  expect(statusById[scopedId("middle")]).toBe("purged");
+  expect(statusById[scopedId("stale-elite")]).toBe("purged");
 
   const dumpResponse = await request.get("/api/persistence/dump?limit=800");
   expect(dumpResponse.status()).toBe(200);
@@ -3835,6 +3849,7 @@ test("candidate development deep-clones elite phrase genomes into child candidat
   });
   expect(writeResponse.status()).toBe(200);
   const written = await writeResponse.json() as { candidate: StoredCandidate };
+  const scopedParentId = written.candidate.id;
   const parentGenomeBefore = JSON.stringify(written.candidate.genome);
 
   const mutation = {
@@ -3845,17 +3860,17 @@ test("candidate development deep-clones elite phrase genomes into child candidat
   const developResponse = await request.post("/api/persistence/candidates/develop", {
     data: {
       session,
-      parentId,
+      parentId: scopedParentId,
       mutation,
       seed: 777,
     },
   });
   expect(developResponse.status()).toBe(200);
   const developed = await developResponse.json() as CandidateDevelopmentResult;
-  expect(developed.parent.id).toBe(parentId);
+  expect(developed.parent.id).toBe(scopedParentId);
   expect(developed.child).toMatchObject({
     kind: "phrase",
-    parentId,
+    parentId: scopedParentId,
     generation: 4,
     seed: 777,
     status: "alive",
@@ -3879,7 +3894,7 @@ test("candidate development deep-clones elite phrase genomes into child candidat
   const repeatDevelopResponse = await request.post("/api/persistence/candidates/develop", {
     data: {
       session,
-      parentId,
+      parentId: scopedParentId,
       mutation,
       seed: 777,
     },
@@ -3891,10 +3906,10 @@ test("candidate development deep-clones elite phrase genomes into child candidat
   const listResponse = await request.get(`/api/persistence/candidates?kind=phrase&branchId=${branchId}&limit=10`);
   expect(listResponse.status()).toBe(200);
   const listed = await listResponse.json() as { candidates: StoredCandidate[] };
-  const listedParent = listed.candidates.find((candidate) => candidate.id === parentId);
+  const listedParent = listed.candidates.find((candidate) => candidate.id === scopedParentId);
   const listedChild = listed.candidates.find((candidate) => candidate.id === developed.child.id);
   expect(JSON.stringify(listedParent?.genome)).toBe(parentGenomeBefore);
-  expect(listedChild?.parentId).toBe(parentId);
+  expect(listedChild?.parentId).toBe(scopedParentId);
 
   const dumpResponse = await request.get("/api/persistence/dump?limit=800");
   expect(dumpResponse.status()).toBe(200);
@@ -3907,7 +3922,7 @@ test("candidate development deep-clones elite phrase genomes into child candidat
   expect(childCreatedEvents).toHaveLength(1);
   expect(childCreatedEvents[0].payload).toMatchObject({
     reason: "development",
-    parentId,
+    parentId: scopedParentId,
     mutation,
   });
 
@@ -3925,10 +3940,11 @@ test("candidate development deep-clones elite phrase genomes into child candidat
     },
   });
   expect(nonEliteWrite.status()).toBe(200);
+  const nonElite = await nonEliteWrite.json() as { candidate: StoredCandidate };
   const rejectedDevelop = await request.post("/api/persistence/candidates/develop", {
     data: {
       session,
-      parentId: `${sessionId}-alive-parent`,
+      parentId: nonElite.candidate.id,
       mutation,
     },
   });
@@ -4154,6 +4170,119 @@ test("candidate evolution scores children and keeps top fitness nondecreasing", 
   }
 });
 
+test("candidate ids are branch-scoped across same-seed evolution runs", async ({ page }) => {
+  await page.goto("/");
+  await flushPersistenceUntilIdle(page);
+
+  const seed = 4242;
+  const stamp = Date.now().toString(36);
+  const branchA = `candidate-scope-a-${stamp}`;
+  const branchB = `candidate-scope-b-${stamp}`;
+  const options = {
+    seed,
+    kind: "phrase" as const,
+    generations: 3,
+    count: 5,
+    eliteLimit: 2,
+  };
+
+  const firstA = await runEvolutionInApp(page, { ...options, branchId: branchA });
+  const firstB = await runEvolutionInApp(page, { ...options, branchId: branchB });
+  expect(firstA.summaries).toHaveLength(3);
+  expect(firstB.summaries).toHaveLength(3);
+  expect(firstA.finalElite).toHaveLength(2);
+  expect(firstB.finalElite).toHaveLength(2);
+
+  const candidatesA = await listCandidatesInApp(page, {
+    kind: "phrase",
+    branchId: branchA,
+    limit: 500,
+  });
+  const candidatesB = await listCandidatesInApp(page, {
+    kind: "phrase",
+    branchId: branchB,
+    limit: 500,
+  });
+  expect(candidatesA.length).toBeGreaterThan(0);
+  expect(candidatesB.length).toBeGreaterThan(0);
+  const candidateIdsA = new Set(candidatesA.map((candidate) => candidate.id));
+  const candidateIdsB = new Set(candidatesB.map((candidate) => candidate.id));
+  expect([...candidateIdsA].filter((candidateId) => candidateIdsB.has(candidateId))).toEqual([]);
+  expect(candidatesA.every((candidate) => candidate.branchId === branchA)).toBe(true);
+  expect(candidatesB.every((candidate) => candidate.branchId === branchB)).toBe(true);
+  expect(candidatesA.some((candidate) =>
+    Boolean(candidate.parentId) && candidateIdsA.has(candidate.parentId ?? "")
+  )).toBe(true);
+  expect(candidatesB.some((candidate) =>
+    Boolean(candidate.parentId) && candidateIdsB.has(candidate.parentId ?? "")
+  )).toBe(true);
+
+  const beforeRepeatDump = await dumpPersistence(page, 5_000);
+  const beforeRepeatEvents = beforeRepeatDump.events.filter((event) =>
+    event.branchId === branchA && event.type.startsWith("candidate.")
+  );
+  await runEvolutionInApp(page, { ...options, branchId: branchA });
+  const afterRepeatDump = await dumpPersistence(page, 5_000);
+  const afterRepeatEvents = afterRepeatDump.events.filter((event) =>
+    event.branchId === branchA && event.type.startsWith("candidate.")
+  );
+  expect(afterRepeatEvents).toHaveLength(beforeRepeatEvents.length);
+});
+
+test("matched diversity experiments can run same seed in one store", async ({ page }) => {
+  await page.goto("/");
+  await flushPersistenceUntilIdle(page);
+
+  const seed = 515151;
+  const stamp = Date.now().toString(36);
+  const offBranch = `candidate-ab-off-${stamp}`;
+  const onBranch = `candidate-ab-on-${stamp}`;
+  const baseOptions = {
+    seed,
+    kind: "phrase" as const,
+    generations: 4,
+    count: 5,
+    eliteLimit: 3,
+  };
+  const diversity = {
+    enabled: true,
+    fitnessEliteLimit: 1,
+    minDistance: 0.12,
+    reservoirLimit: 2,
+    reservoirParentFraction: 0.5,
+    interestingnessThreshold: 0.35,
+  };
+
+  const strict = await runEvolutionInApp(page, { ...baseOptions, branchId: offBranch });
+  const diverse = await runEvolutionInApp(page, { ...baseOptions, branchId: onBranch, diversity });
+
+  expect(strict.branchId).toBe(offBranch);
+  expect(diverse.branchId).toBe(onBranch);
+  expect(strict.diversity).toBeUndefined();
+  expect(diverse.diversity).toMatchObject(diversity);
+  expect(strict.summaries).toHaveLength(4);
+  expect(diverse.summaries).toHaveLength(4);
+  expect(strict.finalElite).toHaveLength(3);
+  expect(diverse.finalElite).toHaveLength(3);
+  expect(diverse.summaries.every((summary) => summary.eliteMeanDistance !== undefined)).toBe(true);
+
+  const strictCandidates = await listCandidatesInApp(page, {
+    kind: "phrase",
+    branchId: offBranch,
+    limit: 500,
+  });
+  const diverseCandidates = await listCandidatesInApp(page, {
+    kind: "phrase",
+    branchId: onBranch,
+    limit: 500,
+  });
+  const strictIds = new Set(strictCandidates.map((candidate) => candidate.id));
+  const diverseIds = new Set(diverseCandidates.map((candidate) => candidate.id));
+  expect([...strictIds].filter((candidateId) => diverseIds.has(candidateId))).toEqual([]);
+  expect(strictCandidates.some((candidate) => candidate.status === "elite")).toBe(true);
+  expect(diverseCandidates.some((candidate) => candidate.status === "elite")).toBe(true);
+});
+
 test("candidate evolution stays D3-identical when diversity is disabled", async () => {
   const options = {
     seed: 4242,
@@ -4216,7 +4345,7 @@ test("candidate evolution can preserve a diverse elite and breed a latent reserv
   }
 
   if (!result) {
-    throw new Error("Expected one D4 seed to avoid the known branch-id candidate collision and create a reservoir");
+    throw new Error("Expected one D4 seed to create a reservoir");
   }
 
   expect(result.diversity).toMatchObject(diversity);

@@ -10,6 +10,7 @@ import type {
   CandidateSelectionResult,
   StoredCandidate,
 } from "./candidate-store";
+import { scopeCandidateInputForBranch } from "./candidate-store";
 
 export type PersistenceRecordType =
   | "session.started"
@@ -317,9 +318,14 @@ export function createPersistenceClient(
       return response.json();
     },
     writeCandidate: async (candidate, branchId) => {
+      const candidateBranchId = branchId ?? session.branchId;
       const payload = await postPersistenceJson<{ candidate: StoredCandidate }>(
         `${CANDIDATES_ENDPOINT}/write`,
-        { session, branchId, candidate },
+        {
+          session,
+          branchId: candidateBranchId,
+          candidate: scopeCandidateInputForBranch(candidate, candidateBranchId),
+        },
       );
       return payload.candidate;
     },
