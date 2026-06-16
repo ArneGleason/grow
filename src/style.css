@@ -487,6 +487,48 @@ button {
   visibility: hidden;
 }
 
+.degree-color-legend {
+  border-bottom: 1px solid rgba(174, 183, 165, 0.18);
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+}
+
+.degree-color-legend h2 {
+  margin: 0 0 10px;
+  font-size: 0.9rem;
+}
+
+.degree-color-legend ul {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.degree-color-legend__item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  color: #d7dfcf;
+  font-size: 0.78rem;
+  line-height: 1.2;
+}
+
+.degree-color-legend__item strong {
+  color: #eef3e5;
+}
+
+.degree-color-legend__swatch {
+  flex: 0 0 auto;
+  inline-size: 14px;
+  block-size: 14px;
+  border: 1px solid rgba(238, 243, 229, 0.38);
+  border-radius: 50%;
+}
+
 .inspector-section + .inspector-section {
   border-top: 1px solid rgba(174, 183, 165, 0.18);
   margin-top: 16px;

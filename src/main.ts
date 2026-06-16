@@ -33,6 +33,11 @@ import {
 import { formatExpressionSnapshot, type PlayerExpressionSnapshot } from "./expression";
 import { createFormScore, type FormScore } from "./form-scoring";
 import {
+  DEGREE_COLORS,
+  degreeRole,
+  modeDisplayName,
+} from "./grow-language";
+import {
   DEFAULT_FORM_VARIANT_ID,
   FORM_VARIANTS,
   getFormVariant,
@@ -131,9 +136,11 @@ import {
 import {
   interpretSongGoal,
   validateSongGoal,
+  SONG_GOAL_MODES,
   SONG_GOAL_VOCABULARY,
   type SongGoal,
   type SongGoalInterpretation,
+  type SongGoalMode,
   type SongGoalValidationResult,
   type SongGoalVocabulary,
 } from "./song-goal";
@@ -355,6 +362,16 @@ const formVariantControls = FORM_VARIANTS.map((variant) => `
             <span>${variant.label}</span>
           </label>
 `).join("");
+const degreeColorLegendItems = Object.entries(DEGREE_COLORS).map(([degree, color]) => `
+          <li class="degree-color-legend__item">
+            <span
+              class="degree-color-legend__swatch"
+              style="background: var(${color.varName})"
+              aria-hidden="true"
+            ></span>
+            <span><strong>${degree}</strong> ${degreeRole(Number(degree)) ?? color.role}</span>
+          </li>
+`).join("");
 const HELP_TOPICS = {
   session: {
     title: "Session",
@@ -492,7 +509,11 @@ ${timingFeelControls}
           </span>
           <span class="control-readout">
             <span>Key</span>
-            <strong data-testid="control-key-readout">C mixolydian</strong>
+            <strong
+              data-testid="control-key-readout"
+              data-mode-classical="mixolydian"
+              title="Strut · Mixolydian · key of C"
+            >C Strut</strong>
           </span>
         </div>
         <fieldset class="written-evolving-control" data-testid="written-evolving-control">
@@ -586,6 +607,13 @@ ${timingFeelControls}
             >x</button>
           </div>
           <p data-testid="inspector-help-body"></p>
+        </section>
+
+        <section class="degree-color-legend" data-testid="degree-color-legend" aria-label="Degree color legend">
+          <h2>Degree Colors</h2>
+          <ul>
+${degreeColorLegendItems}
+          </ul>
         </section>
 
         <section class="inspector-section" aria-label="Session">
@@ -820,7 +848,7 @@ ${renderHelpButton("listening", "listening frame")}
           </div>
           <dl>
             <dt>Tonal</dt>
-            <dd data-testid="listening-tonal-context">unknown</dd>
+            <dd data-testid="listening-tonal-context" data-mode-classical="">unknown</dd>
             <dt>Heard</dt>
             <dd data-testid="listening-event-count">0</dd>
             <dt>Window</dt>
@@ -2577,9 +2605,45 @@ function createTerrariumHeatState(frame: ListeningFrame): TerrariumHeatState {
   };
 }
 
+function formatTonalContextDisplay(tonalContext: ListeningFrame["tonalContext"]): {
+  label: string;
+  title: string;
+  classicalMode: string;
+} {
+  const classicalMode = tonalContext.mode;
+  const modeName = isKnownSongGoalMode(classicalMode)
+    ? modeDisplayName(classicalMode) ?? classicalMode
+    : classicalMode;
+  const classicalLabel = capitalizeModeName(classicalMode);
+  return {
+    label: `${tonalContext.tonic} ${modeName}`,
+    title: `${modeName} · ${classicalLabel} · key of ${tonalContext.tonic}`,
+    classicalMode,
+  };
+}
+
+function renderTonalContextDisplay(
+  element: HTMLElement,
+  tonalContext: ListeningFrame["tonalContext"],
+): void {
+  const display = formatTonalContextDisplay(tonalContext);
+  element.textContent = display.label;
+  element.title = display.title;
+  element.dataset.modeClassical = display.classicalMode;
+}
+
+function isKnownSongGoalMode(mode: string): mode is SongGoalMode {
+  return (SONG_GOAL_MODES as readonly string[]).includes(mode);
+}
+
+function capitalizeModeName(mode: string): string {
+  if (mode.length === 0) return mode;
+  return `${mode[0]?.toUpperCase() ?? ""}${mode.slice(1)}`;
+}
+
 function renderListening(frame: ListeningFrame): void {
   const latestEvent = frame.recentEvents.at(-1);
-  listeningTonalContext.textContent = `${frame.tonalContext.tonic} ${frame.tonalContext.mode}`;
+  renderTonalContextDisplay(listeningTonalContext, frame.tonalContext);
   listeningEventCount.textContent = String(frame.eventCount);
   listeningWindow.textContent = `beats ${frame.timeWindow.fromBeat.toFixed(1)}-${frame.timeWindow.toBeat.toFixed(1)}`;
   listeningLatestEvent.textContent = latestEvent
@@ -2692,7 +2756,7 @@ function renderStatus(state: GrowTransportState): void {
   status.value = `mode ${getSessionModeLabel(state.sessionMode).toLowerCase()} | song ${getSongLabel(state.songId)} | section ${formatSongSection(state.songForm).toLowerCase()} | ${state.status} | ${state.bpm} BPM | bar ${state.bar} | beat ${state.currentBeat.toFixed(1)} | lookahead ${state.lookahead.health} ${state.lookahead.leadBeats.toFixed(1)}/${state.lookahead.targetBeats.toFixed(0)} | pending slots ${state.lookahead.pendingSlotCount}`;
   const tonalContext = world.getTonalContext();
   controlTempoReadout.textContent = `${state.bpm} BPM`;
-  controlKeyReadout.textContent = `${tonalContext.tonic} ${tonalContext.mode}`;
+  renderTonalContextDisplay(controlKeyReadout, tonalContext);
   renderWrittenEvolvingControl();
 }
 

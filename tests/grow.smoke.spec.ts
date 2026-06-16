@@ -1570,17 +1570,26 @@ test("inspect drawer keeps dense panels mounted while closed by default", async 
   await expect(page.getByTestId("transport-toggle")).toBeVisible();
   await expect(page.getByTestId("session-mode-control")).toBeVisible();
   await expect(page.getByTestId("control-tempo-readout")).toHaveText("90 BPM");
-  await expect(page.getByTestId("control-key-readout")).toHaveText("C mixolydian");
+  await expect(page.getByTestId("control-key-readout")).toHaveText("C Strut");
+  await expect(page.getByTestId("control-key-readout")).toHaveAttribute("data-mode-classical", "mixolydian");
+  await expect(page.getByTestId("control-key-readout")).toHaveAttribute("title", "Strut · Mixolydian · key of C");
   await expect(page.getByTestId("inspect-toggle")).toBeVisible();
   await expect(page.getByTestId("inspect-toggle")).toHaveAttribute("aria-expanded", "false");
   await expect(page.getByTestId("player-inspector")).toHaveAttribute("data-open", "false");
 
   await expect(page.getByTestId("inspect-drawer")).toBeAttached();
+  await expect(page.getByTestId("degree-color-legend")).toBeAttached();
   await expect(page.getByTestId("song-goal-status")).toBeAttached();
   await expect(page.getByTestId("form-score-total")).toBeAttached();
+  await expect(page.getByTestId("degree-color-legend")).toBeHidden();
   await expect(page.getByTestId("song-goal-status")).toBeHidden();
 
   await openInspectDrawer(page);
+  await expect(page.getByTestId("degree-color-legend")).toBeVisible();
+  await expect(page.getByTestId("degree-color-legend")).toContainText("1 home");
+  await expect(page.getByTestId("degree-color-legend")).toContainText("4 pillar");
+  await expect(page.getByTestId("degree-color-legend")).toContainText("5 pillar");
+  await expect(page.getByTestId("degree-color-legend")).toContainText("7 leans home");
   await expect(page.getByTestId("song-goal-status")).toBeVisible();
   await expect(page.getByTestId("form-score-total")).toBeVisible();
 
@@ -1598,7 +1607,8 @@ test("written-to-evolving dial orchestrates prosody and evolving performance", a
   await expect(page.getByTestId("transport-toggle")).toBeVisible();
   await expect(page.getByTestId("session-mode-control")).toBeVisible();
   await expect(page.getByTestId("control-tempo-readout")).toHaveText("90 BPM");
-  await expect(page.getByTestId("control-key-readout")).toHaveText("C mixolydian");
+  await expect(page.getByTestId("control-key-readout")).toHaveText("C Strut");
+  await expect(page.getByTestId("control-key-readout")).toHaveAttribute("data-mode-classical", "mixolydian");
   await expect(page.getByTestId("written-evolving-control")).toBeVisible();
   await expect(page.getByTestId("written-evolving-dial")).toBeVisible();
   await expect(page.getByTestId("written-evolving-regime")).toHaveText("written");
@@ -2576,7 +2586,11 @@ test("song goal setup applies tonal context tempo form and persists the structur
   await expect(page.getByTestId("song-goal-applied")).toContainText("chorus 0.72");
   await expect(page.getByTestId("song-goal-applied")).toContainText("bridge 0.72");
   await expect(page.getByTestId("song-goal-applied")).toContainText("melody -0.020");
-  await expect(page.getByTestId("listening-tonal-context")).toHaveText("G dorian");
+  await expect(page.getByTestId("listening-tonal-context")).toHaveText("G Smoke");
+  await expect(page.getByTestId("listening-tonal-context")).toHaveAttribute("data-mode-classical", "dorian");
+  await expect(page.getByTestId("listening-tonal-context")).toHaveAttribute("title", "Smoke · Dorian · key of G");
+  await expect(page.getByTestId("control-key-readout")).toHaveText("G Smoke");
+  await expect(page.getByTestId("control-key-readout")).toHaveAttribute("data-mode-classical", "dorian");
   const appliedGoal = await getAppliedSongGoal(page);
   expect(appliedGoal).toMatchObject({
     tonic: "G",
@@ -5230,7 +5244,8 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
     const request = initialThoughtRequests.find((candidate) => candidate.id === intent.requestId);
     return request ? validatePlayerThoughtIntent(intent, request).valid : false;
   })).toBe(true);
-  await expect(page.getByTestId("listening-tonal-context")).toHaveText("C mixolydian");
+  await expect(page.getByTestId("listening-tonal-context")).toHaveText("C Strut");
+  await expect(page.getByTestId("listening-tonal-context")).toHaveAttribute("data-mode-classical", "mixolydian");
   await expect(page.getByTestId("listening-event-count")).toHaveText("0");
   await expect(page.getByTestId("listening-agitation")).toHaveText("0.00 (density)");
   await expect(page.getByTestId("lookahead-health")).toHaveText("stopped");
