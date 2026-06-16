@@ -12,7 +12,7 @@ import {
 import { MODE_INTERVALS } from "../src/tonal-context";
 
 test.describe("Grow language vocabulary", () => {
-  test("round-trips the four L0a modes with case-insensitive evocative names", () => {
+  test("round-trips the six engine-realized modes with case-insensitive evocative names", () => {
     for (const mode of GROW_LANGUAGE_MODE_IDS) {
       const displayName = modeDisplayName(mode);
       expect(displayName).toBeDefined();
@@ -20,8 +20,10 @@ test.describe("Grow language vocabulary", () => {
       expect(modeClassicalId((displayName ?? "").toLocaleUpperCase())).toBe(mode);
     }
 
-    expect(modeDisplayName("lydian")).toBeUndefined();
-    expect(modeDisplayName("phrygian")).toBeUndefined();
+    expect(modeDisplayName("lydian")).toBe("Helium");
+    expect(modeDisplayName("phrygian")).toBe("Scorch");
+    expect(modeClassicalId("helium")).toBe("lydian");
+    expect(modeClassicalId("SCORCH")).toBe("phrygian");
     expect(modeClassicalId("Freefall")).toBeUndefined();
   });
 
@@ -30,11 +32,14 @@ test.describe("Grow language vocabulary", () => {
       expect(modeBridge(mode)?.intervals).toEqual(MODE_INTERVALS[mode]);
     }
 
-    expect(modeBridge("lydian")).toBeUndefined();
-    expect(modeBridge("phrygian")).toBeUndefined();
+    expect(modeBridge("lydian")?.intervals).toEqual(MODE_INTERVALS.lydian);
+    expect(modeBridge("phrygian")?.intervals).toEqual(MODE_INTERVALS.phrygian);
   });
 
-  test("orders covered modes from bright to dark", () => {
+  test("orders engine-realized modes from bright to dark", () => {
+    expect(MODE_BRIDGES.lydian.brightnessRank).toBeGreaterThan(
+      MODE_BRIDGES.ionian.brightnessRank,
+    );
     expect(MODE_BRIDGES.ionian.brightnessRank).toBeGreaterThan(
       MODE_BRIDGES.mixolydian.brightnessRank,
     );
@@ -43,6 +48,9 @@ test.describe("Grow language vocabulary", () => {
     );
     expect(MODE_BRIDGES.dorian.brightnessRank).toBeGreaterThan(
       MODE_BRIDGES.aeolian.brightnessRank,
+    );
+    expect(MODE_BRIDGES.aeolian.brightnessRank).toBeGreaterThan(
+      MODE_BRIDGES.phrygian.brightnessRank,
     );
   });
 
@@ -54,8 +62,13 @@ test.describe("Grow language vocabulary", () => {
     expect(new Set(hexes).size).toBe(hexes.length);
     expect(degreeColor(1)?.hex).toBe("#D85A30");
     expect(degreeRole(1)).toBe("home");
+    expect(degreeRole(2)).toBe("color");
+    expect(degreeRole(3)).toBe("color");
+    expect(degreeRole(4)).toBe("pillar");
     expect(degreeColor(5)?.varName).toBe("--degree-5");
     expect(degreeRole(5)).toBe("pillar");
+    expect(degreeRole(6)).toBe("color");
+    expect(degreeRole(7)).toBe("leans home");
     expect(degreeColor(0)).toBeUndefined();
     expect(degreeColor(8)).toBeUndefined();
   });

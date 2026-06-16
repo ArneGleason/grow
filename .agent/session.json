@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Implement Byte L0a Grow language vocabulary map and degree colors",
-  "status": "l0a-grow-language-implemented-awaiting-review",
-  "updatedAt": "2026-06-16T02:14:00Z",
+  "lastTask": "Implement Byte L0a-b complete realized Grow language modes",
+  "status": "l0a-b-complete-realized-modes-implemented-awaiting-review",
+  "updatedAt": "2026-06-16T13:26:00Z",
   "lastHandoff": "",
-  "branch": "codex/byte-l0a-grow-language",
-  "commit": "1498933",
+  "branch": "codex/byte-l0a-b-complete-realized-modes",
+  "commit": "",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte L0a is implemented on codex/byte-l0a-grow-language from base origin/main 7b22d37. It adds a pure Grow language helper module for the requested four-mode evocative bridge, degree-color helpers, inert CSS tokens --degree-1..--degree-7, and pure tests. MODE_INTERVALS is exported without changing its contents so the bridge can use the existing interval table. Noted design mismatch: main already includes lydian/phrygian in MODE_INTERVALS and SONG_GOAL_MODES, but L0a intentionally leaves them undefined for the future missing-mode byte."
+    "summary": "Byte L0a is approved and merged locally. Byte L0a-b is implemented on codex/byte-l0a-b-complete-realized-modes: the Grow language bridge now covers all six engine-realized modes with Helium/lydian and Scorch/phrygian added to Sunshine/Strut/Smoke/Bruise, while Freefall/locrian remains undefined for a future behavior byte. Scope remains pure data/tests only: no UI application, playback, scoring, SongGoal, or tonal behavior change."
   }
 }

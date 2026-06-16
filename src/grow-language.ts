@@ -2,10 +2,12 @@ import type { SongGoalMode } from "./song-goal";
 import { MODE_INTERVALS } from "./tonal-context";
 
 export const GROW_LANGUAGE_MODE_IDS = [
+  "lydian",
   "ionian",
   "mixolydian",
   "dorian",
   "aeolian",
+  "phrygian",
 ] as const satisfies readonly SongGoalMode[];
 
 export type GrowLanguageMode = typeof GROW_LANGUAGE_MODE_IDS[number];
@@ -19,6 +21,13 @@ export type GrowLanguageModeBridge = {
 };
 
 export const MODE_BRIDGES = {
+  lydian: {
+    classical: "lydian",
+    evocative: "Helium",
+    vibe: "weightless, fizzy, floats off the ground",
+    brightnessRank: 7,
+    intervals: MODE_INTERVALS.lydian,
+  },
   ionian: {
     classical: "ionian",
     evocative: "Sunshine",
@@ -46,6 +55,13 @@ export const MODE_BRIDGES = {
     vibe: "tender, heavy-hearted, the ache",
     brightnessRank: 3,
     intervals: MODE_INTERVALS.aeolian,
+  },
+  phrygian: {
+    classical: "phrygian",
+    evocative: "Scorch",
+    vibe: "smouldering, tense, a little dangerous",
+    brightnessRank: 2,
+    intervals: MODE_INTERVALS.phrygian,
   },
 } as const satisfies Record<GrowLanguageMode, GrowLanguageModeBridge>;
 
