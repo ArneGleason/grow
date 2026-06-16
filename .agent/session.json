@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Implement Byte UI-2 high-level control bar and written-to-evolving dial",
-  "status": "ui2-control-dial-implemented-awaiting-review",
-  "updatedAt": "2026-06-15T19:19:21Z",
+  "lastTask": "Merge approved Byte UI-2 high-level control bar and written-to-evolving dial",
+  "status": "ui2-control-dial-approved-merged",
+  "updatedAt": "2026-06-16T01:28:55Z",
   "lastHandoff": "",
-  "branch": "codex/byte-ui2-control-dial",
-  "commit": "",
+  "branch": "main",
+  "commit": "287473a",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte UI-2 is implemented on codex/byte-ui2-control-dial and ready for Claude review. The top bar now includes a real Line slider: written below 0.34 disables prosody and stops evolving, speaking from 0.34 to 0.67 enables existing prosody only, and evolving at 0.68+ starts the existing D5 evolving performance with deterministic per-song branch/seed options. Sliding down stops evolving and clears the audition override through the existing teardown path. The change is UI/orchestration only; no transport, scoring, candidate, or persistence internals changed. Validation: build green, smoke 70/70, db:smoke green, diff-check green; npm audit still reports the known Vite/esbuild advisories."
+    "summary": "Byte UI-2 is approved by Claude and merged locally to main. The top bar includes a real Line slider: written below 0.34 disables prosody and stops evolving, speaking from 0.34 to 0.67 enables existing prosody only, and evolving at 0.68+ starts existing D5 evolving performance with deterministic per-song branch/seed options. Claude live-verified written -> speaking -> evolving -> written, D5 fitness climbing to 0.863, no restart-on-drag churn, in-scale playback, and clean teardown. Validation: build green, smoke 70/70, db:smoke green, diff-check green; npm audit still reports the known Vite/esbuild advisories. Next UI slice is UI-3: surface the SongGoal idea entry as the prompt front door."
   }
 }
