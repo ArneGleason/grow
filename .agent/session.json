@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Implement Byte L0a-b complete realized Grow language modes",
-  "status": "l0a-b-complete-realized-modes-implemented-awaiting-review",
-  "updatedAt": "2026-06-16T13:26:00Z",
+  "lastTask": "Implement Byte L1a anchor phrase representation",
+  "status": "l1a-anchor-phrase-implemented-awaiting-review",
+  "updatedAt": "2026-06-16T21:36:16Z",
   "lastHandoff": "",
-  "branch": "codex/byte-l0a-b-complete-realized-modes",
+  "branch": "codex/byte-l1a-anchor-phrase",
   "commit": "",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte L0a is approved and merged locally. Byte L0a-b is implemented on codex/byte-l0a-b-complete-realized-modes: the Grow language bridge now covers all six engine-realized modes with Helium/lydian and Scorch/phrygian added to Sunshine/Strut/Smoke/Bruise, while Freefall/locrian remains undefined for a future behavior byte. Scope remains pure data/tests only: no UI application, playback, scoring, SongGoal, or tonal behavior change."
+    "summary": "Byte L1a is implemented on codex/byte-l1a-anchor-phrase from origin/main at Byte L0a-b. It adds a pure additive anchor/connectors phrase representation with validation/normalization and unit tests only. Nothing consumes the model yet; playback, scoring, candidate-store, prosody, UI, tonal-context, and SongGoal paths are untouched."
   }
 }
