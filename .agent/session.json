@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Merge approved Byte UI-2 high-level control bar and written-to-evolving dial",
-  "status": "ui2-control-dial-approved-merged",
-  "updatedAt": "2026-06-16T01:28:55Z",
+  "lastTask": "Implement Byte UI-3 SongGoal prompt front door",
+  "status": "ui3-song-goal-front-door-implemented-awaiting-review",
+  "updatedAt": "2026-06-16T01:39:10Z",
   "lastHandoff": "",
-  "branch": "main",
-  "commit": "287473a",
+  "branch": "codex/byte-ui3-song-goal-front-door",
+  "commit": "",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte UI-2 is approved by Claude and merged locally to main. The top bar includes a real Line slider: written below 0.34 disables prosody and stops evolving, speaking from 0.34 to 0.67 enables existing prosody only, and evolving at 0.68+ starts existing D5 evolving performance with deterministic per-song branch/seed options. Claude live-verified written -> speaking -> evolving -> written, D5 fitness climbing to 0.863, no restart-on-drag churn, in-scale playback, and clean teardown. Validation: build green, smoke 70/70, db:smoke green, diff-check green; npm audit still reports the known Vite/esbuild advisories. Next UI slice is UI-3: surface the SongGoal idea entry as the prompt front door."
+    "summary": "Byte UI-3 is implemented on codex/byte-ui3-song-goal-front-door and ready for Claude review. The app now has an always-visible SongGoal prompt strip between the top control bar and the terrarium stage. It uses the existing deterministic interpret/apply setup path, keeps the drawer Song Goal panel mounted and synchronized, and does not add model, transport, scoring, or persistence internals. Validation: build green, focused front-door smoke green, smoke 71/71, db:smoke green, diff-check green; npm audit still reports the known Vite/esbuild advisories."
   }
 }

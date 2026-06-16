@@ -1571,6 +1571,8 @@ test("inspect drawer keeps dense panels mounted while closed by default", async 
   await expect(page.getByTestId("session-mode-control")).toBeVisible();
   await expect(page.getByTestId("control-tempo-readout")).toHaveText("90 BPM");
   await expect(page.getByTestId("control-key-readout")).toHaveText("C mixolydian");
+  await expect(page.getByTestId("song-goal-frontdoor")).toBeVisible();
+  await expect(page.getByTestId("song-goal-frontdoor-input")).toBeVisible();
   await expect(page.getByTestId("inspect-toggle")).toBeVisible();
   await expect(page.getByTestId("inspect-toggle")).toHaveAttribute("aria-expanded", "false");
   await expect(page.getByTestId("player-inspector")).toHaveAttribute("data-open", "false");
@@ -1676,6 +1678,49 @@ test("written-to-evolving dial orchestrates prosody and evolving performance", a
   expect(backToWritten.evolvingPerformanceStatus).toBe("idle");
   expect(backToWritten.auditionEnabled).toBe(false);
   expect(await getActiveProsodyPattern(page)).toBeUndefined();
+});
+
+test("song goal front door previews and applies setup without opening the drawer", async ({ page }) => {
+  await page.goto("/");
+  await flushPersistence(page);
+  await expect(page.getByTestId("inspect-toggle")).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByTestId("song-goal-frontdoor-status")).toContainText("deterministic | valid");
+  await expect(page.getByTestId("song-goal-frontdoor-setup")).toContainText("C mixolydian");
+
+  const beforeState = await getTransportState(page);
+  await page.getByTestId("song-goal-frontdoor-input")
+    .fill("slow bright spacious wide return with machine pulse in G dorian");
+  await page.getByTestId("song-goal-frontdoor-interpret").click();
+
+  await expect(page.getByTestId("song-goal-frontdoor-status")).toContainText("deterministic | valid");
+  await expect(page.getByTestId("song-goal-frontdoor-setup")).toContainText("G dorian");
+  await expect(page.getByTestId("song-goal-frontdoor-setup")).toContainText("wide-return");
+  await expect(page.getByTestId("song-goal-frontdoor-applied")).toContainText("not applied");
+  await expect(page.getByTestId("control-tempo-readout")).toHaveText("90 BPM");
+  await expect(page.getByTestId("control-key-readout")).toHaveText("C mixolydian");
+  const previewState = await getTransportState(page);
+  expect(previewState.bpm).toBe(beforeState.bpm);
+  expect(previewState.songId).toBe(beforeState.songId);
+
+  await openInspectDrawer(page);
+  await expect(page.getByTestId("song-goal-idea-input"))
+    .toHaveValue("slow bright spacious wide return with machine pulse in G dorian");
+  await expect(page.getByTestId("song-goal-setup")).toContainText("G dorian");
+
+  await page.getByTestId("song-goal-frontdoor-apply").click();
+  await expect(page.getByTestId("song-goal-frontdoor-applied")).toContainText("G dorian");
+  await expect(page.getByTestId("song-goal-frontdoor-applied")).toContainText("75 BPM");
+  await expect(page.getByTestId("song-goal-applied")).toContainText("G dorian");
+  await expect(page.getByTestId("control-tempo-readout")).toHaveText("75 BPM");
+  await expect(page.getByTestId("control-key-readout")).toHaveText("G dorian");
+
+  const appliedGoal = await getAppliedSongGoal(page);
+  expect(appliedGoal).toMatchObject({
+    tonic: "G",
+    mode: "dorian",
+    tempoBpm: 75,
+    formPreference: "wide-return",
+  });
 });
 
 test("performed offsets replay across transport restarts", async ({ page }) => {

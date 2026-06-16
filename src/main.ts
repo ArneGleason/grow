@@ -516,6 +516,29 @@ ${timingFeelControls}
       </div>
     </header>
 
+    <section class="song-goal-frontdoor" data-testid="song-goal-frontdoor" aria-label="Song idea front door">
+      <div class="song-goal-frontdoor__prompt">
+        <label class="song-goal-frontdoor__field">
+          <span>Song idea</span>
+          <input
+            data-testid="song-goal-frontdoor-input"
+            type="text"
+            value="Build a balanced modal terrarium piece."
+            autocomplete="off"
+          />
+        </label>
+        <div class="song-goal-frontdoor__actions">
+          <button class="mini-button" data-testid="song-goal-frontdoor-interpret" type="button">Interpret</button>
+          <button class="mini-button" data-testid="song-goal-frontdoor-apply" type="button">Apply setup</button>
+        </div>
+      </div>
+      <div class="song-goal-frontdoor__readout" aria-live="polite">
+        <span data-testid="song-goal-frontdoor-status">deterministic | valid | 0 cues</span>
+        <span data-testid="song-goal-frontdoor-setup">C mixolydian | 90 BPM | classic</span>
+        <span data-testid="song-goal-frontdoor-applied">not applied</span>
+      </div>
+    </section>
+
     <section class="stage" data-testid="stage" aria-label="Terrarium stage">
       <div class="terrarium-panel">
         <div
@@ -906,6 +929,12 @@ const lookaheadHealth = requireElement<HTMLElement>("[data-testid='lookahead-hea
 const lookaheadLead = requireElement<HTMLElement>("[data-testid='lookahead-lead']");
 const lookaheadThrough = requireElement<HTMLElement>("[data-testid='lookahead-through']");
 const lookaheadPendingSlots = requireElement<HTMLElement>("[data-testid='lookahead-pending-slots']");
+const songGoalFrontdoorInput = requireElement<HTMLInputElement>("[data-testid='song-goal-frontdoor-input']");
+const songGoalFrontdoorInterpretButton = requireElement<HTMLButtonElement>("[data-testid='song-goal-frontdoor-interpret']");
+const songGoalFrontdoorApplyButton = requireElement<HTMLButtonElement>("[data-testid='song-goal-frontdoor-apply']");
+const songGoalFrontdoorStatus = requireElement<HTMLElement>("[data-testid='song-goal-frontdoor-status']");
+const songGoalFrontdoorSetup = requireElement<HTMLElement>("[data-testid='song-goal-frontdoor-setup']");
+const songGoalFrontdoorApplied = requireElement<HTMLElement>("[data-testid='song-goal-frontdoor-applied']");
 const songGoalIdeaInput = requireElement<HTMLInputElement>("[data-testid='song-goal-idea-input']");
 const songGoalInterpretButton = requireElement<HTMLButtonElement>("[data-testid='song-goal-interpret']");
 const songGoalApplyButton = requireElement<HTMLButtonElement>("[data-testid='song-goal-apply']");
@@ -1376,20 +1405,27 @@ function formatSlowThoughtPlayback(playback: SlowThoughtPlayback): string {
 
 function renderSongGoal(interpretation: SongGoalInterpretation): void {
   const { goal, validation, matchedKeywords } = interpretation;
-  songGoalApplyButton.disabled = !validation.valid;
-  songGoalStatus.textContent = [
+  const statusText = [
     goal.status,
     validation.valid ? "valid" : `invalid (${validation.errors.length})`,
     `${matchedKeywords.length} cues`,
   ].join(" | ");
-  songGoalApplied.textContent = appliedSongGoal
+  const appliedText = appliedSongGoal
     ? formatAppliedSongGoal(appliedSongGoal)
     : "not applied; current setup is default";
-  songGoalSetup.textContent = [
+  const setupText = [
     `${goal.tonic} ${goal.mode}`,
     `${goal.tempoBpm} BPM`,
     goal.formPreference,
   ].join(" | ");
+  songGoalApplyButton.disabled = !validation.valid;
+  songGoalFrontdoorApplyButton.disabled = !validation.valid;
+  songGoalStatus.textContent = statusText;
+  songGoalFrontdoorStatus.textContent = statusText;
+  songGoalApplied.textContent = appliedText;
+  songGoalFrontdoorApplied.textContent = appliedText;
+  songGoalSetup.textContent = setupText;
+  songGoalFrontdoorSetup.textContent = setupText;
   songGoalCharacter.textContent = [
     `energy ${goal.energy.toFixed(2)}`,
     `surprise ${goal.surpriseTarget.toFixed(2)}`,
@@ -1420,6 +1456,7 @@ function formatAppliedSongGoal(goal: SongGoal): string {
 function applySongGoalIdea(sourceIdea: string): SongGoalInterpretation {
   songGoalInterpretation = interpretSongGoal(sourceIdea);
   songGoalIdeaInput.value = songGoalInterpretation.goal.sourceIdea;
+  songGoalFrontdoorInput.value = songGoalInterpretation.goal.sourceIdea;
   renderWorld();
   return songGoalInterpretation;
 }
@@ -3607,6 +3644,19 @@ formVariantControl.addEventListener("change", (event) => {
   if (!isFormVariantId(input.value)) return;
 
   applyFormVariant(input.value);
+});
+
+songGoalFrontdoorInterpretButton.addEventListener("click", () => {
+  applySongGoalIdea(songGoalFrontdoorInput.value);
+});
+
+songGoalFrontdoorApplyButton.addEventListener("click", () => {
+  applySongGoalSetup(applySongGoalIdea(songGoalFrontdoorInput.value));
+});
+
+songGoalFrontdoorInput.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter") return;
+  applySongGoalIdea(songGoalFrontdoorInput.value);
 });
 
 songGoalInterpretButton.addEventListener("click", () => {
