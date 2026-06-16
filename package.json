@@ -11,6 +11,7 @@
     "build": "tsc && vite build",
     "preview": "vite preview --host 127.0.0.1",
     "smoke": "playwright test",
+    "unit:grow-language": "playwright test tests/grow-language.unit.spec.ts --config=playwright.unit.config.ts",
     "db:init": "node scripts/grow-db.mjs init",
     "db:dump": "node scripts/grow-db.mjs dump",
     "db:smoke": "node scripts/grow-db.mjs smoke"

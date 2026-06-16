@@ -22,7 +22,7 @@ const FLAT_CHROMATIC_SCALE = [
   "B",
 ] as const;
 
-const MODE_INTERVALS = {
+export const MODE_INTERVALS = {
   ionian: [0, 2, 4, 5, 7, 9, 11],
   dorian: [0, 2, 3, 5, 7, 9, 10],
   mixolydian: [0, 2, 4, 5, 7, 9, 10],

@@ -1,5 +1,12 @@
 :root {
   color-scheme: dark;
+  --degree-1: #D85A30;
+  --degree-2: #EF9F27;
+  --degree-3: #639922;
+  --degree-4: #1D9E75;
+  --degree-5: #378ADD;
+  --degree-6: #7F77DD;
+  --degree-7: #D4537E;
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
     sans-serif;

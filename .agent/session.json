@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Merge approved Byte UI-2 high-level control bar and written-to-evolving dial",
-  "status": "ui2-control-dial-approved-merged",
-  "updatedAt": "2026-06-16T01:28:55Z",
+  "lastTask": "Implement Byte L0a Grow language vocabulary map and degree colors",
+  "status": "l0a-grow-language-implemented-awaiting-review",
+  "updatedAt": "2026-06-16T02:14:00Z",
   "lastHandoff": "",
-  "branch": "main",
-  "commit": "287473a",
+  "branch": "codex/byte-l0a-grow-language",
+  "commit": "1498933",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte UI-2 is approved by Claude and merged locally to main. The top bar includes a real Line slider: written below 0.34 disables prosody and stops evolving, speaking from 0.34 to 0.67 enables existing prosody only, and evolving at 0.68+ starts existing D5 evolving performance with deterministic per-song branch/seed options. Claude live-verified written -> speaking -> evolving -> written, D5 fitness climbing to 0.863, no restart-on-drag churn, in-scale playback, and clean teardown. Validation: build green, smoke 70/70, db:smoke green, diff-check green; npm audit still reports the known Vite/esbuild advisories. Next UI slice is UI-3: surface the SongGoal idea entry as the prompt front door."
+    "summary": "Byte L0a is implemented on codex/byte-l0a-grow-language from base origin/main 7b22d37. It adds a pure Grow language helper module for the requested four-mode evocative bridge, degree-color helpers, inert CSS tokens --degree-1..--degree-7, and pure tests. MODE_INTERVALS is exported without changing its contents so the bridge can use the existing interval table. Noted design mismatch: main already includes lydian/phrygian in MODE_INTERVALS and SONG_GOAL_MODES, but L0a intentionally leaves them undefined for the future missing-mode byte."
   }
 }

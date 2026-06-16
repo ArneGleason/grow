@@ -56,6 +56,12 @@ npm run build
 npm run smoke
 ```
 
+Run only the Grow language pure-module tests:
+
+```sh
+npm run unit:grow-language
+```
+
 ## GitHub Repo Setup
 
 Remote:
