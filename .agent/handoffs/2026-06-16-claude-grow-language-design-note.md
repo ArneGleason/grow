@@ -34,8 +34,8 @@ reading numbers or counting lanes. Same tune in any key = same colors.
 |---|---|---|
 | 1 | home | coral `#D85A30` |
 | 2 | color | amber `#EF9F27` |
-| 3 | — | green `#639922` |
-| 4 | — | teal `#1D9E75` |
+| 3 | color | green `#639922` |
+| 4 | pillar | teal `#1D9E75` |
 | 5 | pillar | blue `#378ADD` |
 | 6 | color | purple `#7F77DD` |
 | 7 | leans home | pink `#D4537E` |
@@ -53,6 +53,10 @@ classical mapping + interval pattern as metadata for two-way translation / "what
 | Bruise | tender, heavy-hearted, the ache | Aeolian (natural minor) |
 | Scorch | smouldering, tense, a little dangerous | Phrygian |
 | Freefall | no ground under you, gloriously unstable | Locrian |
+
+Engine-realizable today: **6 of 7** (`MODE_INTERVALS`/`SONG_GOAL_MODES` cover ionian/dorian/mixolydian/
+aeolian/lydian/phrygian). Only **Freefall/Locrian** is not yet realized — adding it is a small separate
+behavior-change byte (extend `MODE_INTERVALS` + `SONG_GOAL_MODES`).
 
 ### Anchors + connectors (the melody is a graph)
 A line = **anchor nodes** joined by **connector edges**. Classical maneuvers are recognized as *presets*,
