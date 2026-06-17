@@ -22,6 +22,7 @@ import {
   aggregateCandidateFitness,
   previewCandidateFitness,
 } from "../src/candidate-fitness";
+import { renderPhraseCandidateGenome } from "../src/phrase-candidate-genome";
 import { selectStrictlyBetterElite } from "../src/evolving-performance";
 import {
   calculateCandidateDiversityMetrics,
@@ -4748,7 +4749,7 @@ test("evolving performance auditions only improving elite phrase candidates", as
 
   const current = candidates.find((candidate) => candidate.id === completed.currentCandidateId);
   expect(current).toBeTruthy();
-  expect(await getActiveProsodyPattern(page)).toEqual(current?.genome);
+  expect(await getActiveProsodyPattern(page)).toEqual(renderPhraseCandidateGenome(current?.genome));
 
   const stopped = await stopEvolvingEliteInApp(page);
   expect(stopped.status).toBe("idle");
@@ -4785,8 +4786,9 @@ test("elite phrase candidates can be auditioned as the active melody phrasing", 
   expect(selected).toBeTruthy();
 
   const activePattern = await getActiveProsodyPattern(page);
-  expect(activePattern).toEqual(selected?.genome);
-  expect(audition.pattern).toEqual(selected?.genome);
+  const expectedPattern = renderPhraseCandidateGenome(selected?.genome);
+  expect(activePattern).toEqual(expectedPattern);
+  expect(audition.pattern).toEqual(expectedPattern);
 
   const button = page.getByTestId("transport-toggle");
   await button.click();

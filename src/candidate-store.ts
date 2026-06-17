@@ -3,6 +3,13 @@ import type {
   CadenceVariation,
   ContourVariation,
 } from "./prosody-development";
+import {
+  DEFAULT_PHRASE_CANDIDATE_RENDER_OPTIONS,
+  PHRASE_CANDIDATE_GENOME_FORMAT,
+  type AnchorPhraseCandidateGenome,
+  type PhraseCandidateGenome,
+} from "./phrase-candidate-genome";
+import { normalizeAnchorPhrase } from "./anchor-phrase";
 import type { PlayerPatternSource } from "./song-material";
 
 export const CANDIDATE_KINDS = [
@@ -116,7 +123,7 @@ export type CandidateDevelopmentMutation = {
 } | {
   type: "phrase.replace";
   operator: CandidateProsodyDevelopmentOperator;
-  genome: PlayerPatternSource;
+  genome: PhraseCandidateGenome;
 };
 
 export interface CandidateDevelopmentOptions {
@@ -281,6 +288,9 @@ function readPhraseGenome(
   errors: string[],
   clamps: string[],
 ): CandidateGenome {
+  if (isRecord(value) && value.format === PHRASE_CANDIDATE_GENOME_FORMAT) {
+    return readAnchorPhraseGenome(value, errors, clamps) as unknown as CandidateGenome;
+  }
   if (!isRecord(value)) {
     errors.push("phrase genome must be a PlayerPatternSource object");
     return DEFAULT_PHRASE_GENOME as unknown as CandidateGenome;
@@ -314,6 +324,47 @@ function readPhraseGenome(
     subdivisionBeats,
     events,
   } satisfies PlayerPatternSource as unknown as CandidateGenome;
+}
+
+function readAnchorPhraseGenome(
+  value: Record<string, unknown>,
+  errors: string[],
+  clamps: string[],
+): AnchorPhraseCandidateGenome {
+  const phraseResult = normalizeAnchorPhrase(value.phrase);
+  errors.push(...phraseResult.errors.map((error) => `genome.phrase.${error}`));
+  clamps.push(...phraseResult.clamps.map((clamp) => `genome.phrase.${clamp}`));
+  const renderOptions = isRecord(value.renderOptions) ? value.renderOptions : {};
+  if (value.renderOptions !== undefined && !isRecord(value.renderOptions)) {
+    errors.push("genome.renderOptions must be an object");
+  }
+  return {
+    format: PHRASE_CANDIDATE_GENOME_FORMAT,
+    phrase: phraseResult.phrase,
+    renderOptions: {
+      baseOctave: readInteger(
+        renderOptions.baseOctave,
+        DEFAULT_PHRASE_CANDIDATE_RENDER_OPTIONS.baseOctave,
+        0,
+        8,
+        "genome.renderOptions.baseOctave",
+        [],
+        clamps,
+      ),
+      playerId: typeof renderOptions.playerId === "string" && renderOptions.playerId.trim().length > 0
+        ? renderOptions.playerId.trim().slice(0, 48)
+        : DEFAULT_PHRASE_CANDIDATE_RENDER_OPTIONS.playerId,
+      subdivisionBeats: readClampedNumber(
+        renderOptions.subdivisionBeats,
+        DEFAULT_PHRASE_CANDIDATE_RENDER_OPTIONS.subdivisionBeats,
+        0.125,
+        4,
+        "genome.renderOptions.subdivisionBeats",
+        [],
+        clamps,
+      ),
+    },
+  };
 }
 
 function readPatternNote(

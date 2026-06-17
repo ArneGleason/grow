@@ -1,6 +1,10 @@
 import { test, expect } from "@playwright/test";
 import { produceProsodyCandidates } from "../src/prosody-candidates";
 import { validateCandidate } from "../src/candidate-store";
+import {
+  isAnchorPhraseCandidateGenome,
+  renderPhraseCandidateGenome,
+} from "../src/phrase-candidate-genome";
 import { scoreProsody } from "../src/prosody-scoring";
 
 test.describe("produceProsodyCandidates (Track B4)", () => {
@@ -11,6 +15,7 @@ test.describe("produceProsodyCandidates (Track B4)", () => {
     for (const c of candidates) {
       expect(c.kind).toBe("phrase");
       expect(c.status).toBe("alive");
+      expect(isAnchorPhraseCandidateGenome(c.genome)).toBe(true);
       
       const validation = validateCandidate(c);
       expect(validation.valid).toBe(true);
@@ -60,7 +65,7 @@ test.describe("produceProsodyCandidates (Track B4)", () => {
     const candidates = produceProsodyCandidates({ seed: 55, count: 2 });
     
     for (const c of candidates) {
-      const score = scoreProsody(c.genome as any, [4, 4]);
+      const score = scoreProsody(renderPhraseCandidateGenome(c.genome), [4, 4]);
       
       expect(c.fitness).toBe(score.overall);
       expect(c.scores).toEqual(expect.objectContaining({

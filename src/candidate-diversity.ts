@@ -1,5 +1,5 @@
 import type { StoredCandidate } from "./candidate-store";
-import type { PlayerPatternSource } from "./song-material";
+import { renderPhraseCandidateGenome } from "./phrase-candidate-genome";
 
 const PHRASE_SCORE_KEYS = [
   "richness",
@@ -23,7 +23,7 @@ export function calculateCandidateDiversityMetrics(
   candidate: StoredCandidate,
   keptCandidates: readonly StoredCandidate[] = [],
 ): CandidateDiversityMetrics {
-  const phrase = candidate.genome as unknown as PlayerPatternSource;
+  const phrase = renderPhraseCandidateGenome(candidate.genome);
   const positions = Array.isArray(phrase.events)
     ? phrase.events
         .filter((event): event is NonNullable<typeof event> => Boolean(event))

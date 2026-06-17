@@ -30,6 +30,7 @@ import {
   type CandidateFitnessPreview,
   type CandidateFitnessResult,
 } from "./candidate-fitness";
+import { renderPhraseCandidateGenome } from "./phrase-candidate-genome";
 import { formatExpressionSnapshot, type PlayerExpressionSnapshot } from "./expression";
 import { createFormScore, type FormScore } from "./form-scoring";
 import {
@@ -2130,7 +2131,7 @@ function applyCandidateMelodyAudition(candidate: StoredCandidate): CandidateMelo
   candidateMelodyAudition = {
     branchId: candidate.branchId,
     candidate,
-    pattern: clonePlayerPatternSource(candidate.genome as unknown as PlayerPatternSource),
+    pattern: clonePlayerPatternSource(renderPhraseCandidateGenome(candidate.genome)),
   };
   cachedProsodyMelody = undefined;
   cancelSlowThinkingControllers("candidate melody audition changed before the thought could land");

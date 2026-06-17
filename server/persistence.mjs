@@ -23,6 +23,15 @@ const CANDIDATE_KINDS = Object.freeze(["song", "phrase", "groove", "harmony", "f
 const CANDIDATE_STATUSES = Object.freeze(["alive", "elite", "reserved", "purged"]);
 const MAX_CANDIDATE_LIMIT = 500;
 const MAX_SCORE_KEYS = 32;
+const PHRASE_CANDIDATE_GENOME_FORMAT = "anchor-phrase/v1";
+const CONNECTOR_KERNELS = Object.freeze(["fill", "detour", "approach", "orbit", "skip"]);
+const ANCHOR_PHRASE_CAPS = Object.freeze({
+  maxSegments: 16,
+  maxAnchors: 64,
+  maxPhraseLengthBeats: 512,
+  maxAnchorDurationBeats: 64,
+  minAnchorDurationBeats: 0.0625,
+});
 
 export function resolveDatabasePath(databasePath = process.env.GROW_DB_PATH ?? DEFAULT_DATABASE_PATH) {
   if (databasePath === ":memory:") return databasePath;
@@ -970,6 +979,9 @@ function normalizeCandidateGenome(kind, genome) {
 }
 
 function normalizePhraseGenome(genome) {
+  if (isRecord(genome) && genome.format === PHRASE_CANDIDATE_GENOME_FORMAT) {
+    return normalizeAnchorPhraseCandidateGenome(genome);
+  }
   if (!isRecord(genome)) {
     throw new Error("Phrase candidate genome must be a PlayerPatternSource object");
   }
@@ -1002,6 +1014,168 @@ function normalizePhraseGenome(genome) {
     subdivisionBeats: clampFiniteNumber(genome.subdivisionBeats ?? 1, 0.125, 4, "genome.subdivisionBeats"),
     events,
   };
+}
+
+function normalizeAnchorPhraseCandidateGenome(genome) {
+  return {
+    format: PHRASE_CANDIDATE_GENOME_FORMAT,
+    phrase: normalizeAnchorPhrase(genome.phrase),
+    renderOptions: normalizeAnchorPhraseRenderOptions(genome.renderOptions),
+  };
+}
+
+function normalizeAnchorPhraseRenderOptions(value) {
+  const options = isRecord(value) ? value : {};
+  if (value !== undefined && !isRecord(value)) {
+    throw new Error("Anchor phrase renderOptions must be an object");
+  }
+  return {
+    baseOctave: clampInteger(options.baseOctave ?? 4, 0, 8, "genome.renderOptions.baseOctave"),
+    playerId: typeof options.playerId === "string" && options.playerId.trim().length > 0
+      ? options.playerId.trim().slice(0, 48)
+      : "melody",
+    subdivisionBeats: clampFiniteNumber(
+      options.subdivisionBeats ?? 0.25,
+      0.125,
+      4,
+      "genome.renderOptions.subdivisionBeats",
+    ),
+  };
+}
+
+function normalizeAnchorPhrase(value) {
+  if (!isRecord(value)) {
+    throw new Error("AnchorPhrase must be an object");
+  }
+  const rawSegments = Array.isArray(value.segments) ? value.segments : null;
+  if (!rawSegments) {
+    throw new Error("AnchorPhrase segments must be an array");
+  }
+  if (rawSegments.length === 0) {
+    throw new Error("AnchorPhrase must include at least one segment");
+  }
+  const segments = [];
+  let totalAnchors = 0;
+  for (const [segmentIndex, rawSegment] of rawSegments.slice(0, ANCHOR_PHRASE_CAPS.maxSegments).entries()) {
+    if (totalAnchors >= ANCHOR_PHRASE_CAPS.maxAnchors) break;
+    const segment = normalizeAnchorPhraseSegment(rawSegment, segmentIndex, totalAnchors);
+    totalAnchors += segment.anchors.length;
+    segments.push(segment);
+  }
+  validateAnchorPhraseStructure(segments);
+  return { segments };
+}
+
+function normalizeAnchorPhraseSegment(value, segmentIndex, anchorsBefore) {
+  if (!isRecord(value)) {
+    throw new Error(`AnchorPhrase segment ${segmentIndex} must be an object`);
+  }
+  const rawAnchors = Array.isArray(value.anchors) ? value.anchors : null;
+  if (!rawAnchors) {
+    throw new Error(`AnchorPhrase segment ${segmentIndex} anchors must be an array`);
+  }
+  if (rawAnchors.length === 0) {
+    throw new Error(`AnchorPhrase segment ${segmentIndex} must include at least one anchor`);
+  }
+  const remainingAnchors = Math.max(0, ANCHOR_PHRASE_CAPS.maxAnchors - anchorsBefore);
+  const anchors = rawAnchors.slice(0, remainingAnchors).map((anchor, anchorIndex) =>
+    normalizeAnchor(anchor, segmentIndex, anchorIndex)
+  );
+  const expectedConnectorCount = Math.max(0, anchors.length - 1);
+  const rawConnectors = Array.isArray(value.connectors) ? value.connectors : null;
+  if (!rawConnectors) {
+    throw new Error(`AnchorPhrase segment ${segmentIndex} connectors must be an array`);
+  }
+  if (rawConnectors.length !== expectedConnectorCount) {
+    throw new Error(
+      `AnchorPhrase segment ${segmentIndex} connectors length must equal anchors.length - 1 (${expectedConnectorCount})`,
+    );
+  }
+  const connectors = rawConnectors.slice(0, expectedConnectorCount).map((connector, connectorIndex) =>
+    normalizeConnector(connector, segmentIndex, connectorIndex)
+  );
+  return { anchors, connectors };
+}
+
+function normalizeAnchor(value, segmentIndex, anchorIndex) {
+  if (!isRecord(value)) {
+    throw new Error(`AnchorPhrase anchor ${segmentIndex}.${anchorIndex} must be an object`);
+  }
+  const startBeat = clampFiniteNumber(
+    value.startBeat ?? 0,
+    0,
+    ANCHOR_PHRASE_CAPS.maxPhraseLengthBeats - ANCHOR_PHRASE_CAPS.minAnchorDurationBeats,
+    `genome.phrase.segments.${segmentIndex}.anchors.${anchorIndex}.startBeat`,
+  );
+  const maximumDuration = Math.min(
+    ANCHOR_PHRASE_CAPS.maxAnchorDurationBeats,
+    ANCHOR_PHRASE_CAPS.maxPhraseLengthBeats - startBeat,
+  );
+  return {
+    degree: clampInteger(value.degree ?? 1, 1, 7, `genome.phrase.segments.${segmentIndex}.anchors.${anchorIndex}.degree`),
+    octave: clampInteger(value.octave ?? 4, 0, 8, `genome.phrase.segments.${segmentIndex}.anchors.${anchorIndex}.octave`),
+    startBeat,
+    durationBeats: clampFiniteNumber(
+      value.durationBeats ?? 1,
+      ANCHOR_PHRASE_CAPS.minAnchorDurationBeats,
+      maximumDuration,
+      `genome.phrase.segments.${segmentIndex}.anchors.${anchorIndex}.durationBeats`,
+    ),
+    dynamics: clampFiniteNumber(
+      value.dynamics ?? 0.7,
+      0,
+      1,
+      `genome.phrase.segments.${segmentIndex}.anchors.${anchorIndex}.dynamics`,
+    ),
+  };
+}
+
+function normalizeConnector(value, segmentIndex, connectorIndex) {
+  if (!isRecord(value)) {
+    throw new Error(`AnchorPhrase connector ${segmentIndex}.${connectorIndex} must be an object`);
+  }
+  const kernel = value.kernel === undefined ? "fill" : value.kernel;
+  if (typeof kernel !== "string" || !CONNECTOR_KERNELS.includes(kernel)) {
+    throw new Error(`AnchorPhrase connector kernel must be one of ${CONNECTOR_KERNELS.join(", ")}`);
+  }
+  return {
+    kernel,
+    reach: clampFiniteNumber(value.reach ?? 0.5, 0, 1, `genome.phrase.segments.${segmentIndex}.connectors.${connectorIndex}.reach`),
+    density: clampFiniteNumber(value.density ?? 0.5, 0, 1, `genome.phrase.segments.${segmentIndex}.connectors.${connectorIndex}.density`),
+    bias: clampFiniteNumber(value.bias ?? 0, -1, 1, `genome.phrase.segments.${segmentIndex}.connectors.${connectorIndex}.bias`),
+    pull: clampFiniteNumber(value.pull ?? 0.5, 0, 1, `genome.phrase.segments.${segmentIndex}.connectors.${connectorIndex}.pull`),
+    color: clampFiniteNumber(value.color ?? 0, 0, 1, `genome.phrase.segments.${segmentIndex}.connectors.${connectorIndex}.color`),
+    skew: clampFiniteNumber(value.skew ?? 0, -1, 1, `genome.phrase.segments.${segmentIndex}.connectors.${connectorIndex}.skew`),
+  };
+}
+
+function validateAnchorPhraseStructure(segments) {
+  let previousSegmentEndBeat;
+  for (const [segmentIndex, segment] of segments.entries()) {
+    if (segment.anchors.length === 0) {
+      throw new Error(`AnchorPhrase segment ${segmentIndex} must include at least one anchor`);
+    }
+    if (segment.connectors.length !== segment.anchors.length - 1) {
+      throw new Error(`AnchorPhrase segment ${segmentIndex} connectors length must equal anchors.length - 1`);
+    }
+    for (let anchorIndex = 1; anchorIndex < segment.anchors.length; anchorIndex += 1) {
+      const previous = segment.anchors[anchorIndex - 1];
+      const current = segment.anchors[anchorIndex];
+      if (current.startBeat < previous.startBeat) {
+        throw new Error(`AnchorPhrase segment ${segmentIndex} anchors must be sorted by startBeat`);
+      }
+      const previousEndBeat = previous.startBeat + previous.durationBeats;
+      if (current.startBeat < previousEndBeat) {
+        throw new Error(`AnchorPhrase anchor ${segmentIndex}.${anchorIndex} overlaps the previous anchor`);
+      }
+    }
+    const firstAnchor = segment.anchors[0];
+    const lastAnchor = segment.anchors[segment.anchors.length - 1];
+    if (previousSegmentEndBeat !== undefined && firstAnchor.startBeat < previousSegmentEndBeat) {
+      throw new Error(`AnchorPhrase segment ${segmentIndex} starts before the previous segment ends`);
+    }
+    previousSegmentEndBeat = lastAnchor.startBeat + lastAnchor.durationBeats;
+  }
 }
 
 function normalizeBoundedJson(value, label, depth = 0) {
@@ -1104,6 +1278,37 @@ function applyCandidateDevelopmentMutation(genome, mutation) {
   }
 
   const childGenome = deepCloneJson(genome);
+  if (isAnchorPhraseCandidateGenome(childGenome)) {
+    return normalizePhraseGenome({
+      ...childGenome,
+      phrase: {
+        segments: childGenome.phrase.segments.map((segment) => ({
+          anchors: segment.anchors.map((anchor) => ({
+            ...anchor,
+            degree: clampInteger(
+              readFiniteNumber(anchor.degree, 1) + mutation.scaleDegreeDelta,
+              1,
+              7,
+              "child.anchor.degree",
+            ),
+            octave: clampInteger(
+              readFiniteNumber(anchor.octave, 4) + mutation.octaveDelta,
+              0,
+              8,
+              "child.anchor.octave",
+            ),
+            dynamics: clampFiniteNumber(
+              readFiniteNumber(anchor.dynamics, 0.7) * mutation.velocityMultiplier,
+              0,
+              1,
+              "child.anchor.dynamics",
+            ),
+          })),
+          connectors: segment.connectors.map((connector) => ({ ...connector })),
+        })),
+      },
+    });
+  }
   if (!isRecord(childGenome) || !Array.isArray(childGenome.events)) {
     throw new Error("Phrase development requires a PlayerPatternSource genome");
   }
@@ -1136,6 +1341,10 @@ function applyCandidateDevelopmentMutation(genome, mutation) {
     mutation.rotateSteps,
   );
   return normalizePhraseGenome(childGenome);
+}
+
+function isAnchorPhraseCandidateGenome(value) {
+  return isRecord(value) && value.format === PHRASE_CANDIDATE_GENOME_FORMAT && isRecord(value.phrase);
 }
 
 function normalizeProsodyDevelopmentOperator(value) {

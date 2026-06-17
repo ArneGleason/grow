@@ -1,6 +1,11 @@
 import type { Candidate } from "./candidate-store";
 import { validateCandidate } from "./candidate-store";
-import { generateProsodicMelody } from "./melody-prosody";
+import { generateProsodicAnchorPhrase } from "./melody-prosody";
+import {
+  createAnchorPhraseCandidateGenome,
+  createAnchorPhraseCandidateGenomeFromPattern,
+  renderPhraseCandidateGenome,
+} from "./phrase-candidate-genome";
 import { 
   reFoot, 
   shiftAnacrusis, 
@@ -42,7 +47,8 @@ export function produceProsodyCandidates(input: ProsodyCandidateInput): Candidat
   const candidates: Candidate[] = [];
   
   // 1. Generate base phrase
-  const basePhrase = generateProsodicMelody({ seed: input.seed });
+  const baseGenome = createAnchorPhraseCandidateGenome(generateProsodicAnchorPhrase({ seed: input.seed }));
+  const basePhrase = renderPhraseCandidateGenome(baseGenome);
   const baseScore = scoreProsody(basePhrase, [4, 4]);
   
   const baseId = `phrase_${input.seed}_base`;
@@ -50,7 +56,7 @@ export function produceProsodyCandidates(input: ProsodyCandidateInput): Candidat
   const baseCandidate: Candidate = {
     id: baseId,
     kind: "phrase",
-    genome: basePhrase as any,
+    genome: baseGenome as any,
     scores: { ...baseScore.subscores },
     fitness: baseScore.overall,
     generation: 0,
@@ -71,7 +77,7 @@ export function produceProsodyCandidates(input: ProsodyCandidateInput): Candidat
   
   // To ensure they are distinct, we track genomes as JSON strings.
   const seenGenomes = new Set<string>();
-  seenGenomes.add(JSON.stringify(basePhrase));
+  seenGenomes.add(JSON.stringify(baseGenome));
   
   while (candidates.length < count && attempts < maxAttempts) {
     attempts++;
@@ -98,7 +104,8 @@ export function produceProsodyCandidates(input: ProsodyCandidateInput): Candidat
       variantPhrase = shiftAnacrusis(basePhrase, action);
     }
     
-    const genomeStr = JSON.stringify(variantPhrase);
+    const variantGenome = createAnchorPhraseCandidateGenomeFromPattern(variantPhrase);
+    const genomeStr = JSON.stringify(variantGenome);
     if (seenGenomes.has(genomeStr)) {
       continue;
     }
@@ -110,7 +117,7 @@ export function produceProsodyCandidates(input: ProsodyCandidateInput): Candidat
     const varCandidate: Candidate = {
       id: varId,
       kind: "phrase",
-      genome: variantPhrase as any,
+      genome: variantGenome as any,
       scores: { ...varScore.subscores },
       fitness: varScore.overall,
       generation: 1, // >=1 for variants
