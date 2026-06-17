@@ -119,7 +119,7 @@ import {
   type SongId,
   type SongMaterial,
 } from "./song-material";
-import { generateProsodicMelody } from "./melody-prosody";
+import { generateProsodicAnchorPhrase, generateProsodicMelody } from "./melody-prosody";
 import { sectionAtBeat, type ChorusDevelopment } from "./song-form";
 import {
   applySongSketchProposalText,
@@ -3868,6 +3868,7 @@ declare global {
       setVariant(variantId: string): FormVariantId;
     };
     anchorPhrase?: {
+      fromProsody(options?: { seed?: number; baseOctave?: number; bars?: number }): AnchorPhrase;
       getDemoPhrase(): AnchorPhrase;
       renderDemo(options?: { baseOctave?: number; playerId?: string; subdivisionBeats?: number }): PlayerPatternSource;
     };
@@ -4097,6 +4098,11 @@ window.formScore = {
 };
 
 window.anchorPhrase = {
+  fromProsody: (options) => generateProsodicAnchorPhrase({
+    seed: options?.seed ?? prosodySeedForSong(songId),
+    baseOctave: options?.baseOctave ?? 4,
+    bars: options?.bars ?? 4,
+  }),
   getDemoPhrase: () => structuredClone(DEMO_ANCHOR_PHRASE),
   renderDemo: (options) => renderDemoAnchorPhrase(options),
 };

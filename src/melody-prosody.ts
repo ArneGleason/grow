@@ -1,4 +1,11 @@
-import type { PlayerPatternSource, PatternNoteSource } from "./song-material";
+import {
+  normalizeAnchorPhrase,
+  type Anchor,
+  type AnchorPhrase,
+  type Connector,
+} from "./anchor-phrase";
+import { renderAnchorPhrase } from "./anchor-phrase-render";
+import type { PlayerPatternSource } from "./song-material";
 
 // Melodic rhythm as prosody: a line is an *utterance* built from metrical feet
 // (weak/strong long/short cells), grouped into antecedent ("question") and
@@ -36,37 +43,42 @@ const FEET: readonly (readonly Cell[])[] = [
 
 const STRESS_VELOCITY: Record<Stress, number> = { 0: 0.18, 1: 0.3, 2: 0.46 };
 
-interface PlacedNote {
-  startBeat: number;
-  durBeats: number;
-  scaleDegree: number;
-  velocity: number;
-}
-
 export function generateProsodicMelody(input: ProsodicMelodyInput): PlayerPatternSource {
   const baseOctave = input.baseOctave ?? 4;
+  const phrase = generateProsodicAnchorPhrase(input);
+  const normalized = normalizeAnchorPhrase(phrase);
+  return renderAnchorPhrase(normalized.phrase, {
+    baseOctave,
+    subdivisionBeats: GRID,
+  });
+}
+
+export function generateProsodicAnchorPhrase(input: ProsodicMelodyInput): AnchorPhrase {
+  const baseOctave = Math.trunc(input.baseOctave ?? 4);
   const bars = input.bars ?? 4;
   const rng = mulberry32(input.seed >>> 0);
   const totalBeats = bars * BEATS_PER_BAR;
   const phraseBeats = totalBeats / 2; // antecedent + consequent
 
-  const notes: PlacedNote[] = [];
-  // Antecedent: arch up, hang on the dominant (a question).
-  buildPhrase(rng, notes, 0, phraseBeats, { cadenceDegree: 4, resolve: false });
-  // Consequent: parallel rhythm, fall to the tonic on a downbeat (an answer).
-  buildPhrase(rng, notes, phraseBeats, phraseBeats, { cadenceDegree: 0, resolve: true });
-
-  return placeOnGrid(notes, totalBeats, baseOctave);
+  const phrase: AnchorPhrase = {
+    segments: [
+      // Antecedent: arch up, hang on the dominant (a question).
+      buildAnchorPhraseSegment(rng, 0, phraseBeats, baseOctave, { cadenceDegree: 4, resolve: false }),
+      // Consequent: parallel rhythm, fall to the tonic on a downbeat (an answer).
+      buildAnchorPhraseSegment(rng, phraseBeats, phraseBeats, baseOctave, { cadenceDegree: 0, resolve: true }),
+    ],
+  };
+  return normalizeAnchorPhrase(phrase).phrase;
 }
 
 interface PhraseShape {
   cadenceDegree: number;
-  resolve: boolean; // true -> land the cadence squarely on a downbeat (anchor)
+  resolve: boolean; // true -> hold the answer cadence through the phrase end
 }
 
 function buildPhrase(
   rng: () => number,
-  out: PlacedNote[],
+  out: Anchor[],
   startBeat: number,
   phraseBeats: number,
   shape: PhraseShape,
@@ -74,34 +86,30 @@ function buildPhrase(
   // Reserve the tail of the phrase for the cadence note + a breath.
   const cadenceHold = shape.resolve ? 2.0 : 1.5;
   const breath = 0.5;
-  const bodyBudget = phraseBeats - cadenceHold - breath;
+  const cadenceStart = shape.resolve
+    ? startBeat + phraseBeats - cadenceHold - breath
+    : snapToBeat(startBeat + phraseBeats - cadenceHold - breath);
+  const bodyEnd = cadenceStart - GRID;
 
-  // Anacrusis: a light pickup before the first strong landing.
-  let pos = startBeat;
+  // Anacrusis: a light pickup before the first strong landing. It is an anchor
+  // because L2 needs to see it, but the run-in shape belongs to the connector.
   let degree = 2; // start mid-scale
-  // contour: rise across the antecedent body toward a peak, then the cadence falls.
   let direction = 1;
   let peak = 4 + Math.floor(rng() * 3); // 4..6, a modest high point
+  out.push(anchorFromEngineDegree(degree, 4, startBeat, 0.25, STRESS_VELOCITY[0]));
 
-  // optional pickup foot (anapest) to lean into the phrase
-  if (rng() < 0.7) {
-    out.push({ startBeat: pos, durBeats: 0.25, scaleDegree: degree, velocity: STRESS_VELOCITY[0] });
-    pos += 0.25;
-    degree = stepToward(degree, peak, 1);
-  }
+  degree = stepToward(degree, peak, 1);
+  out.push(anchorFromEngineDegree(degree, 4, startBeat + 0.5, 0.75, STRESS_VELOCITY[2]));
 
-  while (pos - startBeat < bodyBudget - 0.5) {
+  let pos = startBeat + 1.25;
+  while (pos < bodyEnd - 0.5) {
     const foot = FEET[Math.floor(rng() * FEET.length)] ?? FEET[0];
     for (const cell of foot) {
-      if (pos - startBeat >= bodyBudget) break;
-      const dur = Math.min(cell.dur, bodyBudget - (pos - startBeat));
-      if (dur < GRID) break;
-      out.push({
-        startBeat: pos,
-        durBeats: dur * 0.96, // articulate slightly
-        scaleDegree: degree,
-        velocity: STRESS_VELOCITY[cell.stress],
-      });
+      if (pos >= bodyEnd - 0.25) break;
+      const dur = Math.min(cell.dur, bodyEnd - pos);
+      if (cell.stress === 2 && dur >= GRID) {
+        out.push(anchorFromEngineDegree(degree, 4, pos, dur * 0.96, STRESS_VELOCITY[cell.stress]));
+      }
       pos += dur;
       // arch: step toward the peak, turn around once reached
       if (degree >= peak) direction = -1;
@@ -111,41 +119,103 @@ function buildPhrase(
     }
   }
 
-  // Cadence: anchor the answer on the phrase's final downbeat; let the question
-  // hang slightly off it.
-  const cadenceStart = shape.resolve
-    ? startBeat + phraseBeats - cadenceHold - breath // lands on a bar downbeat for resolve
-    : snapToBeat(startBeat + phraseBeats - cadenceHold - breath - 0.5);
-  out.push({
-    startBeat: Math.max(pos, cadenceStart),
-    durBeats: cadenceHold,
-    scaleDegree: shape.cadenceDegree,
-    velocity: STRESS_VELOCITY[2],
+  // Cadence: dominant question, then tonic answer.
+  out.push(anchorFromEngineDegree(shape.cadenceDegree, 4, cadenceStart, cadenceHold, STRESS_VELOCITY[2]));
+}
+
+function buildAnchorPhraseSegment(
+  rng: () => number,
+  startBeat: number,
+  phraseBeats: number,
+  baseOctave: number,
+  shape: PhraseShape,
+): AnchorPhrase["segments"][number] {
+  const anchors: Anchor[] = [];
+  buildPhrase(rng, anchors, startBeat, phraseBeats, shape);
+  const articulatedAnchors = shape.resolve
+    ? stretchFinalAnchorToPhraseEnd(anchors, startBeat + phraseBeats, baseOctave)
+    : anchors.map((anchor) => ({ ...anchor, octave: baseOctave }));
+  return {
+    anchors: articulatedAnchors,
+    connectors: connectorsForAnchors(articulatedAnchors),
+  };
+}
+
+function stretchFinalAnchorToPhraseEnd(
+  anchors: readonly Anchor[],
+  phraseEndBeat: number,
+  baseOctave: number,
+): readonly Anchor[] {
+  return anchors.map((anchor, index) => {
+    if (index !== anchors.length - 1) return { ...anchor, octave: baseOctave };
+    return {
+      ...anchor,
+      octave: baseOctave,
+      durationBeats: round3(Math.max(GRID, phraseEndBeat - anchor.startBeat)),
+    };
   });
 }
 
-function placeOnGrid(
-  notes: readonly PlacedNote[],
-  totalBeats: number,
-  baseOctave: number,
-): PlayerPatternSource {
-  const steps = Math.round(totalBeats / GRID);
-  const events: Array<PatternNoteSource | null> = new Array(steps).fill(null);
-  let lastEnd = -1;
-  for (const note of notes) {
-    const index = Math.round(note.startBeat / GRID) % steps;
-    if (note.startBeat < lastEnd) continue; // guard against overlap
-    events[index] = {
-      playerId: "melody",
-      scaleDegree: note.scaleDegree,
-      octave: baseOctave,
-      duration: beatsToBarsBeatsSixteenths(note.durBeats),
-      durationBeats: round3(note.durBeats),
-      velocity: round3(note.velocity),
-    };
-    lastEnd = note.startBeat + note.durBeats;
-  }
-  return { subdivisionBeats: GRID, events };
+function connectorsForAnchors(anchors: readonly Anchor[]): readonly Connector[] {
+  return anchors.slice(0, -1).map((anchor, index) => {
+    const next = anchors[index + 1];
+    if (index === 0) {
+      return connector("approach", {
+        density: 0.72,
+        reach: 0.42,
+        bias: next.degree >= anchor.degree ? -0.4 : 0.4,
+        pull: 0.85,
+        skew: 0.12,
+      });
+    }
+    if (index === anchors.length - 2) {
+      return connector("approach", {
+        density: 0.1,
+        reach: 0.62,
+        bias: next.degree >= anchor.degree ? -0.6 : 0.6,
+        pull: 1,
+        skew: 1,
+      });
+    }
+    return connector("fill", {
+      density: 0.45 + (index % 2) * 0.18,
+      reach: 0.5,
+      bias: next.degree >= anchor.degree ? 0.2 : -0.2,
+      pull: 0.46,
+      skew: index % 2 === 0 ? 0.12 : -0.1,
+    });
+  });
+}
+
+function connector(
+  kernel: Connector["kernel"],
+  values: Partial<Omit<Connector, "kernel">>,
+): Connector {
+  return {
+    kernel,
+    reach: values.reach ?? 0.5,
+    density: values.density ?? 0.5,
+    bias: values.bias ?? 0,
+    pull: values.pull ?? 0.5,
+    color: values.color ?? 0,
+    skew: values.skew ?? 0,
+  };
+}
+
+function anchorFromEngineDegree(
+  scaleDegree: number,
+  octave: number,
+  startBeat: number,
+  durationBeats: number,
+  velocity: number,
+): Anchor {
+  return {
+    degree: scaleDegree + 1,
+    octave,
+    startBeat: round3(startBeat),
+    durationBeats: round3(durationBeats),
+    dynamics: round3(velocity),
+  };
 }
 
 function stepToward(value: number, target: number, by: number): number {
@@ -155,20 +225,11 @@ function stepToward(value: number, target: number, by: number): number {
 }
 
 function clampDegree(value: number): number {
-  return Math.max(-1, Math.min(8, value));
+  return Math.max(0, Math.min(6, value));
 }
 
 function snapToBeat(beat: number): number {
   return Math.round(beat);
-}
-
-function beatsToBarsBeatsSixteenths(beats: number): string {
-  const totalSixteenths = Math.max(1, Math.round(beats * 4));
-  const bars = Math.floor(totalSixteenths / 16);
-  const remainder = totalSixteenths % 16;
-  const wholeBeats = Math.floor(remainder / 4);
-  const sixteenths = remainder % 4;
-  return `${bars}:${wholeBeats}:${sixteenths}`;
 }
 
 function round3(value: number): number {
