@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Address Byte L1e request-changes review",
-  "status": "l1e-anchor-genome-store-review-fix-implemented-awaiting-review",
-  "updatedAt": "2026-06-17T14:59:25Z",
+  "lastTask": "Merge approved Byte L1e candidate-store anchor phrase genomes",
+  "status": "l1e-anchor-genome-store-approved-and-merged",
+  "updatedAt": "2026-06-17T15:34:51Z",
   "lastHandoff": "",
-  "branch": "codex/byte-l1e-anchor-genome-store",
-  "commit": "",
+  "branch": "main",
+  "commit": "0be9235fd462dab574b58972cebffdbfca7f4cba",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte L1e request-changes fix is implemented on codex/byte-l1e-anchor-genome-store. The candidate-cycle development path now compares native anchor-phrase/v1 replacements against the native parent before POSTing phrase.replace, so lossy flat-to-anchor conversion cannot send a native no-op to the server. postPersistenceJson now preserves server error bodies, keeping no-op development errors catchable. Targeted matched-diversity/evolving-performance smokes passed, full smoke passed 70/70 twice, db:smoke/diff-check/build/unit are green, and npm audit remains the known Vite/esbuild advisory set."
+    "summary": "Byte L1e is approved and merged to main at 0be9235. Phrase candidates now persist native anchor-phrase/v1 genomes while legacy flat PlayerPatternSource genomes remain valid. Existing scoring, diversity, B2 development, D2 audition, and D5 evolving performance paths use renderPhraseCandidateGenome() as the old-flat-shape adapter. Claude re-reviewed the request-changes fix and verified the original multi-run evolution repro now passes. Phase 1 is complete end to end; next planned slice is L2, the read-only graphical editor rendering window.anchorPhrase.fromProsody in the visual grammar."
   }
 }
