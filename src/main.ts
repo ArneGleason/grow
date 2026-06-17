@@ -1,4 +1,6 @@
 import "./style.css";
+import type { AnchorPhrase } from "./anchor-phrase";
+import { DEMO_ANCHOR_PHRASE, renderDemoAnchorPhrase } from "./anchor-phrase-render";
 import type {
   CandidateCapOptions,
   Candidate,
@@ -3801,6 +3803,10 @@ declare global {
       getVariants(): readonly ScoredFormVariant[];
       setVariant(variantId: string): FormVariantId;
     };
+    anchorPhrase?: {
+      getDemoPhrase(): AnchorPhrase;
+      renderDemo(options?: { baseOctave?: number; playerId?: string; subdivisionBeats?: number }): PlayerPatternSource;
+    };
     persistence?: {
       getState(): PersistenceClientState;
       getMusicalEventBufferState(): MusicalEventRecordBufferState;
@@ -4026,6 +4032,11 @@ window.formScore = {
   },
 };
 
+window.anchorPhrase = {
+  getDemoPhrase: () => structuredClone(DEMO_ANCHOR_PHRASE),
+  renderDemo: (options) => renderDemoAnchorPhrase(options),
+};
+
 window.persistence = {
   getState: () => persistence.getState(),
   getMusicalEventBufferState: () => musicalEventRecordBuffer.getState(),
@@ -4100,6 +4111,7 @@ if (import.meta.hot) {
     window.timing = undefined;
     window.melodyRepair = undefined;
     window.formScore = undefined;
+    window.anchorPhrase = undefined;
     window.persistence = undefined;
     window.ollama = undefined;
     window.terrarium = undefined;

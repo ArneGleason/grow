@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Implement Byte L1a anchor phrase representation",
-  "status": "l1a-anchor-phrase-implemented-awaiting-review",
-  "updatedAt": "2026-06-16T21:36:16Z",
+  "lastTask": "Implement Byte L1b anchor phrase renderer",
+  "status": "l1b-anchor-render-implemented-awaiting-review",
+  "updatedAt": "2026-06-17T01:48:21Z",
   "lastHandoff": "",
-  "branch": "codex/byte-l1a-anchor-phrase",
+  "branch": "codex/byte-l1b-anchor-render",
   "commit": "",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte L1a is implemented on codex/byte-l1a-anchor-phrase from origin/main at Byte L0a-b. It adds a pure additive anchor/connectors phrase representation with validation/normalization and unit tests only. Nothing consumes the model yet; playback, scoring, candidate-store, prosody, UI, tonal-context, and SongGoal paths are untouched."
+    "summary": "Byte L1b is implemented on codex/byte-l1b-anchor-render, stacked on the approved L1a branch because origin/main has not yet merged L0b/L1a. It adds a pure anchor-phrase renderer to PlayerPatternSource, unit coverage, and a read-only window.anchorPhrase demo surface. No playback, scoring, candidate-store, prosody generator, transport, or UI control path consumes it."
   }
 }
