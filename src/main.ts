@@ -1,5 +1,5 @@
 import "./style.css";
-import type { AnchorPhrase } from "./anchor-phrase";
+import type { Anchor, AnchorPhrase, AnchorPhraseSegment } from "./anchor-phrase";
 import { DEMO_ANCHOR_PHRASE, renderDemoAnchorPhrase } from "./anchor-phrase-render";
 import type {
   CandidateCapOptions,
@@ -550,6 +550,51 @@ ${timingFeelControls}
         ></div>
       </div>
 
+      <section
+        class="phrase-editor-overlay"
+        data-testid="anchor-phrase-editor-overlay"
+        aria-label="Read-only melody phrase editor"
+        hidden
+      >
+        <div class="phrase-editor-backdrop" data-testid="anchor-phrase-editor-backdrop"></div>
+        <article
+          class="phrase-editor"
+          data-testid="anchor-phrase-editor"
+          role="dialog"
+          aria-modal="false"
+          aria-labelledby="anchor-phrase-editor-title"
+          tabindex="-1"
+        >
+          <header class="phrase-editor__header">
+            <div>
+              <p class="phrase-editor__eyebrow">Melody idea</p>
+              <h2 id="anchor-phrase-editor-title" data-testid="anchor-phrase-editor-title">Graphical phrase</h2>
+            </div>
+            <div class="phrase-editor__readouts">
+              <strong
+                data-testid="anchor-phrase-editor-tonal"
+                data-mode-classical="mixolydian"
+                title="Strut · Mixolydian · key of C"
+              >C Strut</strong>
+              <button
+                class="phrase-editor__close"
+                data-testid="anchor-phrase-editor-close"
+                type="button"
+                aria-label="Close melody phrase editor"
+              >Close</button>
+            </div>
+          </header>
+          <div class="phrase-editor__meta" aria-label="Phrase summary">
+            <span data-testid="anchor-phrase-editor-song">Lantern</span>
+            <span data-testid="anchor-phrase-editor-summary">read-only prosody phrase</span>
+          </div>
+          <div class="phrase-editor__roll" data-testid="anchor-phrase-editor-roll"></div>
+          <p class="phrase-editor__note">
+            Read-only for now. This shows the current prosody idea in anchors, connectors, and breaths.
+          </p>
+        </article>
+      </section>
+
       <div
         class="stage-resizer"
         data-testid="stage-resizer"
@@ -911,6 +956,14 @@ const timingFeelCurrent = requireElement<HTMLElement>("[data-testid='timing-feel
 const persistenceStatus = requireElement<HTMLElement>("[data-testid='persistence-status']");
 const musicalEventBufferStatus = requireElement<HTMLElement>("[data-testid='musical-event-buffer-status']");
 const playerList = requireElement<HTMLDivElement>("#player-list");
+const anchorPhraseEditorOverlay = requireElement<HTMLElement>("[data-testid='anchor-phrase-editor-overlay']");
+const anchorPhraseEditor = requireElement<HTMLElement>("[data-testid='anchor-phrase-editor']");
+const anchorPhraseEditorBackdrop = requireElement<HTMLElement>("[data-testid='anchor-phrase-editor-backdrop']");
+const anchorPhraseEditorClose = requireElement<HTMLButtonElement>("[data-testid='anchor-phrase-editor-close']");
+const anchorPhraseEditorTonal = requireElement<HTMLElement>("[data-testid='anchor-phrase-editor-tonal']");
+const anchorPhraseEditorSong = requireElement<HTMLElement>("[data-testid='anchor-phrase-editor-song']");
+const anchorPhraseEditorSummary = requireElement<HTMLElement>("[data-testid='anchor-phrase-editor-summary']");
+const anchorPhraseEditorRoll = requireElement<HTMLElement>("[data-testid='anchor-phrase-editor-roll']");
 const thoughtSeedList = requireElement<HTMLDivElement>("#thought-seed-list");
 const ollamaBaseUrlInput = requireElement<HTMLInputElement>("[data-testid='ollama-base-url-input']");
 const ollamaModelInput = requireElement<HTMLInputElement>("[data-testid='ollama-model-input']");
@@ -985,6 +1038,8 @@ let activeResizePointerId: number | null = null;
 let previousTransportStatus = getState().status;
 let renderedPlayerIds = "";
 let renderedThoughtSeedIds = "";
+let isAnchorPhraseEditorOpen = false;
+let renderedAnchorPhraseEditorKey = "";
 let renderFrameId: number | null = null;
 let isTearingDown = false;
 let isInspectDrawerOpen = false;
@@ -1155,8 +1210,18 @@ function renderPlayerInspector(
       const timing = timingsByPlayer.get(player.id);
       const framePlayer = framePlayersByPlayer.get(player.id);
       const card = document.createElement("article");
-      card.className = "player-inspector";
+      const canOpenPhraseEditor = player.id === "melody";
+      card.className = canOpenPhraseEditor
+        ? "player-inspector player-inspector--phrase-trigger"
+        : "player-inspector";
       card.dataset.testid = `player-card-${player.id}`;
+      if (canOpenPhraseEditor) {
+        card.tabIndex = 0;
+        card.setAttribute("role", "button");
+        card.setAttribute("aria-haspopup", "dialog");
+        card.setAttribute("aria-label", "Open Melody graphical phrase editor");
+        card.title = "Open Melody graphical phrase editor";
+      }
 
       const dl = document.createElement("dl");
       dl.append(
@@ -1256,6 +1321,258 @@ function renderPlayerInspector(
       contagionNode.textContent = formatPlayerContagion(framePlayersByPlayer.get(player.id));
     }
   }
+}
+
+function openAnchorPhraseEditor(): void {
+  if (!isAnchorPhraseEditorOpen) {
+    isAnchorPhraseEditorOpen = true;
+    anchorPhraseEditorOverlay.hidden = false;
+    renderedAnchorPhraseEditorKey = "";
+  }
+  renderAnchorPhraseEditor();
+  requestAnimationFrame(() => {
+    anchorPhraseEditor.focus();
+  });
+}
+
+function closeAnchorPhraseEditor(options: { restoreFocus?: boolean } = {}): void {
+  if (!isAnchorPhraseEditorOpen) return;
+  isAnchorPhraseEditorOpen = false;
+  anchorPhraseEditorOverlay.hidden = true;
+  if (options.restoreFocus !== false) {
+    getMelodyPlayerCard()?.focus();
+  }
+}
+
+function getMelodyPlayerCard(): HTMLElement | null {
+  return playerList.querySelector<HTMLElement>("[data-testid='player-card-melody']");
+}
+
+function renderAnchorPhraseEditor(): void {
+  if (!isAnchorPhraseEditorOpen) return;
+  const phrase = createCurrentProsodyAnchorPhrase();
+  const tonalContext = world.getTonalContext();
+  renderTonalContextDisplay(anchorPhraseEditorTonal, tonalContext);
+  anchorPhraseEditorSong.textContent = getSongLabel(songId);
+  const summary = formatAnchorPhraseSummary(phrase);
+  anchorPhraseEditorSummary.textContent = summary;
+  const renderKey = `${songId}|${prosodySeedForSong(songId)}|${summary}`;
+  if (renderKey !== renderedAnchorPhraseEditorKey) {
+    anchorPhraseEditorRoll.innerHTML = renderAnchorPhraseEditorSvg(phrase);
+    renderedAnchorPhraseEditorKey = renderKey;
+  }
+}
+
+function createCurrentProsodyAnchorPhrase(options?: { seed?: number; baseOctave?: number; bars?: number }): AnchorPhrase {
+  return generateProsodicAnchorPhrase({
+    seed: options?.seed ?? prosodySeedForSong(songId),
+    baseOctave: options?.baseOctave ?? 4,
+    bars: options?.bars ?? 4,
+  });
+}
+
+function formatAnchorPhraseSummary(phrase: AnchorPhrase): string {
+  const anchors = phrase.segments.flatMap((segment) => [...segment.anchors]);
+  const connectorCount = phrase.segments.reduce((sum, segment) => sum + segment.connectors.length, 0);
+  const breathCount = countAnchorPhraseBreaths(phrase);
+  return [
+    `${phrase.segments.length} segments`,
+    `${anchors.length} anchors`,
+    `${connectorCount} connectors`,
+    `${roundDisplayBeat(anchorPhraseEndBeat(phrase))} beats`,
+    `${breathCount} breath${breathCount === 1 ? "" : "s"}`,
+  ].join(" · ");
+}
+
+function renderAnchorPhraseEditorSvg(phrase: AnchorPhrase): string {
+  const width = 960;
+  const height = 420;
+  const padding = { top: 34, right: 28, bottom: 46, left: 58 };
+  const plotWidth = width - padding.left - padding.right;
+  const plotHeight = height - padding.top - padding.bottom;
+  const phraseBeats = Math.max(4, Math.ceil(anchorPhraseEndBeat(phrase)));
+  const anchors = phrase.segments.flatMap((segment) => [...segment.anchors]);
+  const pitchValues = anchors.length > 0 ? anchors.map(anchorPitchValue) : [4 * 7];
+  const rawMinPitch = Math.min(...pitchValues);
+  const rawMaxPitch = Math.max(...pitchValues);
+  const minPitch = rawMinPitch - 1;
+  const maxPitch = Math.max(rawMaxPitch + 1, minPitch + 6);
+  const xForBeat = (beat: number): number => padding.left + (beat / phraseBeats) * plotWidth;
+  const yForAnchor = (anchor: Anchor): number =>
+    padding.top + ((maxPitch - anchorPitchValue(anchor)) / Math.max(1, maxPitch - minPitch)) * plotHeight;
+
+  const grid = Array.from({ length: phraseBeats + 1 }, (_, beat) => {
+    const x = roundSvg(xForBeat(beat));
+    const isBar = beat % 4 === 0;
+    return `
+      <line
+        class="${isBar ? "phrase-editor-svg__bar-line" : "phrase-editor-svg__beat-line"}"
+        x1="${x}"
+        x2="${x}"
+        y1="${padding.top}"
+        y2="${height - padding.bottom}"
+      />
+      <text class="phrase-editor-svg__beat-label" x="${x}" y="${height - 18}">${beat}</text>
+    `;
+  }).join("");
+
+  const breathBands = renderAnchorPhraseBreaths(phrase, xForBeat, padding.top, plotHeight);
+  const connectorPaths = phrase.segments.map((segment) =>
+    renderAnchorPhraseSegmentConnectors(segment, xForBeat, yForAnchor)
+  ).join("");
+  const anchorRects = phrase.segments.map((segment) =>
+    segment.anchors.map((anchor) => renderAnchorRect(anchor, xForBeat, yForAnchor)).join("")
+  ).join("");
+
+  return `
+    <svg
+      class="phrase-editor-svg"
+      data-testid="anchor-phrase-editor-svg"
+      viewBox="0 0 ${width} ${height}"
+      role="img"
+      aria-label="Read-only anchor phrase roll"
+      preserveAspectRatio="none"
+    >
+      <rect class="phrase-editor-svg__surface" x="0" y="0" width="${width}" height="${height}" rx="14" />
+      <g aria-hidden="true">${grid}</g>
+      <line
+        class="phrase-editor-svg__axis"
+        x1="${padding.left}"
+        x2="${width - padding.right}"
+        y1="${height - padding.bottom}"
+        y2="${height - padding.bottom}"
+      />
+      ${breathBands}
+      ${connectorPaths}
+      ${anchorRects}
+    </svg>
+  `;
+}
+
+function renderAnchorPhraseSegmentConnectors(
+  segment: AnchorPhraseSegment,
+  xForBeat: (beat: number) => number,
+  yForAnchor: (anchor: Anchor) => number,
+): string {
+  return segment.connectors.map((connector, index) => {
+    const from = segment.anchors[index];
+    const to = segment.anchors[index + 1];
+    if (!from || !to) return "";
+    const fromEnd = from.startBeat + from.durationBeats;
+    if (to.startBeat <= fromEnd) return "";
+    const x1 = xForBeat(fromEnd);
+    const x2 = xForBeat(to.startBeat);
+    const y1 = yForAnchor(from);
+    const y2 = yForAnchor(to);
+    const controlOffset = Math.max(18, (x2 - x1) * 0.42);
+    const labelX = (x1 + x2) / 2;
+    const labelY = Math.min(y1, y2) - 12;
+    return `
+      <path
+        data-testid="anchor-phrase-editor-connector"
+        class="phrase-editor-svg__connector phrase-editor-svg__connector--${connector.kernel}"
+        d="M ${roundSvg(x1)} ${roundSvg(y1)} C ${roundSvg(x1 + controlOffset)} ${roundSvg(y1)}, ${roundSvg(x2 - controlOffset)} ${roundSvg(y2)}, ${roundSvg(x2)} ${roundSvg(y2)}"
+        stroke="${degreeColorVar(from.degree)}"
+      >
+        <title>${connector.kernel} connector, density ${connector.density.toFixed(2)}, reach ${connector.reach.toFixed(2)}</title>
+      </path>
+      <text
+        data-testid="anchor-phrase-editor-connector-label"
+        class="phrase-editor-svg__connector-label"
+        x="${roundSvg(labelX)}"
+        y="${roundSvg(Math.max(18, labelY))}"
+      >${connector.kernel}</text>
+    `;
+  }).join("");
+}
+
+function renderAnchorRect(
+  anchor: Anchor,
+  xForBeat: (beat: number) => number,
+  yForAnchor: (anchor: Anchor) => number,
+): string {
+  const x = xForBeat(anchor.startBeat);
+  const y = yForAnchor(anchor);
+  const width = Math.max(12, xForBeat(anchor.startBeat + anchor.durationBeats) - x);
+  const opacity = 0.44 + clamp(anchor.dynamics, 0, 1) * 0.52;
+  return `
+    <g data-testid="anchor-phrase-editor-anchor" class="phrase-editor-svg__anchor">
+      <rect
+        x="${roundSvg(x)}"
+        y="${roundSvg(y - 12)}"
+        width="${roundSvg(width)}"
+        height="24"
+        rx="7"
+        fill="${degreeColorVar(anchor.degree)}"
+        opacity="${opacity.toFixed(2)}"
+      >
+        <title>degree ${anchor.degree}, octave ${anchor.octave}, beat ${roundDisplayBeat(anchor.startBeat)}, dynamics ${anchor.dynamics.toFixed(2)}</title>
+      </rect>
+      <text
+        class="phrase-editor-svg__anchor-label"
+        x="${roundSvg(x + Math.max(8, width / 2))}"
+        y="${roundSvg(y + 4)}"
+      >${anchor.degree}.${anchor.octave}</text>
+    </g>
+  `;
+}
+
+function renderAnchorPhraseBreaths(
+  phrase: AnchorPhrase,
+  xForBeat: (beat: number) => number,
+  y: number,
+  height: number,
+): string {
+  const parts: string[] = [];
+  for (let index = 0; index < phrase.segments.length - 1; index += 1) {
+    const current = phrase.segments[index];
+    const next = phrase.segments[index + 1];
+    const currentEnd = current ? segmentEndBeat(current) : 0;
+    const nextStart = next?.anchors[0]?.startBeat ?? currentEnd;
+    if (nextStart <= currentEnd) continue;
+    const x = xForBeat(currentEnd);
+    const width = xForBeat(nextStart) - x;
+    parts.push(`
+      <g data-testid="anchor-phrase-editor-breath" class="phrase-editor-svg__breath">
+        <rect x="${roundSvg(x)}" y="${y}" width="${roundSvg(width)}" height="${height}" rx="9" />
+        <text x="${roundSvg(x + width / 2)}" y="${roundSvg(y + height / 2)}">breath</text>
+      </g>
+    `);
+  }
+  return parts.join("");
+}
+
+function countAnchorPhraseBreaths(phrase: AnchorPhrase): number {
+  let count = 0;
+  for (let index = 0; index < phrase.segments.length - 1; index += 1) {
+    const current = phrase.segments[index];
+    const next = phrase.segments[index + 1];
+    if (!current || !next) continue;
+    if ((next.anchors[0]?.startBeat ?? 0) > segmentEndBeat(current)) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
+function anchorPhraseEndBeat(phrase: AnchorPhrase): number {
+  return Math.max(0, ...phrase.segments.map(segmentEndBeat));
+}
+
+function segmentEndBeat(segment: AnchorPhraseSegment): number {
+  return Math.max(0, ...segment.anchors.map((anchor) => anchor.startBeat + anchor.durationBeats));
+}
+
+function anchorPitchValue(anchor: Anchor): number {
+  return anchor.octave * 7 + (clampInteger(anchor.degree, 1, 7) - 1);
+}
+
+function degreeColorVar(degree: number): string {
+  return `var(--degree-${clampInteger(degree, 1, 7)})`;
+}
+
+function roundSvg(value: number): number {
+  return Math.round(value * 100) / 100;
 }
 
 function renderThoughts(
@@ -3327,6 +3644,7 @@ function renderWorld(state: GrowTransportState = getState()): void {
   renderMelodyRepair(getCurrentMelodyRepairTake(state));
   renderFormScore(getCurrentFormScore(state));
   renderListening(frame);
+  renderAnchorPhraseEditor();
   renderOllama();
   terrarium?.setHeat(createTerrariumHeatState(frame));
   for (const { player, state: playerState } of players) {
@@ -3428,6 +3746,13 @@ function cloneTonalContext(tonalContext: ListeningFrame["tonalContext"]): Listen
 function handlePageHide(): void {
   flushMusicalEventBufferToPersistence("pagehide", MUSICAL_EVENT_DRAIN_ALL);
   persistence.flushOnPageHide();
+}
+
+function handleGlobalKeydown(event: KeyboardEvent): void {
+  if (event.key === "Escape" && isAnchorPhraseEditorOpen) {
+    closeAnchorPhraseEditor();
+    event.preventDefault();
+  }
 }
 
 function queueRender(): void {
@@ -3610,6 +3935,30 @@ inspectToggle.addEventListener("click", () => {
   setInspectDrawerOpen(!isInspectDrawerOpen);
 });
 
+playerList.addEventListener("click", (event) => {
+  const target = event.target;
+  if (!(target instanceof Element)) return;
+  if (!target.closest("[data-testid='player-card-melody']")) return;
+  openAnchorPhraseEditor();
+});
+
+playerList.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter" && event.key !== " ") return;
+  const target = event.target;
+  if (!(target instanceof Element)) return;
+  if (!target.closest("[data-testid='player-card-melody']")) return;
+  openAnchorPhraseEditor();
+  event.preventDefault();
+});
+
+anchorPhraseEditorClose.addEventListener("click", () => {
+  closeAnchorPhraseEditor();
+});
+
+anchorPhraseEditorBackdrop.addEventListener("click", () => {
+  closeAnchorPhraseEditor();
+});
+
 button.addEventListener("click", async () => {
   button.disabled = true;
   try {
@@ -3779,6 +4128,7 @@ stageResizer.addEventListener("keydown", (event) => {
 });
 
 window.addEventListener("resize", handleWindowResize);
+window.addEventListener("keydown", handleGlobalKeydown);
 window.addEventListener("pagehide", handlePageHide);
 musicalEventFlushTimerId = window.setInterval(() => {
   flushMusicalEventBufferToPersistence("interval");
@@ -4099,11 +4449,7 @@ window.formScore = {
 };
 
 window.anchorPhrase = {
-  fromProsody: (options) => generateProsodicAnchorPhrase({
-    seed: options?.seed ?? prosodySeedForSong(songId),
-    baseOctave: options?.baseOctave ?? 4,
-    bars: options?.bars ?? 4,
-  }),
+  fromProsody: (options) => createCurrentProsodyAnchorPhrase(options),
   getDemoPhrase: () => structuredClone(DEMO_ANCHOR_PHRASE),
   renderDemo: (options) => renderDemoAnchorPhrase(options),
 };
@@ -4188,6 +4534,7 @@ if (import.meta.hot) {
     window.terrarium = undefined;
     persistence.flushOnPageHide();
     window.removeEventListener("resize", handleWindowResize);
+    window.removeEventListener("keydown", handleGlobalKeydown);
     window.removeEventListener("pagehide", handlePageHide);
   });
 }

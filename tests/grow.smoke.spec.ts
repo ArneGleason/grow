@@ -1600,6 +1600,51 @@ test("inspect drawer keeps dense panels mounted while closed by default", async 
   await expect(page.getByTestId("song-goal-status")).toBeHidden();
 });
 
+test("melody player opens a read-only anchor phrase editor overlay", async ({ page }) => {
+  await page.goto("/");
+
+  await expect(page.getByTestId("anchor-phrase-editor-overlay")).toBeHidden();
+  const before = await getTransportState(page);
+
+  await openInspectDrawer(page);
+  const melodyCard = page.getByTestId("player-card-melody");
+  await expect(melodyCard).toBeVisible();
+  await expect(melodyCard).toHaveAttribute("role", "button");
+  await expect(melodyCard).toHaveAttribute("aria-haspopup", "dialog");
+
+  await melodyCard.click();
+  await expect(page.getByTestId("anchor-phrase-editor-overlay")).toBeVisible();
+  await expect(page.getByTestId("anchor-phrase-editor-tonal")).toHaveText("C Strut");
+  await expect(page.getByTestId("anchor-phrase-editor-tonal")).toHaveAttribute("data-mode-classical", "mixolydian");
+  await expect(page.getByTestId("anchor-phrase-editor-tonal")).toHaveAttribute("title", "Strut · Mixolydian · key of C");
+  await expect(page.getByTestId("anchor-phrase-editor-song")).toContainText("Lantern");
+  await expect(page.getByTestId("anchor-phrase-editor-summary")).toContainText("2 segments");
+  await expect(page.getByTestId("anchor-phrase-editor-summary")).toContainText("1 breath");
+  await expect(page.getByTestId("anchor-phrase-editor-svg")).toBeVisible();
+  expect(await page.getByTestId("anchor-phrase-editor-anchor").count()).toBeGreaterThan(4);
+  expect(await page.getByTestId("anchor-phrase-editor-connector").count()).toBeGreaterThan(2);
+  await expect(page.getByTestId("anchor-phrase-editor-breath")).toHaveCount(1);
+
+  await page.evaluate(() => {
+    const appWindow = window as unknown as { song?: { setId(songId: string): string } };
+    appWindow.song?.setId("glass");
+  });
+  await expect(page.getByTestId("anchor-phrase-editor-overlay")).toBeVisible();
+  await expect(page.getByTestId("anchor-phrase-editor-song")).toContainText("Glass");
+  expect(await page.getByTestId("anchor-phrase-editor-anchor").count()).toBeGreaterThan(4);
+
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("anchor-phrase-editor-overlay")).toBeHidden();
+  await melodyCard.press("Enter");
+  await expect(page.getByTestId("anchor-phrase-editor-overlay")).toBeVisible();
+  await page.getByTestId("anchor-phrase-editor-close").click();
+  await expect(page.getByTestId("anchor-phrase-editor-overlay")).toBeHidden();
+
+  const after = await getTransportState(page);
+  expect(after.status).toBe(before.status);
+  expect(after.currentBeat).toBe(before.currentBeat);
+});
+
 test("written-to-evolving dial orchestrates prosody and evolving performance", async ({ page }) => {
   test.setTimeout(25_000);
   await page.goto("/");
