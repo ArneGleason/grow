@@ -668,9 +668,11 @@ async function getPhraseEditorState(page: Page): Promise<{
   message: string;
   overrideActive: boolean;
   selectedAnchor?: { anchorIndex: number; segmentIndex: number };
+  selectedConnector?: { connectorIndex: number; segmentIndex: number };
   workingPhrase?: {
     segments: {
       anchors: { degree: number; dynamics: number; octave: number; startBeat: number }[];
+      connectors: { density: number; kernel: string; reach: number }[];
     }[];
   };
 }> {
@@ -683,9 +685,11 @@ async function getPhraseEditorState(page: Page): Promise<{
           message: string;
           overrideActive: boolean;
           selectedAnchor?: { anchorIndex: number; segmentIndex: number };
+          selectedConnector?: { connectorIndex: number; segmentIndex: number };
           workingPhrase?: {
             segments: {
               anchors: { degree: number; dynamics: number; octave: number; startBeat: number }[];
+              connectors: { density: number; kernel: string; reach: number }[];
             }[];
           };
         };
@@ -1786,6 +1790,133 @@ test("anchor phrase editor edits anchors into an audible reversible override", a
     editMode: false,
   });
   await expect(page.getByTestId("anchor-phrase-editor-status")).toContainText("evolving");
+  await setWrittenEvolvingDial(page, 0);
+});
+
+test("anchor phrase editor edits connector kernels and knobs into the audible override", async ({ page }) => {
+  test.setTimeout(25_000);
+  await page.goto("/");
+
+  await openInspectDrawer(page);
+  await page.getByTestId("player-card-melody").click();
+  await page.getByTestId("anchor-phrase-editor-edit-toggle").click();
+  await expect(page.getByTestId("anchor-phrase-editor-edit-toggle")).toHaveAttribute("aria-pressed", "true");
+
+  await page.getByTestId("anchor-phrase-editor-connector-label").nth(1).click();
+  await expect(page.getByTestId("anchor-phrase-editor-selected-anchor")).toContainText("connector 2");
+  const selected = await getPhraseEditorState(page);
+  expect(selected.selectedConnector).toEqual({ segmentIndex: 0, connectorIndex: 1 });
+  await expect(page.getByTestId("anchor-phrase-editor-kernel-fill")).toBeEnabled();
+
+  const firstEdit = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      phraseEditor?: {
+        editConnector(segmentIndex: number, connectorIndex: number, patch: {
+          density?: number;
+          kernel?: string;
+          reach?: number;
+        }): {
+          changed: boolean;
+          phrase: { segments: { connectors: { density: number; kernel: string; reach: number }[] }[] };
+          valid: boolean;
+        };
+      };
+    };
+    return appWindow.phraseEditor?.editConnector(0, 1, {
+      density: 0.15,
+      kernel: "fill",
+      reach: 0.25,
+    });
+  });
+  expect(firstEdit?.valid).toBe(true);
+  expect(firstEdit?.phrase.segments[0].connectors[1]).toMatchObject({
+    density: 0.15,
+    kernel: "fill",
+    reach: 0.25,
+  });
+  const fillPattern = await getPhraseEditorOverridePattern(page);
+  expect(fillPattern).toBeTruthy();
+
+  const secondEdit = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      phraseEditor?: {
+        editConnector(segmentIndex: number, connectorIndex: number, patch: {
+          bias?: number;
+          density?: number;
+          kernel?: string;
+        }): {
+          changed: boolean;
+          phrase: { segments: { connectors: { bias: number; density: number; kernel: string }[] }[] };
+          valid: boolean;
+        };
+      };
+    };
+    return appWindow.phraseEditor?.editConnector(0, 1, {
+      bias: 0.8,
+      density: 0.92,
+      kernel: "orbit",
+    });
+  });
+  expect(secondEdit?.valid).toBe(true);
+  expect(secondEdit?.changed).toBe(true);
+  expect(secondEdit?.phrase.segments[0].connectors[1]).toMatchObject({
+    bias: 0.8,
+    density: 0.92,
+    kernel: "orbit",
+  });
+
+  await expect(page.getByTestId("anchor-phrase-editor-status")).toContainText("Connector edit applied");
+  await expect(page.getByTestId("anchor-phrase-editor-selected-anchor")).toContainText("orbit");
+  await expect(page.getByTestId("anchor-phrase-editor-kernel-orbit")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("anchor-phrase-editor-connector-density")).toHaveValue("0.92");
+  await expect(page.getByTestId("anchor-phrase-editor-connector").nth(1)).toHaveClass(/is-selected/);
+
+  const orbitPattern = await getPhraseEditorOverridePattern(page);
+  expect(orbitPattern).toBeTruthy();
+  expect(orbitPattern).not.toEqual(fillPattern);
+  expect(orbitPattern?.events.some((event) => event !== null)).toBe(true);
+  expect(orbitPattern?.events.every((event) => event === null || Number.isInteger(event.scaleDegree))).toBe(true);
+  expect(await getActiveProsodyPattern(page)).toEqual(orbitPattern);
+
+  const invalid = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      phraseEditor?: {
+        editConnector(segmentIndex: number, connectorIndex: number, patch: { kernel: string }): {
+          changed: boolean;
+          errors: string[];
+          valid: boolean;
+        };
+      };
+    };
+    return appWindow.phraseEditor?.editConnector(0, 1, { kernel: "spiral" });
+  });
+  expect(invalid?.valid).toBe(false);
+  expect(invalid?.changed).toBe(false);
+  expect(invalid?.errors[0]).toContain("must be one of");
+  expect((await getPhraseEditorState(page)).workingPhrase?.segments[0].connectors[1].kernel).toBe("orbit");
+
+  await page.getByTestId("anchor-phrase-editor-revert").click();
+  expect((await getPhraseEditorState(page)).overrideActive).toBe(false);
+  expect(await getActiveProsodyPattern(page)).toBeUndefined();
+
+  await setWrittenEvolvingDial(page, 0.85);
+  await expect(page.getByTestId("written-evolving-regime")).toHaveText("evolving");
+  await expect(page.getByTestId("anchor-phrase-editor-edit-toggle")).toBeDisabled();
+  const disabledConnectorEdit = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      phraseEditor?: {
+        editConnector(segmentIndex: number, connectorIndex: number, patch: { kernel: string }): {
+          valid: boolean;
+          errors: string[];
+        };
+        enterEditMode(): unknown;
+      };
+    };
+    appWindow.phraseEditor?.enterEditMode();
+    return appWindow.phraseEditor?.editConnector(0, 0, { kernel: "skip" });
+  });
+  expect(disabledConnectorEdit?.valid).toBe(false);
+  expect(disabledConnectorEdit?.errors[0]).toContain("edit mode is not active");
   await setWrittenEvolvingDial(page, 0);
 });
 

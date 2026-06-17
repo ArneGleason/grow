@@ -1,10 +1,12 @@
 import "./style.css";
-import type { Anchor, AnchorPhrase, AnchorPhraseSegment } from "./anchor-phrase";
+import type { Anchor, AnchorPhrase, AnchorPhraseSegment, Connector } from "./anchor-phrase";
 import {
   ANCHOR_EDIT_GRID_BEATS,
   editAnchorInPhrase,
+  editConnectorInPhrase,
   type AnchorEditPatch,
   type AnchorEditResult,
+  type ConnectorEditPatch,
 } from "./anchor-phrase-edit";
 import { DEMO_ANCHOR_PHRASE, renderAnchorPhrase, renderDemoAnchorPhrase } from "./anchor-phrase-render";
 import type {
@@ -216,6 +218,7 @@ let editorMelodyOverride: PlayerPatternSource | undefined;
 let isAnchorPhraseEditMode = false;
 let workingAnchorPhrase: AnchorPhrase | undefined;
 let selectedAnchorRef: AnchorPhraseEditorAnchorRef | undefined;
+let selectedConnectorRef: AnchorPhraseEditorConnectorRef | undefined;
 let anchorPhraseEditorDrag: AnchorPhraseEditorDragState | undefined;
 let anchorPhraseEditorMessage = "Read-only prosody phrase.";
 let candidateMelodyAudition: {
@@ -627,6 +630,43 @@ ${timingFeelControls}
               />
             </label>
           </div>
+          <div
+            class="phrase-editor__connector-tools"
+            data-testid="anchor-phrase-editor-connector-tools"
+            aria-label="Connector editing controls"
+          >
+            <div class="phrase-editor__kernel-palette" data-testid="anchor-phrase-editor-kernel-palette">
+              <span>Kernel</span>
+              <button class="phrase-editor__kernel-button" data-testid="anchor-phrase-editor-kernel-fill" data-kernel="fill" type="button">Fill</button>
+              <button class="phrase-editor__kernel-button" data-testid="anchor-phrase-editor-kernel-detour" data-kernel="detour" type="button">Detour</button>
+              <button class="phrase-editor__kernel-button" data-testid="anchor-phrase-editor-kernel-approach" data-kernel="approach" type="button">Approach</button>
+              <button class="phrase-editor__kernel-button" data-testid="anchor-phrase-editor-kernel-orbit" data-kernel="orbit" type="button">Orbit</button>
+              <button class="phrase-editor__kernel-button" data-testid="anchor-phrase-editor-kernel-skip" data-kernel="skip" type="button">Skip</button>
+            </div>
+            <div class="phrase-editor__connector-sliders">
+              <label>
+                <span>Reach</span>
+                <input data-testid="anchor-phrase-editor-connector-reach" data-connector-knob="reach" type="range" min="0" max="1" step="0.01" value="0.5" disabled />
+              </label>
+              <label>
+                <span>Density</span>
+                <input data-testid="anchor-phrase-editor-connector-density" data-connector-knob="density" type="range" min="0" max="1" step="0.01" value="0.5" disabled />
+              </label>
+              <label>
+                <span>Bias</span>
+                <input data-testid="anchor-phrase-editor-connector-bias" data-connector-knob="bias" type="range" min="-1" max="1" step="0.01" value="0" disabled />
+              </label>
+              <label>
+                <span>Pull</span>
+                <input data-testid="anchor-phrase-editor-connector-pull" data-connector-knob="pull" type="range" min="0" max="1" step="0.01" value="0.5" disabled />
+              </label>
+              <label>
+                <span>Skew</span>
+                <input data-testid="anchor-phrase-editor-connector-skew" data-connector-knob="skew" type="range" min="-1" max="1" step="0.01" value="0" disabled />
+              </label>
+            </div>
+            <span class="phrase-editor__connector-note">Color stays diatonic-only for now.</span>
+          </div>
           <div class="phrase-editor__roll" data-testid="anchor-phrase-editor-roll"></div>
           <p class="phrase-editor__note" data-testid="anchor-phrase-editor-status">
             Read-only for now. This shows the current prosody idea in anchors, connectors, and breaths.
@@ -1008,6 +1048,15 @@ const anchorPhraseEditorEditToggle = requireElement<HTMLButtonElement>(
 const anchorPhraseEditorRevert = requireElement<HTMLButtonElement>("[data-testid='anchor-phrase-editor-revert']");
 const anchorPhraseEditorSelected = requireElement<HTMLElement>("[data-testid='anchor-phrase-editor-selected-anchor']");
 const anchorPhraseEditorDynamics = requireElement<HTMLInputElement>("[data-testid='anchor-phrase-editor-dynamics']");
+const anchorPhraseEditorKernelPalette = requireElement<HTMLElement>(
+  "[data-testid='anchor-phrase-editor-kernel-palette']",
+);
+const anchorPhraseEditorKernelButtons = Array.from(
+  anchorPhraseEditorKernelPalette.querySelectorAll<HTMLButtonElement>("[data-kernel]"),
+);
+const anchorPhraseEditorConnectorKnobs = Array.from(
+  document.querySelectorAll<HTMLInputElement>("[data-connector-knob]"),
+);
 const anchorPhraseEditorRoll = requireElement<HTMLElement>("[data-testid='anchor-phrase-editor-roll']");
 const anchorPhraseEditorStatus = requireElement<HTMLElement>("[data-testid='anchor-phrase-editor-status']");
 const thoughtSeedList = requireElement<HTMLDivElement>("#thought-seed-list");
@@ -1411,12 +1460,14 @@ function enterAnchorPhraseEditMode(): AnchorPhraseEditorState {
     isAnchorPhraseEditMode = false;
     workingAnchorPhrase = undefined;
     selectedAnchorRef = undefined;
+    selectedConnectorRef = undefined;
     renderAnchorPhraseEditor();
     return getAnchorPhraseEditorState();
   }
   if (!isAnchorPhraseEditMode || !workingAnchorPhrase) {
     workingAnchorPhrase = createCurrentProsodyAnchorPhrase();
     selectedAnchorRef = { segmentIndex: 0, anchorIndex: 0 };
+    selectedConnectorRef = undefined;
     isAnchorPhraseEditMode = true;
     anchorPhraseEditorMessage = "Edit mode: move, retune, resize, or shape anchor dynamics.";
     renderedAnchorPhraseEditorKey = "";
@@ -1463,9 +1514,51 @@ function editAnchorPhraseAnchor(
   }
   workingAnchorPhrase = result.phrase;
   selectedAnchorRef = { segmentIndex, anchorIndex };
+  selectedConnectorRef = undefined;
   anchorPhraseEditorMessage = result.clamps.length > 0
     ? `Edit applied with ${result.clamps.length} clamp${result.clamps.length === 1 ? "" : "s"}.`
     : "Edit applied.";
+  commitAnchorPhraseEditorOverride();
+  return result;
+}
+
+function editAnchorPhraseConnector(
+  segmentIndex: number,
+  connectorIndex: number,
+  patch: ConnectorEditPatch,
+): AnchorEditResult {
+  if (!isAnchorPhraseEditMode || !workingAnchorPhrase) {
+    return {
+      changed: false,
+      clamps: [],
+      errors: ["Anchor edit mode is not active"],
+      phrase: getAnchorPhraseForEditor(),
+      valid: false,
+      warnings: [],
+    };
+  }
+  if (!canEditAnchorPhrase()) {
+    return {
+      changed: false,
+      clamps: [],
+      errors: ["Connector editing is disabled while evolving"],
+      phrase: cloneAnchorPhrase(workingAnchorPhrase),
+      valid: false,
+      warnings: [],
+    };
+  }
+  const result = editConnectorInPhrase(workingAnchorPhrase, segmentIndex, connectorIndex, patch);
+  if (!result.valid) {
+    anchorPhraseEditorMessage = `Connector edit rejected: ${result.errors[0] ?? "invalid connector edit"}`;
+    renderAnchorPhraseEditor();
+    return result;
+  }
+  workingAnchorPhrase = result.phrase;
+  selectedConnectorRef = { segmentIndex, connectorIndex };
+  selectedAnchorRef = undefined;
+  anchorPhraseEditorMessage = result.clamps.length > 0
+    ? `Connector edit applied with ${result.clamps.length} clamp${result.clamps.length === 1 ? "" : "s"}.`
+    : "Connector edit applied.";
   commitAnchorPhraseEditorOverride();
   return result;
 }
@@ -1493,6 +1586,7 @@ function resetAnchorPhraseEditorSession(
   isAnchorPhraseEditMode = false;
   workingAnchorPhrase = undefined;
   selectedAnchorRef = undefined;
+  selectedConnectorRef = undefined;
   editorMelodyOverride = undefined;
   anchorPhraseEditorMessage = canEditAnchorPhrase() ? message : "Anchor editing pauses while the line is evolving.";
   renderedAnchorPhraseEditorKey = "";
@@ -1513,6 +1607,7 @@ function getAnchorPhraseEditorState(): AnchorPhraseEditorState {
     message: anchorPhraseEditorMessage,
     overrideActive: Boolean(editorMelodyOverride),
     ...(selectedAnchorRef ? { selectedAnchor: { ...selectedAnchorRef } } : {}),
+    ...(selectedConnectorRef ? { selectedConnector: { ...selectedConnectorRef } } : {}),
     ...(workingAnchorPhrase ? { workingPhrase: cloneAnchorPhrase(workingAnchorPhrase) } : {}),
   };
 }
@@ -1549,41 +1644,103 @@ function renderAnchorPhraseEditor(): void {
     prosodySeedForSong(songId),
     isAnchorPhraseEditMode ? "edit" : "read",
     selectedAnchorRef ? `${selectedAnchorRef.segmentIndex}:${selectedAnchorRef.anchorIndex}` : "none",
+    selectedConnectorRef ? `${selectedConnectorRef.segmentIndex}:${selectedConnectorRef.connectorIndex}` : "none",
     summary,
     JSON.stringify(phrase),
   ].join("|");
   if (renderKey !== renderedAnchorPhraseEditorKey) {
     anchorPhraseEditorRoll.innerHTML = renderAnchorPhraseEditorSvg(phrase, {
       selectedAnchor: selectedAnchorRef,
+      selectedConnector: selectedConnectorRef,
     });
     renderedAnchorPhraseEditorKey = renderKey;
   }
 }
 
 function renderAnchorPhraseEditorSelection(phrase: AnchorPhrase): void {
-  const ref = selectedAnchorRef;
-  const selected = ref
-    ? phrase.segments[ref.segmentIndex]?.anchors[ref.anchorIndex]
+  const anchorRef = selectedAnchorRef;
+  const selectedAnchor = anchorRef
+    ? phrase.segments[anchorRef.segmentIndex]?.anchors[anchorRef.anchorIndex]
     : undefined;
-  if (!isAnchorPhraseEditMode || !ref || !selected || !canEditAnchorPhrase()) {
+  const connectorRef = selectedConnectorRef;
+  const selectedConnector = connectorRef
+    ? phrase.segments[connectorRef.segmentIndex]?.connectors[connectorRef.connectorIndex]
+    : undefined;
+  const controlsEnabled = isAnchorPhraseEditMode && canEditAnchorPhrase();
+
+  if (!controlsEnabled || !anchorRef || !selectedAnchor) {
     anchorPhraseEditorSelected.textContent = "No anchor selected";
     anchorPhraseEditorDynamics.disabled = true;
     anchorPhraseEditorDynamics.value = "0.7";
-    return;
+  } else {
+    anchorPhraseEditorSelected.textContent = `Segment ${anchorRef.segmentIndex + 1}, anchor ${
+      anchorRef.anchorIndex + 1
+    } · degree ${selectedAnchor.degree}, octave ${selectedAnchor.octave}`;
+    anchorPhraseEditorDynamics.disabled = false;
+    anchorPhraseEditorDynamics.value = selectedAnchor.dynamics.toFixed(2);
   }
-  anchorPhraseEditorSelected.textContent = `Segment ${ref.segmentIndex + 1}, anchor ${
-    ref.anchorIndex + 1
-  } · degree ${selected.degree}, octave ${selected.octave}`;
-  anchorPhraseEditorDynamics.disabled = false;
-  anchorPhraseEditorDynamics.value = selected.dynamics.toFixed(2);
+
+  renderAnchorPhraseEditorConnectorControls(controlsEnabled ? selectedConnector : undefined);
+  if (controlsEnabled && connectorRef && selectedConnector) {
+    anchorPhraseEditorSelected.textContent = `Segment ${connectorRef.segmentIndex + 1}, connector ${
+      connectorRef.connectorIndex + 1
+    } · ${selectedConnector.kernel}`;
+  }
+}
+
+function renderAnchorPhraseEditorConnectorControls(connector: Connector | undefined): void {
+  const enabled = Boolean(connector);
+  for (const button of anchorPhraseEditorKernelButtons) {
+    const kernel = button.dataset.kernel;
+    button.disabled = !enabled;
+    button.setAttribute("aria-pressed", String(enabled && kernel === connector?.kernel));
+  }
+  for (const input of anchorPhraseEditorConnectorKnobs) {
+    const knob = input.dataset.connectorKnob;
+    input.disabled = !enabled;
+    if (!connector || !knob || !isConnectorKnob(knob)) continue;
+    input.value = String(connector[knob]);
+  }
 }
 
 function selectAnchorPhraseEditorAnchor(ref: AnchorPhraseEditorAnchorRef): void {
   if (!isAnchorPhraseEditMode || !workingAnchorPhrase) return;
   selectedAnchorRef = { ...ref };
+  selectedConnectorRef = undefined;
   anchorPhraseEditorMessage = `Selected segment ${ref.segmentIndex + 1}, anchor ${ref.anchorIndex + 1}.`;
   renderedAnchorPhraseEditorKey = "";
   renderAnchorPhraseEditor();
+}
+
+function selectAnchorPhraseEditorConnector(ref: AnchorPhraseEditorConnectorRef): void {
+  if (!isAnchorPhraseEditMode || !workingAnchorPhrase) return;
+  selectedConnectorRef = { ...ref };
+  selectedAnchorRef = undefined;
+  anchorPhraseEditorMessage = `Selected segment ${ref.segmentIndex + 1}, connector ${ref.connectorIndex + 1}.`;
+  renderedAnchorPhraseEditorKey = "";
+  renderAnchorPhraseEditor();
+}
+
+function isConnectorKnob(value: string): value is "bias" | "density" | "pull" | "reach" | "skew" {
+  return value === "bias" || value === "density" || value === "pull" || value === "reach" || value === "skew";
+}
+
+function createConnectorKnobPatch(
+  knob: "bias" | "density" | "pull" | "reach" | "skew",
+  value: number,
+): ConnectorEditPatch {
+  switch (knob) {
+    case "bias":
+      return { bias: value };
+    case "density":
+      return { density: value };
+    case "pull":
+      return { pull: value };
+    case "reach":
+      return { reach: value };
+    case "skew":
+      return { skew: value };
+  }
 }
 
 function handleAnchorPhraseEditorPointerDown(event: PointerEvent): void {
@@ -1692,7 +1849,10 @@ function formatAnchorPhraseSummary(phrase: AnchorPhrase): string {
 
 function renderAnchorPhraseEditorSvg(
   phrase: AnchorPhrase,
-  options: { selectedAnchor?: AnchorPhraseEditorAnchorRef } = {},
+  options: {
+    selectedAnchor?: AnchorPhraseEditorAnchorRef;
+    selectedConnector?: AnchorPhraseEditorConnectorRef;
+  } = {},
 ): string {
   const {
     height,
@@ -1724,8 +1884,11 @@ function renderAnchorPhraseEditorSvg(
   }).join("");
 
   const breathBands = renderAnchorPhraseBreaths(phrase, xForBeat, padding.top, plotHeight);
-  const connectorPaths = phrase.segments.map((segment) =>
-    renderAnchorPhraseSegmentConnectors(segment, xForBeat, yForAnchor)
+  const connectorPaths = phrase.segments.map((segment, segmentIndex) =>
+    renderAnchorPhraseSegmentConnectors(segment, xForBeat, yForAnchor, {
+      segmentIndex,
+      selectedConnector: options.selectedConnector,
+    })
   ).join("");
   const anchorRects = phrase.segments.map((segment, segmentIndex) =>
     segment.anchors.map((anchor, anchorIndex) =>
@@ -1792,6 +1955,7 @@ function renderAnchorPhraseSegmentConnectors(
   segment: AnchorPhraseSegment,
   xForBeat: (beat: number) => number,
   yForAnchor: (anchor: Anchor) => number,
+  options: { segmentIndex: number; selectedConnector?: AnchorPhraseEditorConnectorRef },
 ): string {
   return segment.connectors.map((connector, index) => {
     const from = segment.anchors[index];
@@ -1806,18 +1970,27 @@ function renderAnchorPhraseSegmentConnectors(
     const controlOffset = Math.max(18, (x2 - x1) * 0.42);
     const labelX = (x1 + x2) / 2;
     const labelY = Math.min(y1, y2) - 12;
+    const isSelected = options.selectedConnector?.segmentIndex === options.segmentIndex &&
+      options.selectedConnector.connectorIndex === index;
     return `
       <path
         data-testid="anchor-phrase-editor-connector"
-        class="phrase-editor-svg__connector phrase-editor-svg__connector--${connector.kernel}"
+        data-segment-index="${options.segmentIndex}"
+        data-connector-index="${index}"
+        class="phrase-editor-svg__connector phrase-editor-svg__connector--${connector.kernel}${isSelected ? " is-selected" : ""}"
         d="M ${roundSvg(x1)} ${roundSvg(y1)} C ${roundSvg(x1 + controlOffset)} ${roundSvg(y1)}, ${roundSvg(x2 - controlOffset)} ${roundSvg(y2)}, ${roundSvg(x2)} ${roundSvg(y2)}"
         stroke="${degreeColorVar(from.degree)}"
+        tabindex="${isAnchorPhraseEditMode ? "0" : "-1"}"
+        role="button"
+        aria-label="${connector.kernel} connector ${index + 1} in segment ${options.segmentIndex + 1}"
       >
         <title>${connector.kernel} connector, density ${connector.density.toFixed(2)}, reach ${connector.reach.toFixed(2)}</title>
       </path>
       <text
         data-testid="anchor-phrase-editor-connector-label"
-        class="phrase-editor-svg__connector-label"
+        data-segment-index="${options.segmentIndex}"
+        data-connector-index="${index}"
+        class="phrase-editor-svg__connector-label${isSelected ? " is-selected" : ""}"
         x="${roundSvg(labelX)}"
         y="${roundSvg(Math.max(18, labelY))}"
       >${connector.kernel}</text>
@@ -2745,6 +2918,11 @@ interface AnchorPhraseEditorAnchorRef {
   segmentIndex: number;
 }
 
+interface AnchorPhraseEditorConnectorRef {
+  connectorIndex: number;
+  segmentIndex: number;
+}
+
 interface AnchorPhraseEditorDragState extends AnchorPhraseEditorAnchorRef {
   mode: "move" | "resize";
 }
@@ -2755,6 +2933,7 @@ interface AnchorPhraseEditorState {
   message: string;
   overrideActive: boolean;
   selectedAnchor?: AnchorPhraseEditorAnchorRef;
+  selectedConnector?: AnchorPhraseEditorConnectorRef;
   workingPhrase?: AnchorPhrase;
 }
 
@@ -4363,8 +4542,44 @@ anchorPhraseEditorDynamics.addEventListener("input", () => {
   });
 });
 
+for (const button of anchorPhraseEditorKernelButtons) {
+  button.addEventListener("click", () => {
+    if (!selectedConnectorRef) return;
+    const kernel = button.dataset.kernel;
+    if (!kernel) return;
+    editAnchorPhraseConnector(selectedConnectorRef.segmentIndex, selectedConnectorRef.connectorIndex, {
+      kernel,
+    });
+  });
+}
+
+for (const input of anchorPhraseEditorConnectorKnobs) {
+  input.addEventListener("input", () => {
+    if (!selectedConnectorRef) return;
+    const knob = input.dataset.connectorKnob;
+    if (!knob || !isConnectorKnob(knob)) return;
+    editAnchorPhraseConnector(
+      selectedConnectorRef.segmentIndex,
+      selectedConnectorRef.connectorIndex,
+      createConnectorKnobPatch(knob, Number(input.value)),
+    );
+  });
+}
+
 anchorPhraseEditorRoll.addEventListener("click", (event) => {
   if (!isAnchorPhraseEditMode || anchorPhraseEditorDrag) return;
+  const connectorTarget = event.target instanceof Element
+    ? event.target.closest<SVGElement>(
+      "[data-testid='anchor-phrase-editor-connector'], [data-testid='anchor-phrase-editor-connector-label']",
+    )
+    : null;
+  if (connectorTarget) {
+    const segmentIndex = Number(connectorTarget.dataset.segmentIndex);
+    const connectorIndex = Number(connectorTarget.dataset.connectorIndex);
+    if (!Number.isInteger(segmentIndex) || !Number.isInteger(connectorIndex)) return;
+    selectAnchorPhraseEditorConnector({ segmentIndex, connectorIndex });
+    return;
+  }
   const target = event.target instanceof Element
     ? event.target.closest<SVGGElement>("[data-testid='anchor-phrase-editor-anchor']")
     : null;
@@ -4646,6 +4861,7 @@ declare global {
     };
     phraseEditor?: {
       editAnchor(segmentIndex: number, anchorIndex: number, patch: AnchorEditPatch): AnchorEditResult;
+      editConnector(segmentIndex: number, connectorIndex: number, patch: ConnectorEditPatch): AnchorEditResult;
       enterEditMode(): AnchorPhraseEditorState;
       exitEditMode(): AnchorPhraseEditorState;
       getOverridePattern(): PlayerPatternSource | undefined;
@@ -4886,6 +5102,8 @@ window.anchorPhrase = {
 
 window.phraseEditor = {
   editAnchor: (segmentIndex, anchorIndex, patch) => editAnchorPhraseAnchor(segmentIndex, anchorIndex, patch),
+  editConnector: (segmentIndex, connectorIndex, patch) =>
+    editAnchorPhraseConnector(segmentIndex, connectorIndex, patch),
   enterEditMode: () => enterAnchorPhraseEditMode(),
   exitEditMode: () => exitAnchorPhraseEditMode("Edit mode exited; generated phrase restored."),
   getOverridePattern: () => getAnchorPhraseEditorOverridePattern(),

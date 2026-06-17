@@ -388,7 +388,7 @@ button {
   position: relative;
   z-index: 1;
   display: grid;
-  grid-template-rows: auto auto auto minmax(220px, 1fr) auto;
+  grid-template-rows: auto auto auto auto minmax(220px, 1fr) auto;
   gap: 12px;
   width: min(960px, calc(100vw - 48px));
   max-height: min(76vh, 720px);
@@ -500,13 +500,17 @@ button {
 }
 
 .phrase-editor__tool-button:focus-visible,
-.phrase-editor__dynamics input:focus-visible {
+.phrase-editor__kernel-button:focus-visible,
+.phrase-editor__dynamics input:focus-visible,
+.phrase-editor__connector-sliders input:focus-visible {
   outline: 3px solid #f6cc6b;
   outline-offset: 2px;
 }
 
 .phrase-editor__tool-button:disabled,
-.phrase-editor__dynamics input:disabled {
+.phrase-editor__kernel-button:disabled,
+.phrase-editor__dynamics input:disabled,
+.phrase-editor__connector-sliders input:disabled {
   cursor: not-allowed;
   opacity: 0.48;
 }
@@ -529,6 +533,69 @@ button {
 .phrase-editor__dynamics input {
   width: 128px;
   accent-color: #f6cc6b;
+}
+
+.phrase-editor__connector-tools {
+  display: grid;
+  grid-template-columns: minmax(230px, auto) 1fr auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 42px;
+  border: 1px solid rgba(174, 183, 165, 0.14);
+  border-radius: 8px;
+  padding: 8px;
+  background: rgba(238, 243, 229, 0.04);
+}
+
+.phrase-editor__kernel-palette {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.phrase-editor__kernel-palette > span,
+.phrase-editor__connector-sliders span,
+.phrase-editor__connector-note {
+  color: #aeb7a5;
+  font-size: 0.78rem;
+}
+
+.phrase-editor__kernel-button {
+  min-height: 30px;
+  border: 1px solid rgba(174, 183, 165, 0.26);
+  border-radius: 7px;
+  background: rgba(238, 243, 229, 0.07);
+  color: #eef3e5;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.phrase-editor__kernel-button[aria-pressed="true"] {
+  border-color: rgba(246, 204, 107, 0.72);
+  background: rgba(246, 204, 107, 0.2);
+  color: #fff2c7;
+}
+
+.phrase-editor__connector-sliders {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(84px, 1fr));
+  gap: 8px;
+}
+
+.phrase-editor__connector-sliders label {
+  display: grid;
+  gap: 3px;
+}
+
+.phrase-editor__connector-sliders input {
+  width: 100%;
+  accent-color: #f6cc6b;
+}
+
+.phrase-editor__connector-note {
+  white-space: nowrap;
 }
 
 .phrase-editor__roll {
@@ -597,6 +664,17 @@ button {
   opacity: 0.62;
 }
 
+.phrase-editor.is-editing .phrase-editor-svg__connector,
+.phrase-editor.is-editing .phrase-editor-svg__connector-label {
+  cursor: pointer;
+}
+
+.phrase-editor-svg__connector.is-selected {
+  stroke: #fff2c7;
+  stroke-width: 4;
+  opacity: 0.98;
+}
+
 .phrase-editor-svg__connector--approach {
   stroke-dasharray: 5 5;
 }
@@ -613,6 +691,11 @@ button {
   fill: #d7dfcf;
   font-size: 11px;
   text-anchor: middle;
+}
+
+.phrase-editor-svg__connector-label.is-selected {
+  fill: #fff2c7;
+  font-weight: 800;
 }
 
 .phrase-editor-svg__anchor rect {
@@ -1100,6 +1183,24 @@ button {
 
   .phrase-editor__dynamics {
     margin-left: 0;
+  }
+
+  .phrase-editor__connector-tools,
+  .phrase-editor__kernel-palette {
+    align-items: stretch;
+    grid-template-columns: 1fr;
+  }
+
+  .phrase-editor__kernel-palette {
+    flex-wrap: wrap;
+  }
+
+  .phrase-editor__connector-sliders {
+    grid-template-columns: 1fr;
+  }
+
+  .phrase-editor__connector-note {
+    white-space: normal;
   }
 
   .phrase-editor__roll,

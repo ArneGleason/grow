@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { ANCHOR_PHRASE_CAPS, type AnchorPhrase } from "../src/anchor-phrase";
-import { editAnchorInPhrase } from "../src/anchor-phrase-edit";
+import { editAnchorInPhrase, editConnectorInPhrase } from "../src/anchor-phrase-edit";
 
 const BASE_PHRASE: AnchorPhrase = {
   segments: [
@@ -111,5 +111,85 @@ test.describe("anchor phrase anchor edits", () => {
     expect(result.phrase.segments[0].anchors[0].durationBeats).toBe(
       ANCHOR_PHRASE_CAPS.minAnchorDurationBeats,
     );
+  });
+
+  test("applies a connector kernel and knob patch without moving anchors", () => {
+    const result = editConnectorInPhrase(BASE_PHRASE, 0, 0, {
+      bias: -0.4,
+      density: 0.91,
+      kernel: "orbit",
+      pull: 0.2,
+      reach: 0.7,
+      skew: 0.3,
+    });
+
+    expect(result.valid).toBe(true);
+    expect(result.changed).toBe(true);
+    expect(result.errors).toEqual([]);
+    expect(result.phrase.segments[0].connectors[0]).toMatchObject({
+      bias: -0.4,
+      density: 0.91,
+      kernel: "orbit",
+      pull: 0.2,
+      reach: 0.7,
+      skew: 0.3,
+    });
+    expect(result.phrase.segments[0].anchors).toEqual(BASE_PHRASE.segments[0].anchors);
+    expect(result.phrase.segments[1]).toEqual(BASE_PHRASE.segments[1]);
+  });
+
+  test("rejects an unknown connector kernel and keeps the current connector", () => {
+    const result = editConnectorInPhrase(BASE_PHRASE, 0, 0, {
+      kernel: "spiral",
+    });
+
+    expect(result.valid).toBe(false);
+    expect(result.changed).toBe(false);
+    expect(result.errors).toContain("segments.0.connectors.0.kernel must be one of fill, detour, approach, orbit, skip");
+    expect(result.phrase).toEqual(BASE_PHRASE);
+  });
+
+  test("clamps connector knobs into their safe ranges", () => {
+    const result = editConnectorInPhrase(BASE_PHRASE, 1, 0, {
+      bias: 2,
+      color: 2,
+      density: -1,
+      pull: 3,
+      reach: -4,
+      skew: -3,
+    });
+
+    expect(result.valid).toBe(true);
+    expect(result.phrase.segments[1].connectors[0]).toMatchObject({
+      bias: 1,
+      color: 1,
+      density: 0,
+      pull: 1,
+      reach: 0,
+      skew: -1,
+    });
+    expect(result.clamps).toEqual(expect.arrayContaining([
+      "segments.1.connectors.0.bias clamped to 1",
+      "segments.1.connectors.0.color clamped to 1",
+      "segments.1.connectors.0.density clamped to 0",
+      "segments.1.connectors.0.pull clamped to 1",
+      "segments.1.connectors.0.reach clamped to 0",
+      "segments.1.connectors.0.skew clamped to -1",
+    ]));
+  });
+
+  test("reports unchanged connector patches without rewriting structure", () => {
+    const result = editConnectorInPhrase(BASE_PHRASE, 0, 0, {
+      bias: 0,
+      density: 0.5,
+      kernel: "fill",
+      pull: 0.5,
+      reach: 0.5,
+      skew: 0,
+    });
+
+    expect(result.valid).toBe(true);
+    expect(result.changed).toBe(false);
+    expect(result.phrase).toEqual(BASE_PHRASE);
   });
 });

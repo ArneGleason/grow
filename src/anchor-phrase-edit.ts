@@ -1,9 +1,11 @@
 import {
   ANCHOR_PHRASE_CAPS,
+  CONNECTOR_KERNELS,
   normalizeAnchorPhrase,
   type Anchor,
   type AnchorPhrase,
   type AnchorPhraseSegment,
+  type ConnectorKernel,
 } from "./anchor-phrase";
 
 export const ANCHOR_EDIT_GRID_BEATS = 0.25;
@@ -16,6 +18,16 @@ export interface AnchorEditPatch {
   dynamics?: number;
 }
 
+export interface ConnectorEditPatch {
+  bias?: number;
+  color?: number;
+  density?: number;
+  kernel?: string;
+  pull?: number;
+  reach?: number;
+  skew?: number;
+}
+
 export interface AnchorEditResult {
   changed: boolean;
   clamps: readonly string[];
@@ -23,6 +35,110 @@ export interface AnchorEditResult {
   phrase: AnchorPhrase;
   valid: boolean;
   warnings: readonly string[];
+}
+
+export function editConnectorInPhrase(
+  phrase: AnchorPhrase,
+  segmentIndex: number,
+  connectorIndex: number,
+  patch: ConnectorEditPatch,
+): AnchorEditResult {
+  const baseResult = normalizeAnchorPhrase(phrase);
+  const basePhrase = baseResult.phrase;
+  const errors: string[] = [...baseResult.errors];
+  const warnings: string[] = [...baseResult.warnings];
+  const clamps: string[] = [...baseResult.clamps];
+
+  if (!baseResult.valid) {
+    return {
+      changed: false,
+      clamps,
+      errors,
+      phrase: basePhrase,
+      valid: false,
+      warnings,
+    };
+  }
+
+  const segment = basePhrase.segments[segmentIndex];
+  const connector = segment?.connectors[connectorIndex];
+  if (!segment || !connector) {
+    errors.push(`segments.${segmentIndex}.connectors.${connectorIndex} does not exist`);
+    return {
+      changed: false,
+      clamps,
+      errors,
+      phrase: basePhrase,
+      valid: false,
+      warnings,
+    };
+  }
+
+  const nextPhrase = cloneAnchorPhrase(basePhrase);
+  const nextConnector = nextPhrase.segments[segmentIndex].connectors[connectorIndex];
+  const label = `segments.${segmentIndex}.connectors.${connectorIndex}`;
+
+  if (patch.kernel !== undefined) {
+    const kernel = readConnectorKernelPatch(patch.kernel, `${label}.kernel`, errors);
+    if (!kernel) {
+      return {
+        changed: false,
+        clamps,
+        errors,
+        phrase: basePhrase,
+        valid: false,
+        warnings,
+      };
+    }
+    nextConnector.kernel = kernel;
+  }
+  if (patch.reach !== undefined) {
+    nextConnector.reach = readNumberPatch(patch.reach, nextConnector.reach, 0, 1, `${label}.reach`, warnings, clamps);
+  }
+  if (patch.density !== undefined) {
+    nextConnector.density = readNumberPatch(
+      patch.density,
+      nextConnector.density,
+      0,
+      1,
+      `${label}.density`,
+      warnings,
+      clamps,
+    );
+  }
+  if (patch.bias !== undefined) {
+    nextConnector.bias = readNumberPatch(patch.bias, nextConnector.bias, -1, 1, `${label}.bias`, warnings, clamps);
+  }
+  if (patch.pull !== undefined) {
+    nextConnector.pull = readNumberPatch(patch.pull, nextConnector.pull, 0, 1, `${label}.pull`, warnings, clamps);
+  }
+  if (patch.color !== undefined) {
+    nextConnector.color = readNumberPatch(patch.color, nextConnector.color, 0, 1, `${label}.color`, warnings, clamps);
+  }
+  if (patch.skew !== undefined) {
+    nextConnector.skew = readNumberPatch(patch.skew, nextConnector.skew, -1, 1, `${label}.skew`, warnings, clamps);
+  }
+
+  const nextResult = normalizeAnchorPhrase(nextPhrase);
+  if (!nextResult.valid) {
+    return {
+      changed: false,
+      clamps: [...clamps, ...nextResult.clamps],
+      errors: nextResult.errors,
+      phrase: basePhrase,
+      valid: false,
+      warnings: [...warnings, ...nextResult.warnings],
+    };
+  }
+
+  return {
+    changed: stableJson(basePhrase) !== stableJson(nextResult.phrase),
+    clamps: [...clamps, ...nextResult.clamps],
+    errors: [],
+    phrase: nextResult.phrase,
+    valid: true,
+    warnings: [...warnings, ...nextResult.warnings],
+  };
 }
 
 export function editAnchorInPhrase(
@@ -153,6 +269,14 @@ export function editAnchorInPhrase(
     valid: true,
     warnings: [...warnings, ...nextResult.warnings],
   };
+}
+
+function readConnectorKernelPatch(value: string, label: string, errors: string[]): ConnectorKernel | undefined {
+  if ((CONNECTOR_KERNELS as readonly string[]).includes(value)) {
+    return value as ConnectorKernel;
+  }
+  errors.push(`${label} must be one of ${CONNECTOR_KERNELS.join(", ")}`);
+  return undefined;
 }
 
 function getAnchorEditBounds(
