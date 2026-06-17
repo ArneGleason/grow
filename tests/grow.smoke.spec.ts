@@ -836,7 +836,7 @@ function createMemoryCyclePersistence(options: {
       }
       if (noOpDevelopAttempts > 0) {
         noOpDevelopAttempts -= 1;
-        throw new Error("Candidate development did not change the genome");
+        throw new Error("HTTP 400: Candidate development mutation did not change the genome");
       }
 
       const genome = development.mutation.type === "phrase.replace"

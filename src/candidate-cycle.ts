@@ -29,6 +29,8 @@ import { produceProsodyCandidates } from "./prosody-candidates";
 import { scoreProsody } from "./prosody-scoring";
 import {
   createAnchorPhraseCandidateGenomeFromPattern,
+  isAnchorPhraseCandidateGenome,
+  normalizePhraseCandidateGenome,
   renderPhraseCandidateGenome,
 } from "./phrase-candidate-genome";
 import type { PlayerPatternSource } from "./song-material";
@@ -685,24 +687,28 @@ async function readExistingDiverseSelection(
 function createProsodyDevelopmentMutation(elite: StoredCandidate): CandidateDevelopmentMutation | undefined {
   const phrase = renderPhraseCandidateGenome(elite.genome);
   const choices = createProsodyDevelopmentChoices(elite, phrase);
-  const original = stableJson(phrase);
+  const original = isAnchorPhraseCandidateGenome(elite.genome)
+    ? stableJson(normalizePhraseCandidateGenome(elite.genome))
+    : stableJson(phrase);
   for (const choice of choices) {
-    if (stableJson(choice.genome) !== original) {
+    const genome = createAnchorPhraseCandidateGenomeFromPattern(choice.genome);
+    if (stableJson(genome) !== original) {
       return {
         type: "phrase.replace",
         operator: choice.operator,
-        genome: createAnchorPhraseCandidateGenomeFromPattern(choice.genome),
+        genome,
       };
     }
   }
 
   const fallback = varyContour(phrase, "transposeUp");
-  if (stableJson(fallback) === original) return undefined;
+  const fallbackGenome = createAnchorPhraseCandidateGenomeFromPattern(fallback);
+  if (stableJson(fallbackGenome) === original) return undefined;
 
   return {
     type: "phrase.replace",
     operator: { type: "varyContour", action: "transposeUp" },
-    genome: createAnchorPhraseCandidateGenomeFromPattern(fallback),
+    genome: fallbackGenome,
   };
 }
 

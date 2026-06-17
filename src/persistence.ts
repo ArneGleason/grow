@@ -402,7 +402,17 @@ async function postPersistenceJson<T>(url: string, body: unknown): Promise<T> {
     body: JSON.stringify(body),
   });
   if (!response.ok) {
-    throw new Error(`HTTP ${response.status}`);
+    const errorText = await response.text().catch(() => "");
+    let errorDetail = errorText.trim();
+    try {
+      const parsed = JSON.parse(errorText) as { error?: unknown };
+      if (typeof parsed.error === "string" && parsed.error.trim().length > 0) {
+        errorDetail = parsed.error.trim();
+      }
+    } catch {
+      // Keep the raw response body when it is not JSON.
+    }
+    throw new Error(errorDetail ? `HTTP ${response.status}: ${errorDetail}` : `HTTP ${response.status}`);
   }
   return response.json() as Promise<T>;
 }

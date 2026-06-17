@@ -45,6 +45,13 @@ export function createAnchorPhraseCandidateGenomeFromPattern(
   });
 }
 
+export function normalizePhraseCandidateGenome(genome: unknown): PhraseCandidateGenome {
+  if (isAnchorPhraseCandidateGenome(genome)) {
+    return createAnchorPhraseCandidateGenome(genome.phrase, genome.renderOptions);
+  }
+  return clonePlayerPatternSource(genome as PlayerPatternSource);
+}
+
 export function isAnchorPhraseCandidateGenome(value: unknown): value is AnchorPhraseCandidateGenome {
   return isRecord(value) && value.format === PHRASE_CANDIDATE_GENOME_FORMAT && isRecord(value.phrase);
 }
