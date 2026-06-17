@@ -13,6 +13,10 @@ function activeEvents(source: ReturnType<typeof renderAnchorPhrase>) {
     .filter((event): event is NonNullable<typeof event> => event !== null);
 }
 
+function connectorEvents(source: ReturnType<typeof renderAnchorPhrase>) {
+  return activeEvents(source).filter((event) => event.startBeat > 0.5 && event.startBeat < 4);
+}
+
 test.describe("Anchor phrase renderer", () => {
   test("renders deterministically and converts 1-based language degrees to engine scale degrees", () => {
     const first = renderDemoAnchorPhrase({ subdivisionBeats: 0.5 });
@@ -55,7 +59,8 @@ test.describe("Anchor phrase renderer", () => {
     expect(dense.events[0]?.scaleDegree).toBe(0);
     expect(sparse.events[8]?.scaleDegree).toBe(4);
     expect(dense.events[8]?.scaleDegree).toBe(4);
-    expect(activeEvents(dense).filter((event) => event.startBeat > 0.5 && event.startBeat < 4).length).toBe(6);
+    expect(connectorEvents(dense).length).toBe(6);
+    expect(connectorEvents(dense).map((event) => event.scaleDegree)).toEqual([1, 1, 2, 2, 3, 3]);
   });
 
   test("approach and detour place biased notes inside the connector window", () => {
@@ -105,7 +110,66 @@ test.describe("Anchor phrase renderer", () => {
     expect(rendered.events[4]?.scaleDegree).toBe(4);
   });
 
-  test("caps connector note budget and gives orbit/skip safe fallbacks", () => {
+  test("orbit decorates around the from anchor instead of filling toward the target", () => {
+    const upperFirst = renderAnchorPhrase(phraseWithConnector({
+      kernel: "orbit",
+      reach: 1,
+      density: 1,
+      bias: 1,
+    }), { subdivisionBeats: 0.5 });
+    const lowerFirst = renderAnchorPhrase(phraseWithConnector({
+      kernel: "orbit",
+      reach: 1,
+      density: 0.3,
+      bias: -1,
+    }), { subdivisionBeats: 0.5 });
+    const fill = renderAnchorPhrase(phraseWithConnector({
+      kernel: "fill",
+      reach: 1,
+      density: 1,
+      bias: 1,
+    }), { subdivisionBeats: 0.5 });
+
+    const orbitPassing = connectorEvents(upperFirst);
+    const fillPassing = connectorEvents(fill);
+    expect(orbitPassing.length).toBeGreaterThan(connectorEvents(lowerFirst).length);
+    expect(orbitPassing.every((event) => event.startBeat > 0.5 && event.startBeat < 4)).toBe(true);
+    expect(orbitPassing.map((event) => event.scaleDegree)).toEqual([1, -1, 1, -1, 1, -1]);
+    expect(connectorEvents(lowerFirst)[0].scaleDegree).toBe(-1);
+    expect(orbitPassing.map((event) => event.scaleDegree)).not.toEqual(fillPassing.map((event) => event.scaleDegree));
+  });
+
+  test("skip arpeggiates by non-adjacent leaps and no longer renders empty", () => {
+    const sparse = renderAnchorPhrase(phraseWithConnector({
+      kernel: "skip",
+      reach: 0.35,
+      density: 0.3,
+      bias: 1,
+    }), { subdivisionBeats: 0.5 });
+    const dense = renderAnchorPhrase(phraseWithConnector({
+      kernel: "skip",
+      reach: 1,
+      density: 1,
+      bias: 1,
+    }), { subdivisionBeats: 0.5 });
+    const fill = renderAnchorPhrase(phraseWithConnector({
+      kernel: "fill",
+      reach: 1,
+      density: 1,
+      bias: 1,
+    }), { subdivisionBeats: 0.5 });
+
+    const sparsePassing = connectorEvents(sparse);
+    const densePassing = connectorEvents(dense);
+    expect(sparsePassing.length).toBeGreaterThan(0);
+    expect(densePassing.length).toBeGreaterThan(sparsePassing.length);
+    expect(densePassing.every((event) => event.startBeat > 0.5 && event.startBeat < 4)).toBe(true);
+    expect(densePassing.map((event) => event.scaleDegree)).toEqual([2, 4, 6, 2, 4, 6]);
+    expect(densePassing.some((event) => Math.abs(event.scaleDegree) > 4)).toBe(true);
+    expect(densePassing.map((event) => event.scaleDegree)).not.toEqual(connectorEvents(fill).map((event) => event.scaleDegree));
+  });
+
+  test("caps connector note budget across fill orbit and skip", () => {
     const denseLongFill = renderAnchorPhrase({
       segments: [
         {
@@ -120,10 +184,33 @@ test.describe("Anchor phrase renderer", () => {
     const fillPassing = activeEvents(denseLongFill).filter((event) => event.startBeat > 0.5 && event.startBeat < 24);
     expect(fillPassing.length).toBe(ANCHOR_CONNECTOR_NOTE_BUDGET);
 
-    const orbit = renderAnchorPhrase(phraseWithConnector({ kernel: "orbit", density: 1 }), { subdivisionBeats: 0.5 });
-    const skip = renderAnchorPhrase(phraseWithConnector({ kernel: "skip", density: 1 }), { subdivisionBeats: 0.5 });
-    expect(activeEvents(orbit).length).toBeGreaterThan(activeEvents(skip).length);
-    expect(activeEvents(skip).map((event) => event.startBeat)).toEqual([0, 4]);
+    const denseLongOrbit = renderAnchorPhrase({
+      segments: [
+        {
+          anchors: [
+            { degree: 1, octave: 4, startBeat: 0, durationBeats: 0.5, dynamics: 0.7 },
+            { degree: 7, octave: 4, startBeat: 24, durationBeats: 0.5, dynamics: 0.7 },
+          ],
+          connectors: [{ kernel: "orbit", reach: 1, density: 1, bias: 0, pull: 0.5, color: 1, skew: 0 }],
+        },
+      ],
+    }, { subdivisionBeats: 0.25 });
+    const orbitPassing = activeEvents(denseLongOrbit).filter((event) => event.startBeat > 0.5 && event.startBeat < 24);
+    expect(orbitPassing.length).toBe(ANCHOR_CONNECTOR_NOTE_BUDGET);
+
+    const denseLongSkip = renderAnchorPhrase({
+      segments: [
+        {
+          anchors: [
+            { degree: 1, octave: 4, startBeat: 0, durationBeats: 0.5, dynamics: 0.7 },
+            { degree: 7, octave: 4, startBeat: 24, durationBeats: 0.5, dynamics: 0.7 },
+          ],
+          connectors: [{ kernel: "skip", reach: 1, density: 1, bias: 0, pull: 0.5, color: 1, skew: 0 }],
+        },
+      ],
+    }, { subdivisionBeats: 0.25 });
+    const skipPassing = activeEvents(denseLongSkip).filter((event) => event.startBeat > 0.5 && event.startBeat < 24);
+    expect(skipPassing.length).toBe(ANCHOR_CONNECTOR_NOTE_BUDGET);
   });
 });
 

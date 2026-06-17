@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Implement Byte L1b anchor phrase renderer",
-  "status": "l1b-anchor-render-implemented-awaiting-review",
-  "updatedAt": "2026-06-17T01:48:21Z",
+  "lastTask": "Implement Byte L1c orbit and skip anchor-phrase kernels",
+  "status": "l1c-orbit-skip-implemented-awaiting-review",
+  "updatedAt": "2026-06-17T02:07:28Z",
   "lastHandoff": "",
-  "branch": "codex/byte-l1b-anchor-render",
+  "branch": "codex/byte-l1c-orbit-skip",
   "commit": "",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte L1b is implemented on codex/byte-l1b-anchor-render, stacked on the approved L1a branch because origin/main has not yet merged L0b/L1a. It adds a pure anchor-phrase renderer to PlayerPatternSource, unit coverage, and a read-only window.anchorPhrase demo surface. No playback, scoring, candidate-store, prosody generator, transport, or UI control path consumes it."
+    "summary": "Byte L1c is implemented on codex/byte-l1c-orbit-skip, stacked on the approved L1b branch because origin/main has not yet merged the L branches. It replaces the L1b orbit/skip safe fallbacks with real deterministic orbit and skip connector renderers, extends the read-only demo phrase, and expands unit coverage. No playback, scoring, candidate-store, prosody generator, transport, or UI control path consumes it."
   }
 }

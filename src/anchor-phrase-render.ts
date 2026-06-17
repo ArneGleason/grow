@@ -56,9 +56,13 @@ export const DEMO_ANCHOR_PHRASE: AnchorPhrase = {
       anchors: [
         { degree: 2, octave: 4, startBeat: 8, durationBeats: 0.5, dynamics: 0.52 },
         { degree: 1, octave: 4, startBeat: 10, durationBeats: 1.5, dynamics: 0.76 },
+        { degree: 4, octave: 4, startBeat: 13, durationBeats: 0.5, dynamics: 0.58 },
+        { degree: 1, octave: 4, startBeat: 15, durationBeats: 1, dynamics: 0.78 },
       ],
       connectors: [
         { kernel: "approach", reach: 0.55, density: 0.8, bias: -0.55, pull: 0.85, color: 0, skew: 0.2 },
+        { kernel: "orbit", reach: 0.9, density: 0.72, bias: 0.65, pull: 0.5, color: 0, skew: -0.12 },
+        { kernel: "skip", reach: 0.35, density: 0.62, bias: -0.35, pull: 0.45, color: 0, skew: 0.1 },
       ],
     },
   ],
@@ -68,8 +72,8 @@ export const KERNEL_RENDERERS: Record<ConnectorKernel, KernelRenderFn> = {
   fill: renderFillConnector,
   detour: renderDetourConnector,
   approach: renderApproachConnector,
-  orbit: renderFillConnector,
-  skip: () => [],
+  orbit: renderOrbitConnector,
+  skip: renderSkipConnector,
 };
 
 export function renderAnchorPhrase(
@@ -194,6 +198,44 @@ function renderDetourConnector(context: ConnectorRenderContext): readonly Connec
   });
 }
 
+function renderOrbitConnector(context: ConnectorRenderContext): readonly ConnectorRenderedNote[] {
+  const slots = connectorSlots(context);
+  const count = Math.min(slots.length, Math.max(1, densityCount(slots.length, context.connector.density)));
+  const selectedSlots = selectEvenSlots(slots, count, context.connector.skew);
+  const fromDegree = languageDegreeToEngineDegree(context.from.degree);
+  const reach = Math.max(1, Math.round(context.connector.reach));
+  let direction = leadingOrbitDirection(context.connector.bias, context.connectorIndex);
+  return selectedSlots.map((startBeat, index) => {
+    if (index > 0) {
+      direction *= -1;
+    }
+    return connectorNote(context, startBeat, {
+      scaleDegree: fromDegree + direction * reach,
+      octave: context.from.octave,
+      progress: selectedSlots.length === 1 ? 0.5 : index / Math.max(1, selectedSlots.length - 1),
+    });
+  });
+}
+
+function renderSkipConnector(context: ConnectorRenderContext): readonly ConnectorRenderedNote[] {
+  const slots = connectorSlots(context);
+  const count = Math.min(slots.length, Math.max(1, densityCount(slots.length, context.connector.density)));
+  const selectedSlots = selectEvenSlots(slots, count, context.connector.skew);
+  const fromDegree = languageDegreeToEngineDegree(context.from.degree);
+  const toDegree = languageDegreeToEngineDegree(context.to.degree);
+  const direction = skipDirection(fromDegree, toDegree, context.connector.bias);
+  const palette = skipDegreePalette(fromDegree, toDegree, direction, context.connector.reach, context.connector.bias);
+  return selectedSlots.map((startBeat, index) => {
+    const progress = selectedSlots.length === 1 ? 0.5 : (index + 1) / (selectedSlots.length + 1);
+    const paletteIndex = skipPaletteIndex(index, selectedSlots.length, palette.length, context.connector.bias);
+    return connectorNote(context, startBeat, {
+      scaleDegree: palette[paletteIndex] ?? fromDegree + direction * 2,
+      octave: Math.round(lerp(context.from.octave, context.to.octave, progress)),
+      progress,
+    });
+  });
+}
+
 function connectorSlots(context: ConnectorRenderContext): readonly number[] {
   const fromEndBeat = context.from.startBeat + context.from.durationBeats;
   const toStartBeat = context.to.startBeat;
@@ -285,6 +327,61 @@ function approachDegree(
   }
   const direction = (index + connectorIndex) % 2 === 0 ? -1 : 1;
   return targetDegree + direction * Math.max(1, index === 0 ? reach : 1);
+}
+
+function leadingOrbitDirection(bias: number, connectorIndex: number): 1 | -1 {
+  if (bias > 0.2) return 1;
+  if (bias < -0.2) return -1;
+  return connectorIndex % 2 === 0 ? 1 : -1;
+}
+
+function skipDirection(fromDegree: number, toDegree: number, bias: number): 1 | -1 {
+  if (toDegree > fromDegree) return 1;
+  if (toDegree < fromDegree) return -1;
+  return bias < 0 ? -1 : 1;
+}
+
+function skipDegreePalette(
+  fromDegree: number,
+  toDegree: number,
+  direction: 1 | -1,
+  reach: number,
+  bias: number,
+): readonly number[] {
+  const leapSize = 2;
+  const degrees: number[] = [];
+  const distance = Math.abs(toDegree - fromDegree);
+  const leapCount = Math.max(1, Math.ceil(distance / leapSize));
+  for (let index = 1; index <= leapCount; index += 1) {
+    degrees.push(fromDegree + direction * index * leapSize);
+  }
+  if (reach > 0.66) {
+    degrees.push(toDegree + direction * leapSize);
+  }
+  if (Math.abs(bias) > 0.55) {
+    degrees.push(fromDegree + (bias > 0 ? 1 : -1) * leapSize);
+  }
+  return uniqueNumbers(degrees);
+}
+
+function skipPaletteIndex(index: number, count: number, paletteLength: number, bias: number): number {
+  if (paletteLength <= 1) return 0;
+  const orderedIndex = bias < -0.25 ? count - 1 - index : index;
+  if (count <= paletteLength) {
+    return Math.min(paletteLength - 1, Math.round((orderedIndex / Math.max(1, count - 1)) * (paletteLength - 1)));
+  }
+  return Math.abs(orderedIndex) % paletteLength;
+}
+
+function uniqueNumbers(values: readonly number[]): readonly number[] {
+  const seen = new Set<number>();
+  const unique: number[] = [];
+  for (const value of values) {
+    if (seen.has(value)) continue;
+    seen.add(value);
+    unique.push(value);
+  }
+  return unique;
 }
 
 function connectorNote(
