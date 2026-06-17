@@ -667,6 +667,10 @@ async function getPhraseEditorState(page: Page): Promise<{
   editMode: boolean;
   message: string;
   overrideActive: boolean;
+  saveBranchId: string;
+  saveInFlight: boolean;
+  savedCandidateId?: string;
+  savedCount?: number;
   selectedAnchor?: { anchorIndex: number; segmentIndex: number };
   selectedConnector?: { connectorIndex: number; segmentIndex: number };
   workingPhrase?: {
@@ -684,6 +688,10 @@ async function getPhraseEditorState(page: Page): Promise<{
           editMode: boolean;
           message: string;
           overrideActive: boolean;
+          saveBranchId: string;
+          saveInFlight: boolean;
+          savedCandidateId?: string;
+          savedCount?: number;
           selectedAnchor?: { anchorIndex: number; segmentIndex: number };
           selectedConnector?: { connectorIndex: number; segmentIndex: number };
           workingPhrase?: {
@@ -699,6 +707,35 @@ async function getPhraseEditorState(page: Page): Promise<{
   });
   if (!result) {
     throw new Error("window.phraseEditor.getState() was not available");
+  }
+  return result;
+}
+
+async function savePhraseEditorInApp(page: Page): Promise<{
+  branchId: string;
+  candidate?: StoredCandidate;
+  error?: string;
+  rendered?: PlayerPatternSource;
+  savedCount?: number;
+  valid: boolean;
+}> {
+  const result = await page.evaluate(async () => {
+    const appWindow = window as unknown as {
+      phraseEditor?: {
+        save(): Promise<{
+          branchId: string;
+          candidate?: StoredCandidate;
+          error?: string;
+          rendered?: PlayerPatternSource;
+          savedCount?: number;
+          valid: boolean;
+        }>;
+      };
+    };
+    return appWindow.phraseEditor?.save();
+  });
+  if (!result) {
+    throw new Error("window.phraseEditor.save() was not available");
   }
   return result;
 }
@@ -2066,6 +2103,87 @@ test("anchor phrase editor performs structural edits without breaking phrase inv
   expect(disabledAdd?.valid).toBe(false);
   expect(disabledAdd?.errors[0]).toContain("edit mode is not active");
   await setWrittenEvolvingDial(page, 0);
+});
+
+test("anchor phrase editor saves edited phrases as idempotent persisted candidates", async ({ page }) => {
+  test.setTimeout(35_000);
+  await page.goto("/");
+
+  await openInspectDrawer(page);
+  await page.getByTestId("player-card-melody").click();
+  await expect(page.getByTestId("anchor-phrase-editor-overlay")).toBeVisible();
+  await page.getByTestId("anchor-phrase-editor-edit-toggle").click();
+  await expect(page.getByTestId("anchor-phrase-editor-save")).toBeEnabled();
+
+  const editResult = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      phraseEditor?: {
+        editAnchor(segmentIndex: number, anchorIndex: number, patch: {
+          degree?: number;
+          dynamics?: number;
+          startBeat?: number;
+        }): { changed: boolean; valid: boolean };
+      };
+    };
+    return appWindow.phraseEditor?.editAnchor(0, 0, {
+      degree: 4,
+      dynamics: 0.52,
+      startBeat: 0.25,
+    });
+  });
+  expect(editResult).toMatchObject({ changed: true, valid: true });
+
+  const overridePattern = await getPhraseEditorOverridePattern(page);
+  expect(overridePattern).toBeTruthy();
+  const firstSave = await savePhraseEditorInApp(page);
+  expect(firstSave.valid).toBe(true);
+  expect(firstSave.branchId).toBe("editor-lantern");
+  expect(firstSave.candidate).toBeTruthy();
+  expect(firstSave.savedCount).toBe(1);
+  await expect(page.getByTestId("anchor-phrase-editor-save-status")).toContainText("Saved ideas: 1");
+
+  const candidates = await listCandidatesInApp(page, {
+    kind: "phrase",
+    branchId: firstSave.branchId,
+    limit: 20,
+  });
+  expect(candidates).toHaveLength(1);
+  const saved = candidates[0];
+  expect(saved.id).toBe(firstSave.candidate?.id);
+  expect(saved.branchId).toBe("editor-lantern");
+  expect(saved.kind).toBe("phrase");
+  expect(saved.generation).toBe(0);
+  expect(saved.fitness).toBeGreaterThan(0);
+  expect((saved.genome as { format?: string }).format).toBe("anchor-phrase/v1");
+  expect(renderPhraseCandidateGenome(saved.genome)).toEqual(overridePattern);
+
+  const secondSave = await savePhraseEditorInApp(page);
+  expect(secondSave.valid).toBe(true);
+  expect(secondSave.candidate?.id).toBe(saved.id);
+  expect(secondSave.savedCount).toBe(1);
+  const candidatesAfterRepeatSave = await listCandidatesInApp(page, {
+    kind: "phrase",
+    branchId: firstSave.branchId,
+    limit: 20,
+  });
+  expect(candidatesAfterRepeatSave.map((candidate) => candidate.id)).toEqual([saved.id]);
+
+  const evolution = await runEvolutionInApp(page, {
+    seed: 909,
+    kind: "phrase",
+    generations: 2,
+    count: 3,
+    eliteLimit: 2,
+    branchId: firstSave.branchId,
+  });
+  expect(evolution.branchId).toBe("editor-lantern");
+  expect(evolution.summaries).toHaveLength(2);
+  expect(evolution.finalElite.length).toBeGreaterThan(0);
+  expect(evolution.finalElite.every((candidate) => candidate.fitness > 0)).toBe(true);
+
+  const state = await getPhraseEditorState(page);
+  expect(state.overrideActive).toBe(true);
+  expect(await getActiveProsodyPattern(page)).toEqual(overridePattern);
 });
 
 test("written-to-evolving dial orchestrates prosody and evolving performance", async ({ page }) => {

@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Implement Byte L3c segment and gap structural editing",
-  "status": "l3c-structural-editing-approved-merged-local",
-  "updatedAt": "2026-06-17T19:21:49Z",
+  "lastTask": "Implement Byte L4a save edited phrase as persisted candidate",
+  "status": "l4a-save-edited-phrase-ready-for-review",
+  "updatedAt": "2026-06-17T19:36:36Z",
   "lastHandoff": "",
-  "branch": "main",
-  "commit": "76df6e1",
+  "branch": "codex/byte-l4a-save-edited-phrase",
+  "commit": "pending-review",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte L3c is approved by Claude and fast-forwarded into local main at 76df6e1. The melody editor now supports add/remove anchors and split/join segments through pure anchor-phrase-edit structural operations plus window.phraseEditor wrappers, with minimal UI buttons, Delete-to-remove, and double-click-empty-space-to-add. Structural edits preserve connector counts, ordering/non-overlap, gaps, caps, and at least one segment/anchor through normalizeAnchorPhrase; audible changes reuse editorMelodyOverride and the existing lookahead refresh path, with revert/close/song/evolving cleanup inherited from L3a/L3b. The L3 editing arc is complete; wait for the L4 persistence/authoring kickoff before building the next slice."
+    "summary": "Byte L4a is implemented on codex/byte-l4a-save-edited-phrase and ready for Claude review. The melody editor Save idea action persists the current edit-mode AnchorPhrase as a normal scored phrase candidate with native anchor-phrase/v1 genome on stable per-song branches such as editor-lantern. The save path reuses createAnchorPhraseCandidateGenome, renderPhraseCandidateGenome, scoreProsody, and persistence.writeCandidate; same-phrase saves dedup through the existing content-hash id and branch scoping. The live editor override is preserved, and there is no catalog browse UI, server/schema/scorer change, or new playback path. Validation: build green, six unit suites green, smoke 75/75, db:smoke green, diff-check green; npm audit still reports the known Vite/esbuild advisories."
   }
 }

@@ -43,7 +43,10 @@ import {
   type CandidateFitnessPreview,
   type CandidateFitnessResult,
 } from "./candidate-fitness";
-import { renderPhraseCandidateGenome } from "./phrase-candidate-genome";
+import {
+  createAnchorPhraseCandidateGenome,
+  renderPhraseCandidateGenome,
+} from "./phrase-candidate-genome";
 import { formatExpressionSnapshot, type PlayerExpressionSnapshot } from "./expression";
 import { createFormScore, type FormScore } from "./form-scoring";
 import {
@@ -134,6 +137,7 @@ import {
   type SongMaterial,
 } from "./song-material";
 import { generateProsodicAnchorPhrase, generateProsodicMelody } from "./melody-prosody";
+import { scoreProsody } from "./prosody-scoring";
 import { sectionAtBeat, type ChorusDevelopment } from "./song-form";
 import {
   applySongSketchProposalText,
@@ -226,6 +230,9 @@ let selectedAnchorRef: AnchorPhraseEditorAnchorRef | undefined;
 let selectedConnectorRef: AnchorPhraseEditorConnectorRef | undefined;
 let anchorPhraseEditorDrag: AnchorPhraseEditorDragState | undefined;
 let anchorPhraseEditorMessage = "Read-only prosody phrase.";
+let anchorPhraseEditorSaveInFlight = false;
+let anchorPhraseEditorSavedCount: number | undefined;
+let anchorPhraseEditorLastSavedCandidateId: string | undefined;
 let candidateMelodyAudition: {
   branchId?: string;
   candidate?: StoredCandidate;
@@ -621,6 +628,15 @@ ${timingFeelControls}
               type="button"
               disabled
             >Revert to generated</button>
+            <button
+              class="phrase-editor__tool-button"
+              data-testid="anchor-phrase-editor-save"
+              type="button"
+              disabled
+            >Save idea</button>
+            <span class="phrase-editor__save-status" data-testid="anchor-phrase-editor-save-status">
+              Saved ideas: 0
+            </span>
             <div class="phrase-editor__structure-tools" aria-label="Segment and anchor structure controls">
               <button class="phrase-editor__tool-button" data-testid="anchor-phrase-editor-add-anchor" type="button" disabled>+ Anchor</button>
               <button class="phrase-editor__tool-button" data-testid="anchor-phrase-editor-remove-anchor" type="button" disabled>Remove</button>
@@ -1057,6 +1073,8 @@ const anchorPhraseEditorEditToggle = requireElement<HTMLButtonElement>(
   "[data-testid='anchor-phrase-editor-edit-toggle']",
 );
 const anchorPhraseEditorRevert = requireElement<HTMLButtonElement>("[data-testid='anchor-phrase-editor-revert']");
+const anchorPhraseEditorSave = requireElement<HTMLButtonElement>("[data-testid='anchor-phrase-editor-save']");
+const anchorPhraseEditorSaveStatus = requireElement<HTMLElement>("[data-testid='anchor-phrase-editor-save-status']");
 const anchorPhraseEditorAddAnchor = requireElement<HTMLButtonElement>("[data-testid='anchor-phrase-editor-add-anchor']");
 const anchorPhraseEditorRemoveAnchor = requireElement<HTMLButtonElement>("[data-testid='anchor-phrase-editor-remove-anchor']");
 const anchorPhraseEditorSplitSegment = requireElement<HTMLButtonElement>("[data-testid='anchor-phrase-editor-split-segment']");
@@ -1440,6 +1458,7 @@ function openAnchorPhraseEditor(): void {
     renderedAnchorPhraseEditorKey = "";
   }
   renderAnchorPhraseEditor();
+  void refreshAnchorPhraseEditorSavedCount({ render: true });
   requestAnimationFrame(() => {
     anchorPhraseEditor.focus();
   });
@@ -1663,6 +1682,108 @@ function joinAnchorPhraseSegments(segmentIndex: number): AnchorEditResult {
   return result;
 }
 
+function getAnchorPhraseEditorBranchId(nextSongId: SongId = songId): string {
+  return `editor-${nextSongId}`;
+}
+
+function resetAnchorPhraseEditorSaveState(): void {
+  anchorPhraseEditorSaveInFlight = false;
+  anchorPhraseEditorSavedCount = undefined;
+  anchorPhraseEditorLastSavedCandidateId = undefined;
+}
+
+async function refreshAnchorPhraseEditorSavedCount(
+  options: { render?: boolean } = {},
+): Promise<number | undefined> {
+  const branchId = getAnchorPhraseEditorBranchId();
+  try {
+    const candidates = await persistence.listCandidates({
+      kind: "phrase",
+      branchId,
+      limit: 500,
+    });
+    anchorPhraseEditorSavedCount = candidates.length;
+    if (options.render) {
+      renderAnchorPhraseEditor();
+    }
+    return anchorPhraseEditorSavedCount;
+  } catch (error) {
+    console.warn("[grow] failed to refresh saved phrase ideas", error);
+    if (options.render) {
+      renderAnchorPhraseEditor();
+    }
+    return undefined;
+  }
+}
+
+function createAnchorPhraseEditorCandidate(phrase: AnchorPhrase): {
+  candidate: CandidateInput;
+  rendered: PlayerPatternSource;
+} {
+  const genome = createAnchorPhraseCandidateGenome(phrase, {
+    baseOctave: 4,
+    playerId: "melody",
+    subdivisionBeats: ANCHOR_EDIT_GRID_BEATS,
+  });
+  const rendered = renderPhraseCandidateGenome(genome);
+  const score = scoreProsody(rendered, [4, 4]);
+  return {
+    candidate: {
+      kind: "phrase",
+      genome,
+      scores: { ...score.subscores },
+      fitness: score.overall,
+      generation: 0,
+      seed: prosodySeedForSong(songId),
+      status: "alive",
+    },
+    rendered,
+  };
+}
+
+async function saveAnchorPhraseEditorCandidate(): Promise<AnchorPhraseEditorSaveResult> {
+  const branchId = getAnchorPhraseEditorBranchId();
+  if (!isAnchorPhraseEditMode || !workingAnchorPhrase) {
+    anchorPhraseEditorMessage = "Enter edit mode before saving a phrase idea.";
+    renderAnchorPhraseEditor();
+    return { branchId, valid: false, error: "Anchor edit mode is not active" };
+  }
+  if (!canEditAnchorPhrase()) {
+    anchorPhraseEditorMessage = "Save is disabled while the line is evolving.";
+    renderAnchorPhraseEditor();
+    return { branchId, valid: false, error: "Anchor editing is disabled while evolving" };
+  }
+  if (anchorPhraseEditorSaveInFlight) {
+    return { branchId, valid: false, error: "Save already in progress" };
+  }
+
+  anchorPhraseEditorSaveInFlight = true;
+  anchorPhraseEditorMessage = "Saving phrase idea...";
+  renderAnchorPhraseEditor();
+
+  try {
+    const { candidate, rendered } = createAnchorPhraseEditorCandidate(workingAnchorPhrase);
+    const stored = await persistence.writeCandidate(candidate, branchId);
+    anchorPhraseEditorLastSavedCandidateId = stored.id;
+    const savedCount = await refreshAnchorPhraseEditorSavedCount({ render: false });
+    anchorPhraseEditorMessage = `Saved phrase idea to ${branchId}.`;
+    return {
+      branchId,
+      candidate: stored,
+      rendered: clonePlayerPatternSource(rendered),
+      savedCount,
+      valid: true,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    anchorPhraseEditorMessage = `Save failed: ${message}`;
+    return { branchId, valid: false, error: message };
+  } finally {
+    anchorPhraseEditorSaveInFlight = false;
+    renderAnchorPhraseEditor();
+  }
+}
+
 function getInactiveAnchorPhraseEditorResult(message: string): AnchorEditResult | undefined {
   if (!isAnchorPhraseEditMode || !workingAnchorPhrase) {
     return {
@@ -1734,6 +1855,10 @@ function getAnchorPhraseEditorState(): AnchorPhraseEditorState {
     editMode: isAnchorPhraseEditMode,
     message: anchorPhraseEditorMessage,
     overrideActive: Boolean(editorMelodyOverride),
+    saveBranchId: getAnchorPhraseEditorBranchId(),
+    saveInFlight: anchorPhraseEditorSaveInFlight,
+    ...(anchorPhraseEditorLastSavedCandidateId ? { savedCandidateId: anchorPhraseEditorLastSavedCandidateId } : {}),
+    ...(anchorPhraseEditorSavedCount === undefined ? {} : { savedCount: anchorPhraseEditorSavedCount }),
     ...(selectedAnchorRef ? { selectedAnchor: { ...selectedAnchorRef } } : {}),
     ...(selectedConnectorRef ? { selectedConnector: { ...selectedConnectorRef } } : {}),
     ...(workingAnchorPhrase ? { workingPhrase: cloneAnchorPhrase(workingAnchorPhrase) } : {}),
@@ -1765,6 +1890,9 @@ function renderAnchorPhraseEditor(): void {
   anchorPhraseEditorEditToggle.textContent = isAnchorPhraseEditMode ? "Editing anchors" : "Edit anchors";
   anchorPhraseEditorEditToggle.setAttribute("aria-pressed", String(isAnchorPhraseEditMode));
   anchorPhraseEditorRevert.disabled = !isAnchorPhraseEditMode && !editorMelodyOverride;
+  anchorPhraseEditorSave.disabled = !isAnchorPhraseEditMode || !workingAnchorPhrase || !canEdit || anchorPhraseEditorSaveInFlight;
+  anchorPhraseEditorSave.textContent = anchorPhraseEditorSaveInFlight ? "Saving..." : "Save idea";
+  anchorPhraseEditorSaveStatus.textContent = formatAnchorPhraseEditorSaveStatus();
   anchorPhraseEditorStatus.textContent = canEdit ? anchorPhraseEditorMessage : "Anchor editing pauses while the line is evolving.";
   renderAnchorPhraseEditorSelection(phrase);
   const renderKey = [
@@ -1820,6 +1948,17 @@ function renderAnchorPhraseEditorSelection(phrase: AnchorPhrase): void {
       connectorRef.connectorIndex + 1
     } · ${selectedConnector.kernel}`;
   }
+}
+
+function formatAnchorPhraseEditorSaveStatus(): string {
+  const count = anchorPhraseEditorSavedCount;
+  const branchId = getAnchorPhraseEditorBranchId();
+  const countText = count === undefined ? "..." : String(count);
+  return [
+    `Saved ideas: ${countText}`,
+    branchId,
+    anchorPhraseEditorLastSavedCandidateId ? `last ${anchorPhraseEditorLastSavedCandidateId}` : undefined,
+  ].filter(Boolean).join(" · ");
 }
 
 function renderAnchorPhraseEditorConnectorControls(connector: Connector | undefined): void {
@@ -3122,9 +3261,22 @@ interface AnchorPhraseEditorState {
   editMode: boolean;
   message: string;
   overrideActive: boolean;
+  saveBranchId: string;
+  saveInFlight: boolean;
+  savedCandidateId?: string;
+  savedCount?: number;
   selectedAnchor?: AnchorPhraseEditorAnchorRef;
   selectedConnector?: AnchorPhraseEditorConnectorRef;
   workingPhrase?: AnchorPhrase;
+}
+
+interface AnchorPhraseEditorSaveResult {
+  branchId: string;
+  candidate?: StoredCandidate;
+  error?: string;
+  rendered?: PlayerPatternSource;
+  savedCount?: number;
+  valid: boolean;
 }
 
 interface AnchorPhraseEditorLayout {
@@ -4544,6 +4696,7 @@ function applySongId(nextSongId: SongId): SongId {
   if (previousSongId === nextSongId) return songId;
   songId = nextSongId;
   resetAnchorPhraseEditorSession("Song changed; generated phrase restored.", { refresh: false, render: false });
+  resetAnchorPhraseEditorSaveState();
   melodyRepairFeedbackMessage = "No feedback yet.";
   invalidateMelodyRepairCache();
   ollamaProposalTextTest = createInitialOllamaProposalTextTest(ollamaConfig);
@@ -4733,6 +4886,10 @@ anchorPhraseEditorEditToggle.addEventListener("click", () => {
 
 anchorPhraseEditorRevert.addEventListener("click", () => {
   exitAnchorPhraseEditMode("Reverted to generated prosody phrase.");
+});
+
+anchorPhraseEditorSave.addEventListener("click", () => {
+  void saveAnchorPhraseEditorCandidate();
 });
 
 anchorPhraseEditorAddAnchor.addEventListener("click", () => {
@@ -5112,6 +5269,7 @@ declare global {
       joinSegments(segmentIndex: number): AnchorEditResult;
       removeAnchor(segmentIndex: number, anchorIndex: number): AnchorEditResult;
       revert(): AnchorPhraseEditorState;
+      save(): Promise<AnchorPhraseEditorSaveResult>;
       splitSegment(segmentIndex: number, anchorIndex: number): AnchorEditResult;
     };
     persistence?: {
@@ -5358,6 +5516,7 @@ window.phraseEditor = {
   joinSegments: (segmentIndex) => joinAnchorPhraseSegments(segmentIndex),
   removeAnchor: (segmentIndex, anchorIndex) => removeAnchorPhraseAnchor(segmentIndex, anchorIndex),
   revert: () => exitAnchorPhraseEditMode("Reverted to generated prosody phrase."),
+  save: () => saveAnchorPhraseEditorCandidate(),
   splitSegment: (segmentIndex, anchorIndex) => splitAnchorPhraseSegment(segmentIndex, anchorIndex),
 };
 

@@ -521,6 +521,15 @@ button {
   font-size: 0.84rem;
 }
 
+.phrase-editor__save-status {
+  max-width: 280px;
+  color: #aeb7a5;
+  font-size: 0.8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .phrase-editor__dynamics {
   display: flex;
   align-items: center;
