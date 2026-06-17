@@ -388,7 +388,7 @@ button {
   position: relative;
   z-index: 1;
   display: grid;
-  grid-template-rows: auto auto minmax(220px, 1fr) auto;
+  grid-template-rows: auto auto auto minmax(220px, 1fr) auto;
   gap: 12px;
   width: min(960px, calc(100vw - 48px));
   max-height: min(76vh, 720px);
@@ -474,6 +474,61 @@ button {
   border-radius: 999px;
   padding: 4px 9px;
   background: rgba(238, 243, 229, 0.06);
+}
+
+.phrase-editor__tools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+}
+
+.phrase-editor__tool-button {
+  min-height: 34px;
+  border: 1px solid rgba(174, 183, 165, 0.32);
+  border-radius: 7px;
+  background: rgba(238, 243, 229, 0.08);
+  color: #eef3e5;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.phrase-editor__tool-button:hover:not(:disabled) {
+  background: rgba(217, 247, 167, 0.18);
+}
+
+.phrase-editor__tool-button:focus-visible,
+.phrase-editor__dynamics input:focus-visible {
+  outline: 3px solid #f6cc6b;
+  outline-offset: 2px;
+}
+
+.phrase-editor__tool-button:disabled,
+.phrase-editor__dynamics input:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.phrase-editor__selected {
+  min-width: 190px;
+  color: #d7dfcf;
+  font-size: 0.84rem;
+}
+
+.phrase-editor__dynamics {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  color: #aeb7a5;
+  font-size: 0.82rem;
+}
+
+.phrase-editor__dynamics input {
+  width: 128px;
+  accent-color: #f6cc6b;
 }
 
 .phrase-editor__roll {
@@ -563,6 +618,19 @@ button {
 .phrase-editor-svg__anchor rect {
   stroke: rgba(238, 243, 229, 0.44);
   stroke-width: 1;
+}
+
+.phrase-editor.is-editing .phrase-editor-svg__anchor {
+  cursor: grab;
+}
+
+.phrase-editor.is-editing .phrase-editor-svg__anchor:active {
+  cursor: grabbing;
+}
+
+.phrase-editor-svg__anchor.is-selected rect {
+  stroke: #fff2c7;
+  stroke-width: 3;
 }
 
 .phrase-editor-svg__anchor-label {
@@ -1017,6 +1085,21 @@ button {
   .phrase-editor__readouts {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .phrase-editor__tools {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .phrase-editor__selected,
+  .phrase-editor__dynamics,
+  .phrase-editor__dynamics input {
+    width: 100%;
+  }
+
+  .phrase-editor__dynamics {
+    margin-left: 0;
   }
 
   .phrase-editor__roll,

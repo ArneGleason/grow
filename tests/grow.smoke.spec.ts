@@ -662,6 +662,52 @@ async function getActiveProsodyPattern(page: Page): Promise<PlayerPatternSource 
   });
 }
 
+async function getPhraseEditorState(page: Page): Promise<{
+  canEdit: boolean;
+  editMode: boolean;
+  message: string;
+  overrideActive: boolean;
+  selectedAnchor?: { anchorIndex: number; segmentIndex: number };
+  workingPhrase?: {
+    segments: {
+      anchors: { degree: number; dynamics: number; octave: number; startBeat: number }[];
+    }[];
+  };
+}> {
+  const result = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      phraseEditor?: {
+        getState(): {
+          canEdit: boolean;
+          editMode: boolean;
+          message: string;
+          overrideActive: boolean;
+          selectedAnchor?: { anchorIndex: number; segmentIndex: number };
+          workingPhrase?: {
+            segments: {
+              anchors: { degree: number; dynamics: number; octave: number; startBeat: number }[];
+            }[];
+          };
+        };
+      };
+    };
+    return appWindow.phraseEditor?.getState();
+  });
+  if (!result) {
+    throw new Error("window.phraseEditor.getState() was not available");
+  }
+  return result;
+}
+
+async function getPhraseEditorOverridePattern(page: Page): Promise<PlayerPatternSource | undefined> {
+  return page.evaluate(() => {
+    const appWindow = window as unknown as {
+      phraseEditor?: { getOverridePattern(): PlayerPatternSource | undefined };
+    };
+    return appWindow.phraseEditor?.getOverridePattern();
+  });
+}
+
 async function performEvolvingEliteInApp(
   page: Page,
   options: Omit<CandidateEvolutionOptions, "kind"> & { kind?: "phrase"; batch?: number; intervalMs?: number },
@@ -1643,6 +1689,104 @@ test("melody player opens a read-only anchor phrase editor overlay", async ({ pa
   const after = await getTransportState(page);
   expect(after.status).toBe(before.status);
   expect(after.currentBeat).toBe(before.currentBeat);
+});
+
+test("anchor phrase editor edits anchors into an audible reversible override", async ({ page }) => {
+  test.setTimeout(25_000);
+  await page.goto("/");
+
+  await openInspectDrawer(page);
+  const melodyCard = page.getByTestId("player-card-melody");
+  await melodyCard.click();
+  await expect(page.getByTestId("anchor-phrase-editor-overlay")).toBeVisible();
+  await expect(page.getByTestId("anchor-phrase-editor-edit-toggle")).toHaveAttribute("aria-pressed", "false");
+
+  const initialEditor = await getPhraseEditorState(page);
+  expect(initialEditor.editMode).toBe(false);
+  expect(initialEditor.overrideActive).toBe(false);
+  expect(await getActiveProsodyPattern(page)).toBeUndefined();
+
+  await page.getByTestId("anchor-phrase-editor-edit-toggle").click();
+  await expect(page.getByTestId("anchor-phrase-editor-edit-toggle")).toHaveAttribute("aria-pressed", "true");
+  const enteredEditor = await getPhraseEditorState(page);
+  expect(enteredEditor.editMode).toBe(true);
+  expect(enteredEditor.overrideActive).toBe(false);
+  expect(enteredEditor.workingPhrase?.segments.length).toBe(2);
+
+  const editResult = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      phraseEditor?: {
+        editAnchor(segmentIndex: number, anchorIndex: number, patch: {
+          degree?: number;
+          dynamics?: number;
+          startBeat?: number;
+        }): {
+          changed: boolean;
+          phrase: { segments: { anchors: { degree: number; dynamics: number; startBeat: number }[] }[] };
+          valid: boolean;
+        };
+      };
+    };
+    return appWindow.phraseEditor?.editAnchor(0, 0, {
+      degree: 5,
+      dynamics: 0.31,
+      startBeat: 0.25,
+    });
+  });
+  expect(editResult?.valid).toBe(true);
+  expect(editResult?.changed).toBe(true);
+  expect(editResult?.phrase.segments[0].anchors[0]).toMatchObject({
+    degree: 5,
+    dynamics: 0.31,
+    startBeat: 0.25,
+  });
+
+  await expect(page.getByTestId("anchor-phrase-editor-status")).toContainText("Edit applied");
+  await expect(page.getByTestId("anchor-phrase-editor-selected-anchor")).toContainText("degree 5");
+  await expect(page.getByTestId("anchor-phrase-editor-anchor").first()).toContainText("5.4");
+
+  const overridePattern = await getPhraseEditorOverridePattern(page);
+  expect(overridePattern).toBeTruthy();
+  expect(overridePattern?.events.some((event) => event?.scaleDegree === 4)).toBe(true);
+  expect(overridePattern?.events.every((event) => event === null || Number.isInteger(event.scaleDegree))).toBe(true);
+  expect(await getActiveProsodyPattern(page)).toEqual(overridePattern);
+
+  await page.getByTestId("anchor-phrase-editor-revert").click();
+  const revertedEditor = await getPhraseEditorState(page);
+  expect(revertedEditor.editMode).toBe(false);
+  expect(revertedEditor.overrideActive).toBe(false);
+  expect(await getActiveProsodyPattern(page)).toBeUndefined();
+
+  await page.getByTestId("anchor-phrase-editor-edit-toggle").click();
+  await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      phraseEditor?: { editAnchor(segmentIndex: number, anchorIndex: number, patch: { dynamics: number }): unknown };
+    };
+    appWindow.phraseEditor?.editAnchor(0, 0, { dynamics: 0.47 });
+  });
+  expect((await getPhraseEditorState(page)).overrideActive).toBe(true);
+  await page.getByTestId("anchor-phrase-editor-close").click();
+  await expect(page.getByTestId("anchor-phrase-editor-overlay")).toBeHidden();
+  expect((await getPhraseEditorState(page)).overrideActive).toBe(false);
+  expect(await getActiveProsodyPattern(page)).toBeUndefined();
+
+  await setWrittenEvolvingDial(page, 0.85);
+  await expect(page.getByTestId("written-evolving-regime")).toHaveText("evolving");
+  await melodyCard.click();
+  await expect(page.getByTestId("anchor-phrase-editor-overlay")).toBeVisible();
+  await expect(page.getByTestId("anchor-phrase-editor-edit-toggle")).toBeDisabled();
+  const disabledEditor = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      phraseEditor?: { enterEditMode(): { canEdit: boolean; editMode: boolean; message: string } };
+    };
+    return appWindow.phraseEditor?.enterEditMode();
+  });
+  expect(disabledEditor).toMatchObject({
+    canEdit: false,
+    editMode: false,
+  });
+  await expect(page.getByTestId("anchor-phrase-editor-status")).toContainText("evolving");
+  await setWrittenEvolvingDial(page, 0);
 });
 
 test("written-to-evolving dial orchestrates prosody and evolving performance", async ({ page }) => {

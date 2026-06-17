@@ -1,6 +1,12 @@
 import "./style.css";
 import type { Anchor, AnchorPhrase, AnchorPhraseSegment } from "./anchor-phrase";
-import { DEMO_ANCHOR_PHRASE, renderDemoAnchorPhrase } from "./anchor-phrase-render";
+import {
+  ANCHOR_EDIT_GRID_BEATS,
+  editAnchorInPhrase,
+  type AnchorEditPatch,
+  type AnchorEditResult,
+} from "./anchor-phrase-edit";
+import { DEMO_ANCHOR_PHRASE, renderAnchorPhrase, renderDemoAnchorPhrase } from "./anchor-phrase-render";
 import type {
   CandidateCapOptions,
   Candidate,
@@ -206,6 +212,12 @@ let melodyDevelopmentMode: MelodyDevelopmentMode = "repaired";
 let formVariantId: FormVariantId = DEFAULT_FORM_VARIANT_ID;
 let prosodyEnabled = false;
 let cachedProsodyMelody: PlayerPatternSource | undefined;
+let editorMelodyOverride: PlayerPatternSource | undefined;
+let isAnchorPhraseEditMode = false;
+let workingAnchorPhrase: AnchorPhrase | undefined;
+let selectedAnchorRef: AnchorPhraseEditorAnchorRef | undefined;
+let anchorPhraseEditorDrag: AnchorPhraseEditorDragState | undefined;
+let anchorPhraseEditorMessage = "Read-only prosody phrase.";
 let candidateMelodyAudition: {
   branchId?: string;
   candidate?: StoredCandidate;
@@ -553,7 +565,7 @@ ${timingFeelControls}
       <section
         class="phrase-editor-overlay"
         data-testid="anchor-phrase-editor-overlay"
-        aria-label="Read-only melody phrase editor"
+        aria-label="Melody phrase editor"
         hidden
       >
         <div class="phrase-editor-backdrop" data-testid="anchor-phrase-editor-backdrop"></div>
@@ -588,8 +600,35 @@ ${timingFeelControls}
             <span data-testid="anchor-phrase-editor-song">Lantern</span>
             <span data-testid="anchor-phrase-editor-summary">read-only prosody phrase</span>
           </div>
+          <div class="phrase-editor__tools" aria-label="Anchor editing controls">
+            <button
+              class="phrase-editor__tool-button"
+              data-testid="anchor-phrase-editor-edit-toggle"
+              type="button"
+              aria-pressed="false"
+            >Edit anchors</button>
+            <button
+              class="phrase-editor__tool-button"
+              data-testid="anchor-phrase-editor-revert"
+              type="button"
+              disabled
+            >Revert to generated</button>
+            <span class="phrase-editor__selected" data-testid="anchor-phrase-editor-selected-anchor">No anchor selected</span>
+            <label class="phrase-editor__dynamics">
+              <span>Dynamics</span>
+              <input
+                data-testid="anchor-phrase-editor-dynamics"
+                type="range"
+                min="0"
+                max="1"
+                step="0.01"
+                value="0.7"
+                disabled
+              />
+            </label>
+          </div>
           <div class="phrase-editor__roll" data-testid="anchor-phrase-editor-roll"></div>
-          <p class="phrase-editor__note">
+          <p class="phrase-editor__note" data-testid="anchor-phrase-editor-status">
             Read-only for now. This shows the current prosody idea in anchors, connectors, and breaths.
           </p>
         </article>
@@ -963,7 +1002,14 @@ const anchorPhraseEditorClose = requireElement<HTMLButtonElement>("[data-testid=
 const anchorPhraseEditorTonal = requireElement<HTMLElement>("[data-testid='anchor-phrase-editor-tonal']");
 const anchorPhraseEditorSong = requireElement<HTMLElement>("[data-testid='anchor-phrase-editor-song']");
 const anchorPhraseEditorSummary = requireElement<HTMLElement>("[data-testid='anchor-phrase-editor-summary']");
+const anchorPhraseEditorEditToggle = requireElement<HTMLButtonElement>(
+  "[data-testid='anchor-phrase-editor-edit-toggle']",
+);
+const anchorPhraseEditorRevert = requireElement<HTMLButtonElement>("[data-testid='anchor-phrase-editor-revert']");
+const anchorPhraseEditorSelected = requireElement<HTMLElement>("[data-testid='anchor-phrase-editor-selected-anchor']");
+const anchorPhraseEditorDynamics = requireElement<HTMLInputElement>("[data-testid='anchor-phrase-editor-dynamics']");
 const anchorPhraseEditorRoll = requireElement<HTMLElement>("[data-testid='anchor-phrase-editor-roll']");
+const anchorPhraseEditorStatus = requireElement<HTMLElement>("[data-testid='anchor-phrase-editor-status']");
 const thoughtSeedList = requireElement<HTMLDivElement>("#thought-seed-list");
 const ollamaBaseUrlInput = requireElement<HTMLInputElement>("[data-testid='ollama-base-url-input']");
 const ollamaModelInput = requireElement<HTMLInputElement>("[data-testid='ollama-model-input']");
@@ -1337,6 +1383,7 @@ function openAnchorPhraseEditor(): void {
 
 function closeAnchorPhraseEditor(options: { restoreFocus?: boolean } = {}): void {
   if (!isAnchorPhraseEditorOpen) return;
+  resetAnchorPhraseEditorSession("Editor closed; generated phrase restored.", { refresh: true, render: false });
   isAnchorPhraseEditorOpen = false;
   anchorPhraseEditorOverlay.hidden = true;
   if (options.restoreFocus !== false) {
@@ -1348,19 +1395,269 @@ function getMelodyPlayerCard(): HTMLElement | null {
   return playerList.querySelector<HTMLElement>("[data-testid='player-card-melody']");
 }
 
+function canEditAnchorPhrase(): boolean {
+  return writtenEvolvingRegime !== "evolving";
+}
+
+function getAnchorPhraseForEditor(): AnchorPhrase {
+  return isAnchorPhraseEditMode && workingAnchorPhrase
+    ? cloneAnchorPhrase(workingAnchorPhrase)
+    : createCurrentProsodyAnchorPhrase();
+}
+
+function enterAnchorPhraseEditMode(): AnchorPhraseEditorState {
+  if (!canEditAnchorPhrase()) {
+    anchorPhraseEditorMessage = "Anchor editing pauses while the line is evolving.";
+    isAnchorPhraseEditMode = false;
+    workingAnchorPhrase = undefined;
+    selectedAnchorRef = undefined;
+    renderAnchorPhraseEditor();
+    return getAnchorPhraseEditorState();
+  }
+  if (!isAnchorPhraseEditMode || !workingAnchorPhrase) {
+    workingAnchorPhrase = createCurrentProsodyAnchorPhrase();
+    selectedAnchorRef = { segmentIndex: 0, anchorIndex: 0 };
+    isAnchorPhraseEditMode = true;
+    anchorPhraseEditorMessage = "Edit mode: move, retune, resize, or shape anchor dynamics.";
+    renderedAnchorPhraseEditorKey = "";
+  }
+  renderAnchorPhraseEditor();
+  return getAnchorPhraseEditorState();
+}
+
+function exitAnchorPhraseEditMode(message = "Read-only prosody phrase."): AnchorPhraseEditorState {
+  resetAnchorPhraseEditorSession(message, { refresh: true, render: true });
+  return getAnchorPhraseEditorState();
+}
+
+function editAnchorPhraseAnchor(
+  segmentIndex: number,
+  anchorIndex: number,
+  patch: AnchorEditPatch,
+): AnchorEditResult {
+  if (!isAnchorPhraseEditMode || !workingAnchorPhrase) {
+    return {
+      changed: false,
+      clamps: [],
+      errors: ["Anchor edit mode is not active"],
+      phrase: getAnchorPhraseForEditor(),
+      valid: false,
+      warnings: [],
+    };
+  }
+  if (!canEditAnchorPhrase()) {
+    return {
+      changed: false,
+      clamps: [],
+      errors: ["Anchor editing is disabled while evolving"],
+      phrase: cloneAnchorPhrase(workingAnchorPhrase),
+      valid: false,
+      warnings: [],
+    };
+  }
+  const result = editAnchorInPhrase(workingAnchorPhrase, segmentIndex, anchorIndex, patch);
+  if (!result.valid) {
+    anchorPhraseEditorMessage = `Edit rejected: ${result.errors[0] ?? "invalid anchor edit"}`;
+    renderAnchorPhraseEditor();
+    return result;
+  }
+  workingAnchorPhrase = result.phrase;
+  selectedAnchorRef = { segmentIndex, anchorIndex };
+  anchorPhraseEditorMessage = result.clamps.length > 0
+    ? `Edit applied with ${result.clamps.length} clamp${result.clamps.length === 1 ? "" : "s"}.`
+    : "Edit applied.";
+  commitAnchorPhraseEditorOverride();
+  return result;
+}
+
+function commitAnchorPhraseEditorOverride(): void {
+  if (!workingAnchorPhrase) return;
+  editorMelodyOverride = renderAnchorPhrase(workingAnchorPhrase, {
+    baseOctave: 4,
+    playerId: "melody",
+    subdivisionBeats: ANCHOR_EDIT_GRID_BEATS,
+  });
+  cachedProsodyMelody = undefined;
+  cancelSlowThinkingControllers("phrase editor override changed before the thought could land");
+  clearSlowThoughtPlayback();
+  refreshLookaheadSchedule();
+  renderedAnchorPhraseEditorKey = "";
+  renderWorld();
+}
+
+function resetAnchorPhraseEditorSession(
+  message: string,
+  options: { refresh: boolean; render: boolean },
+): void {
+  const hadOverride = Boolean(editorMelodyOverride);
+  isAnchorPhraseEditMode = false;
+  workingAnchorPhrase = undefined;
+  selectedAnchorRef = undefined;
+  editorMelodyOverride = undefined;
+  anchorPhraseEditorMessage = canEditAnchorPhrase() ? message : "Anchor editing pauses while the line is evolving.";
+  renderedAnchorPhraseEditorKey = "";
+  if (hadOverride && options.refresh) {
+    cancelSlowThinkingControllers("phrase editor override cleared before the thought could land");
+    clearSlowThoughtPlayback();
+    refreshLookaheadSchedule();
+  }
+  if (options.render) {
+    renderWorld();
+  }
+}
+
+function getAnchorPhraseEditorState(): AnchorPhraseEditorState {
+  return {
+    canEdit: canEditAnchorPhrase(),
+    editMode: isAnchorPhraseEditMode,
+    message: anchorPhraseEditorMessage,
+    overrideActive: Boolean(editorMelodyOverride),
+    ...(selectedAnchorRef ? { selectedAnchor: { ...selectedAnchorRef } } : {}),
+    ...(workingAnchorPhrase ? { workingPhrase: cloneAnchorPhrase(workingAnchorPhrase) } : {}),
+  };
+}
+
+function getAnchorPhraseEditorOverridePattern(): PlayerPatternSource | undefined {
+  return editorMelodyOverride ? clonePlayerPatternSource(editorMelodyOverride) : undefined;
+}
+
 function renderAnchorPhraseEditor(): void {
   if (!isAnchorPhraseEditorOpen) return;
-  const phrase = createCurrentProsodyAnchorPhrase();
+  if (!canEditAnchorPhrase() && isAnchorPhraseEditMode) {
+    resetAnchorPhraseEditorSession("Anchor editing pauses while the line is evolving.", {
+      refresh: true,
+      render: false,
+    });
+  }
+  const phrase = getAnchorPhraseForEditor();
   const tonalContext = world.getTonalContext();
   renderTonalContextDisplay(anchorPhraseEditorTonal, tonalContext);
   anchorPhraseEditorSong.textContent = getSongLabel(songId);
   const summary = formatAnchorPhraseSummary(phrase);
   anchorPhraseEditorSummary.textContent = summary;
-  const renderKey = `${songId}|${prosodySeedForSong(songId)}|${summary}`;
+  const canEdit = canEditAnchorPhrase();
+  anchorPhraseEditor.classList.toggle("is-editing", isAnchorPhraseEditMode);
+  anchorPhraseEditor.classList.toggle("is-edit-disabled", !canEdit);
+  anchorPhraseEditorEditToggle.disabled = !canEdit;
+  anchorPhraseEditorEditToggle.textContent = isAnchorPhraseEditMode ? "Editing anchors" : "Edit anchors";
+  anchorPhraseEditorEditToggle.setAttribute("aria-pressed", String(isAnchorPhraseEditMode));
+  anchorPhraseEditorRevert.disabled = !isAnchorPhraseEditMode && !editorMelodyOverride;
+  anchorPhraseEditorStatus.textContent = canEdit ? anchorPhraseEditorMessage : "Anchor editing pauses while the line is evolving.";
+  renderAnchorPhraseEditorSelection(phrase);
+  const renderKey = [
+    songId,
+    prosodySeedForSong(songId),
+    isAnchorPhraseEditMode ? "edit" : "read",
+    selectedAnchorRef ? `${selectedAnchorRef.segmentIndex}:${selectedAnchorRef.anchorIndex}` : "none",
+    summary,
+    JSON.stringify(phrase),
+  ].join("|");
   if (renderKey !== renderedAnchorPhraseEditorKey) {
-    anchorPhraseEditorRoll.innerHTML = renderAnchorPhraseEditorSvg(phrase);
+    anchorPhraseEditorRoll.innerHTML = renderAnchorPhraseEditorSvg(phrase, {
+      selectedAnchor: selectedAnchorRef,
+    });
     renderedAnchorPhraseEditorKey = renderKey;
   }
+}
+
+function renderAnchorPhraseEditorSelection(phrase: AnchorPhrase): void {
+  const ref = selectedAnchorRef;
+  const selected = ref
+    ? phrase.segments[ref.segmentIndex]?.anchors[ref.anchorIndex]
+    : undefined;
+  if (!isAnchorPhraseEditMode || !ref || !selected || !canEditAnchorPhrase()) {
+    anchorPhraseEditorSelected.textContent = "No anchor selected";
+    anchorPhraseEditorDynamics.disabled = true;
+    anchorPhraseEditorDynamics.value = "0.7";
+    return;
+  }
+  anchorPhraseEditorSelected.textContent = `Segment ${ref.segmentIndex + 1}, anchor ${
+    ref.anchorIndex + 1
+  } · degree ${selected.degree}, octave ${selected.octave}`;
+  anchorPhraseEditorDynamics.disabled = false;
+  anchorPhraseEditorDynamics.value = selected.dynamics.toFixed(2);
+}
+
+function selectAnchorPhraseEditorAnchor(ref: AnchorPhraseEditorAnchorRef): void {
+  if (!isAnchorPhraseEditMode || !workingAnchorPhrase) return;
+  selectedAnchorRef = { ...ref };
+  anchorPhraseEditorMessage = `Selected segment ${ref.segmentIndex + 1}, anchor ${ref.anchorIndex + 1}.`;
+  renderedAnchorPhraseEditorKey = "";
+  renderAnchorPhraseEditor();
+}
+
+function handleAnchorPhraseEditorPointerDown(event: PointerEvent): void {
+  if (!isAnchorPhraseEditMode || !workingAnchorPhrase || !canEditAnchorPhrase()) return;
+  const target = event.target instanceof Element
+    ? event.target.closest<SVGGElement>("[data-testid='anchor-phrase-editor-anchor']")
+    : null;
+  if (!target) return;
+  const segmentIndex = Number(target.dataset.segmentIndex);
+  const anchorIndex = Number(target.dataset.anchorIndex);
+  if (!Number.isInteger(segmentIndex) || !Number.isInteger(anchorIndex)) return;
+  selectedAnchorRef = { segmentIndex, anchorIndex };
+  const rect = target.querySelector("rect")?.getBoundingClientRect();
+  const mode = rect && event.clientX >= rect.right - 10 ? "resize" : "move";
+  anchorPhraseEditorDrag = { segmentIndex, anchorIndex, mode };
+  anchorPhraseEditorRoll.setPointerCapture(event.pointerId);
+  event.preventDefault();
+  applyAnchorPhraseEditorPointerEdit(event, anchorPhraseEditorDrag);
+}
+
+function handleAnchorPhraseEditorPointerMove(event: PointerEvent): void {
+  if (!anchorPhraseEditorDrag) return;
+  event.preventDefault();
+  applyAnchorPhraseEditorPointerEdit(event, anchorPhraseEditorDrag);
+}
+
+function handleAnchorPhraseEditorPointerUp(event: PointerEvent): void {
+  if (!anchorPhraseEditorDrag) return;
+  anchorPhraseEditorDrag = undefined;
+  if (anchorPhraseEditorRoll.hasPointerCapture(event.pointerId)) {
+    anchorPhraseEditorRoll.releasePointerCapture(event.pointerId);
+  }
+}
+
+function applyAnchorPhraseEditorPointerEdit(event: PointerEvent, drag: AnchorPhraseEditorDragState): void {
+  if (!workingAnchorPhrase) return;
+  const anchor = workingAnchorPhrase.segments[drag.segmentIndex]?.anchors[drag.anchorIndex];
+  if (!anchor) return;
+  const point = getAnchorPhraseEditorPointerValue(event, workingAnchorPhrase);
+  if (!point) return;
+  if (drag.mode === "resize") {
+    editAnchorPhraseAnchor(drag.segmentIndex, drag.anchorIndex, {
+      durationBeats: point.beat - anchor.startBeat,
+    });
+    return;
+  }
+  editAnchorPhraseAnchor(drag.segmentIndex, drag.anchorIndex, {
+    degree: point.degree,
+    octave: point.octave,
+    startBeat: point.beat,
+  });
+}
+
+function getAnchorPhraseEditorPointerValue(
+  event: PointerEvent,
+  phrase: AnchorPhrase,
+): { beat: number; degree: number; octave: number } | undefined {
+  const svg = anchorPhraseEditorRoll.querySelector<SVGSVGElement>("[data-testid='anchor-phrase-editor-svg']");
+  if (!svg) return undefined;
+  const rect = svg.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) return undefined;
+  const layout = createAnchorPhraseEditorLayout(phrase);
+  const viewX = ((event.clientX - rect.left) / rect.width) * layout.width;
+  const viewY = ((event.clientY - rect.top) / rect.height) * layout.height;
+  const beatProgress = (viewX - layout.padding.left) / layout.plotWidth;
+  const beat = clamp(beatProgress, 0, 1) * layout.phraseBeats;
+  const pitchProgress = (viewY - layout.padding.top) / layout.plotHeight;
+  const pitchValue = Math.round(layout.maxPitch - clamp(pitchProgress, 0, 1) * (layout.maxPitch - layout.minPitch));
+  const degreeZero = ((pitchValue % 7) + 7) % 7;
+  return {
+    beat,
+    degree: degreeZero + 1,
+    octave: Math.floor(pitchValue / 7),
+  };
 }
 
 function createCurrentProsodyAnchorPhrase(options?: { seed?: number; baseOctave?: number; bars?: number }): AnchorPhrase {
@@ -1369,6 +1666,15 @@ function createCurrentProsodyAnchorPhrase(options?: { seed?: number; baseOctave?
     baseOctave: options?.baseOctave ?? 4,
     bars: options?.bars ?? 4,
   });
+}
+
+function cloneAnchorPhrase(phrase: AnchorPhrase): AnchorPhrase {
+  return {
+    segments: phrase.segments.map((segment) => ({
+      anchors: segment.anchors.map((anchor) => ({ ...anchor })),
+      connectors: segment.connectors.map((connector) => ({ ...connector })),
+    })),
+  };
 }
 
 function formatAnchorPhraseSummary(phrase: AnchorPhrase): string {
@@ -1384,19 +1690,20 @@ function formatAnchorPhraseSummary(phrase: AnchorPhrase): string {
   ].join(" · ");
 }
 
-function renderAnchorPhraseEditorSvg(phrase: AnchorPhrase): string {
-  const width = 960;
-  const height = 420;
-  const padding = { top: 34, right: 28, bottom: 46, left: 58 };
-  const plotWidth = width - padding.left - padding.right;
-  const plotHeight = height - padding.top - padding.bottom;
-  const phraseBeats = Math.max(4, Math.ceil(anchorPhraseEndBeat(phrase)));
-  const anchors = phrase.segments.flatMap((segment) => [...segment.anchors]);
-  const pitchValues = anchors.length > 0 ? anchors.map(anchorPitchValue) : [4 * 7];
-  const rawMinPitch = Math.min(...pitchValues);
-  const rawMaxPitch = Math.max(...pitchValues);
-  const minPitch = rawMinPitch - 1;
-  const maxPitch = Math.max(rawMaxPitch + 1, minPitch + 6);
+function renderAnchorPhraseEditorSvg(
+  phrase: AnchorPhrase,
+  options: { selectedAnchor?: AnchorPhraseEditorAnchorRef } = {},
+): string {
+  const {
+    height,
+    maxPitch,
+    minPitch,
+    padding,
+    phraseBeats,
+    plotHeight,
+    plotWidth,
+    width,
+  } = createAnchorPhraseEditorLayout(phrase);
   const xForBeat = (beat: number): number => padding.left + (beat / phraseBeats) * plotWidth;
   const yForAnchor = (anchor: Anchor): number =>
     padding.top + ((maxPitch - anchorPitchValue(anchor)) / Math.max(1, maxPitch - minPitch)) * plotHeight;
@@ -1420,8 +1727,15 @@ function renderAnchorPhraseEditorSvg(phrase: AnchorPhrase): string {
   const connectorPaths = phrase.segments.map((segment) =>
     renderAnchorPhraseSegmentConnectors(segment, xForBeat, yForAnchor)
   ).join("");
-  const anchorRects = phrase.segments.map((segment) =>
-    segment.anchors.map((anchor) => renderAnchorRect(anchor, xForBeat, yForAnchor)).join("")
+  const anchorRects = phrase.segments.map((segment, segmentIndex) =>
+    segment.anchors.map((anchor, anchorIndex) =>
+      renderAnchorRect(anchor, xForBeat, yForAnchor, {
+        anchorIndex,
+        selected: options.selectedAnchor?.segmentIndex === segmentIndex &&
+          options.selectedAnchor.anchorIndex === anchorIndex,
+        segmentIndex,
+      })
+    ).join("")
   ).join("");
 
   return `
@@ -1447,6 +1761,31 @@ function renderAnchorPhraseEditorSvg(phrase: AnchorPhrase): string {
       ${anchorRects}
     </svg>
   `;
+}
+
+function createAnchorPhraseEditorLayout(phrase: AnchorPhrase): AnchorPhraseEditorLayout {
+  const width = 960;
+  const height = 420;
+  const padding = { top: 34, right: 28, bottom: 46, left: 58 };
+  const plotWidth = width - padding.left - padding.right;
+  const plotHeight = height - padding.top - padding.bottom;
+  const phraseBeats = Math.max(4, Math.ceil(anchorPhraseEndBeat(phrase)));
+  const anchors = phrase.segments.flatMap((segment) => [...segment.anchors]);
+  const pitchValues = anchors.length > 0 ? anchors.map(anchorPitchValue) : [4 * 7];
+  const rawMinPitch = Math.min(...pitchValues);
+  const rawMaxPitch = Math.max(...pitchValues);
+  const minPitch = rawMinPitch - 1;
+  const maxPitch = Math.max(rawMaxPitch + 1, minPitch + 6);
+  return {
+    height,
+    maxPitch,
+    minPitch,
+    padding,
+    phraseBeats,
+    plotHeight,
+    plotWidth,
+    width,
+  };
 }
 
 function renderAnchorPhraseSegmentConnectors(
@@ -1490,13 +1829,22 @@ function renderAnchorRect(
   anchor: Anchor,
   xForBeat: (beat: number) => number,
   yForAnchor: (anchor: Anchor) => number,
+  options: { anchorIndex: number; segmentIndex: number; selected: boolean },
 ): string {
   const x = xForBeat(anchor.startBeat);
   const y = yForAnchor(anchor);
   const width = Math.max(12, xForBeat(anchor.startBeat + anchor.durationBeats) - x);
   const opacity = 0.44 + clamp(anchor.dynamics, 0, 1) * 0.52;
   return `
-    <g data-testid="anchor-phrase-editor-anchor" class="phrase-editor-svg__anchor">
+    <g
+      data-testid="anchor-phrase-editor-anchor"
+      data-segment-index="${options.segmentIndex}"
+      data-anchor-index="${options.anchorIndex}"
+      class="phrase-editor-svg__anchor${options.selected ? " is-selected" : ""}"
+      tabindex="${isAnchorPhraseEditMode ? "0" : "-1"}"
+      role="button"
+      aria-label="Anchor ${options.anchorIndex + 1} in segment ${options.segmentIndex + 1}"
+    >
       <rect
         x="${roundSvg(x)}"
         y="${roundSvg(y - 12)}"
@@ -2392,11 +2740,43 @@ interface WrittenEvolvingControlState {
   };
 }
 
+interface AnchorPhraseEditorAnchorRef {
+  anchorIndex: number;
+  segmentIndex: number;
+}
+
+interface AnchorPhraseEditorDragState extends AnchorPhraseEditorAnchorRef {
+  mode: "move" | "resize";
+}
+
+interface AnchorPhraseEditorState {
+  canEdit: boolean;
+  editMode: boolean;
+  message: string;
+  overrideActive: boolean;
+  selectedAnchor?: AnchorPhraseEditorAnchorRef;
+  workingPhrase?: AnchorPhrase;
+}
+
+interface AnchorPhraseEditorLayout {
+  height: number;
+  maxPitch: number;
+  minPitch: number;
+  padding: { bottom: number; left: number; right: number; top: number };
+  phraseBeats: number;
+  plotHeight: number;
+  plotWidth: number;
+  width: number;
+}
+
 function getCurrentFormVariant(): FormVariant {
   return getFormVariant(formVariantId);
 }
 
 function getActiveMelodyPhrasing(): PlayerPatternSource | undefined {
+  if (editorMelodyOverride) {
+    return clonePlayerPatternSource(editorMelodyOverride);
+  }
   if (candidateMelodyAudition.pattern) {
     return clonePlayerPatternSource(candidateMelodyAudition.pattern);
   }
@@ -2757,6 +3137,10 @@ function applyWrittenEvolvingDialValue(value: number): WrittenEvolvingControlSta
   writtenEvolvingRegime = nextRegime;
 
   if (nextRegime === "evolving") {
+    resetAnchorPhraseEditorSession("Anchor editing pauses while the line is evolving.", {
+      refresh: true,
+      render: true,
+    });
     if (!prosodyEnabled) {
       setProsodyEnabled(true);
     }
@@ -3780,6 +4164,7 @@ function applySongId(nextSongId: SongId): SongId {
   const previousSongId = songId;
   if (previousSongId === nextSongId) return songId;
   songId = nextSongId;
+  resetAnchorPhraseEditorSession("Song changed; generated phrase restored.", { refresh: false, render: false });
   melodyRepairFeedbackMessage = "No feedback yet.";
   invalidateMelodyRepairCache();
   ollamaProposalTextTest = createInitialOllamaProposalTextTest(ollamaConfig);
@@ -3958,6 +4343,42 @@ anchorPhraseEditorClose.addEventListener("click", () => {
 anchorPhraseEditorBackdrop.addEventListener("click", () => {
   closeAnchorPhraseEditor();
 });
+
+anchorPhraseEditorEditToggle.addEventListener("click", () => {
+  if (isAnchorPhraseEditMode) {
+    exitAnchorPhraseEditMode("Edit mode exited; generated phrase restored.");
+    return;
+  }
+  enterAnchorPhraseEditMode();
+});
+
+anchorPhraseEditorRevert.addEventListener("click", () => {
+  exitAnchorPhraseEditMode("Reverted to generated prosody phrase.");
+});
+
+anchorPhraseEditorDynamics.addEventListener("input", () => {
+  if (!selectedAnchorRef) return;
+  editAnchorPhraseAnchor(selectedAnchorRef.segmentIndex, selectedAnchorRef.anchorIndex, {
+    dynamics: Number(anchorPhraseEditorDynamics.value),
+  });
+});
+
+anchorPhraseEditorRoll.addEventListener("click", (event) => {
+  if (!isAnchorPhraseEditMode || anchorPhraseEditorDrag) return;
+  const target = event.target instanceof Element
+    ? event.target.closest<SVGGElement>("[data-testid='anchor-phrase-editor-anchor']")
+    : null;
+  if (!target) return;
+  const segmentIndex = Number(target.dataset.segmentIndex);
+  const anchorIndex = Number(target.dataset.anchorIndex);
+  if (!Number.isInteger(segmentIndex) || !Number.isInteger(anchorIndex)) return;
+  selectAnchorPhraseEditorAnchor({ segmentIndex, anchorIndex });
+});
+
+anchorPhraseEditorRoll.addEventListener("pointerdown", handleAnchorPhraseEditorPointerDown);
+anchorPhraseEditorRoll.addEventListener("pointermove", handleAnchorPhraseEditorPointerMove);
+anchorPhraseEditorRoll.addEventListener("pointerup", handleAnchorPhraseEditorPointerUp);
+anchorPhraseEditorRoll.addEventListener("pointercancel", handleAnchorPhraseEditorPointerUp);
 
 button.addEventListener("click", async () => {
   button.disabled = true;
@@ -4223,6 +4644,15 @@ declare global {
       getDemoPhrase(): AnchorPhrase;
       renderDemo(options?: { baseOctave?: number; playerId?: string; subdivisionBeats?: number }): PlayerPatternSource;
     };
+    phraseEditor?: {
+      editAnchor(segmentIndex: number, anchorIndex: number, patch: AnchorEditPatch): AnchorEditResult;
+      enterEditMode(): AnchorPhraseEditorState;
+      exitEditMode(): AnchorPhraseEditorState;
+      getOverridePattern(): PlayerPatternSource | undefined;
+      getState(): AnchorPhraseEditorState;
+      getWorkingPhrase(): AnchorPhrase | undefined;
+      revert(): AnchorPhraseEditorState;
+    };
     persistence?: {
       getState(): PersistenceClientState;
       getMusicalEventBufferState(): MusicalEventRecordBufferState;
@@ -4454,6 +4884,16 @@ window.anchorPhrase = {
   renderDemo: (options) => renderDemoAnchorPhrase(options),
 };
 
+window.phraseEditor = {
+  editAnchor: (segmentIndex, anchorIndex, patch) => editAnchorPhraseAnchor(segmentIndex, anchorIndex, patch),
+  enterEditMode: () => enterAnchorPhraseEditMode(),
+  exitEditMode: () => exitAnchorPhraseEditMode("Edit mode exited; generated phrase restored."),
+  getOverridePattern: () => getAnchorPhraseEditorOverridePattern(),
+  getState: () => getAnchorPhraseEditorState(),
+  getWorkingPhrase: () => workingAnchorPhrase ? cloneAnchorPhrase(workingAnchorPhrase) : undefined,
+  revert: () => exitAnchorPhraseEditMode("Reverted to generated prosody phrase."),
+};
+
 window.persistence = {
   getState: () => persistence.getState(),
   getMusicalEventBufferState: () => musicalEventRecordBuffer.getState(),
@@ -4529,6 +4969,7 @@ if (import.meta.hot) {
     window.melodyRepair = undefined;
     window.formScore = undefined;
     window.anchorPhrase = undefined;
+    window.phraseEditor = undefined;
     window.persistence = undefined;
     window.ollama = undefined;
     window.terrarium = undefined;
