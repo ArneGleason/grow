@@ -535,6 +535,22 @@ button {
   accent-color: #f6cc6b;
 }
 
+.phrase-editor__structure-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px;
+  border: 1px solid rgba(174, 183, 165, 0.14);
+  border-radius: 8px;
+  background: rgba(238, 243, 229, 0.04);
+}
+
+.phrase-editor__structure-tools .phrase-editor__tool-button {
+  min-height: 28px;
+  padding-inline: 9px;
+  font-size: 0.76rem;
+}
+
 .phrase-editor__connector-tools {
   display: grid;
   grid-template-columns: minmax(230px, auto) 1fr auto;
@@ -1183,6 +1199,10 @@ button {
 
   .phrase-editor__dynamics {
     margin-left: 0;
+  }
+
+  .phrase-editor__structure-tools {
+    flex-wrap: wrap;
   }
 
   .phrase-editor__connector-tools,

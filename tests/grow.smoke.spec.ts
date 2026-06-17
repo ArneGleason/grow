@@ -671,7 +671,7 @@ async function getPhraseEditorState(page: Page): Promise<{
   selectedConnector?: { connectorIndex: number; segmentIndex: number };
   workingPhrase?: {
     segments: {
-      anchors: { degree: number; dynamics: number; octave: number; startBeat: number }[];
+      anchors: { degree: number; durationBeats: number; dynamics: number; octave: number; startBeat: number }[];
       connectors: { density: number; kernel: string; reach: number }[];
     }[];
   };
@@ -688,7 +688,7 @@ async function getPhraseEditorState(page: Page): Promise<{
           selectedConnector?: { connectorIndex: number; segmentIndex: number };
           workingPhrase?: {
             segments: {
-              anchors: { degree: number; dynamics: number; octave: number; startBeat: number }[];
+              anchors: { degree: number; durationBeats: number; dynamics: number; octave: number; startBeat: number }[];
               connectors: { density: number; kernel: string; reach: number }[];
             }[];
           };
@@ -1917,6 +1917,154 @@ test("anchor phrase editor edits connector kernels and knobs into the audible ov
   });
   expect(disabledConnectorEdit?.valid).toBe(false);
   expect(disabledConnectorEdit?.errors[0]).toContain("edit mode is not active");
+  await setWrittenEvolvingDial(page, 0);
+});
+
+test("anchor phrase editor performs structural edits without breaking phrase invariants", async ({ page }) => {
+  test.setTimeout(25_000);
+  await page.goto("/");
+
+  await openInspectDrawer(page);
+  await page.getByTestId("player-card-melody").click();
+  await page.getByTestId("anchor-phrase-editor-edit-toggle").click();
+  await expect(page.getByTestId("anchor-phrase-editor-edit-toggle")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("anchor-phrase-editor-add-anchor")).toBeEnabled();
+  await expect(page.getByTestId("anchor-phrase-editor-split-segment")).toBeDisabled();
+
+  const invariantSummary = (phrase: NonNullable<Awaited<ReturnType<typeof getPhraseEditorState>>["workingPhrase"]>) => ({
+    anchorCount: phrase.segments.reduce((sum, segment) => sum + segment.anchors.length, 0),
+    connectorCount: phrase.segments.reduce((sum, segment) => sum + segment.connectors.length, 0),
+    breathCount: phrase.segments.slice(0, -1).filter((segment, index) => {
+      const currentEnd = Math.max(...segment.anchors.map((anchor) => anchor.startBeat + anchor.durationBeats));
+      const nextStart = phrase.segments[index + 1].anchors[0].startBeat;
+      return nextStart > currentEnd;
+    }).length,
+    connectorCountsValid: phrase.segments.every((segment) => segment.connectors.length === segment.anchors.length - 1),
+    ordered: phrase.segments.every((segment) =>
+      segment.anchors.every((anchor, index) => {
+        const next = segment.anchors[index + 1];
+        return !next || anchor.startBeat + anchor.durationBeats <= next.startBeat;
+      })
+    ),
+  });
+
+  const initialState = await getPhraseEditorState(page);
+  const initialPhrase = initialState.workingPhrase;
+  expect(initialPhrase).toBeTruthy();
+  const initial = invariantSummary(initialPhrase!);
+
+  const added = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      phraseEditor?: {
+        addAnchor(segmentIndex: number, atBeat: number, options: { degree: number; octave: number }): {
+          changed: boolean;
+          phrase: { segments: { anchors: unknown[]; connectors: unknown[] }[] };
+          valid: boolean;
+        };
+      };
+    };
+    return appWindow.phraseEditor?.addAnchor(0, 4, { degree: 2, octave: 4 });
+  });
+  expect(added?.valid).toBe(true);
+  expect(added?.changed).toBe(true);
+  let state = await getPhraseEditorState(page);
+  let summary = invariantSummary(state.workingPhrase!);
+  expect(summary.anchorCount).toBe(initial.anchorCount + 1);
+  expect(summary.connectorCount).toBe(initial.connectorCount + 1);
+  expect(summary.connectorCountsValid).toBe(true);
+  expect(summary.ordered).toBe(true);
+  expect(state.selectedAnchor?.segmentIndex).toBe(0);
+  expect(state.workingPhrase?.segments[0].anchors[state.selectedAnchor?.anchorIndex ?? -1]?.startBeat).toBeGreaterThanOrEqual(4);
+  expect(await getActiveProsodyPattern(page)).toEqual(await getPhraseEditorOverridePattern(page));
+
+  const split = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      phraseEditor?: {
+        splitSegment(segmentIndex: number, anchorIndex: number): {
+          changed: boolean;
+          phrase: { segments: unknown[] };
+          valid: boolean;
+        };
+      };
+    };
+    return appWindow.phraseEditor?.splitSegment(0, 1);
+  });
+  expect(split?.valid).toBe(true);
+  expect(split?.changed).toBe(true);
+  state = await getPhraseEditorState(page);
+  summary = invariantSummary(state.workingPhrase!);
+  expect(state.workingPhrase?.segments).toHaveLength(initialPhrase!.segments.length + 1);
+  expect(summary.breathCount).toBe(initial.breathCount + 1);
+  expect(summary.connectorCountsValid).toBe(true);
+  expect(summary.ordered).toBe(true);
+  await expect(page.getByTestId("anchor-phrase-editor-breath")).toHaveCount(initial.breathCount + 1);
+  expect(state.selectedAnchor).toEqual({ segmentIndex: 1, anchorIndex: 0 });
+
+  const joined = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      phraseEditor?: {
+        joinSegments(segmentIndex: number): {
+          changed: boolean;
+          phrase: { segments: unknown[] };
+          valid: boolean;
+        };
+      };
+    };
+    return appWindow.phraseEditor?.joinSegments(0);
+  });
+  expect(joined?.valid).toBe(true);
+  expect(joined?.changed).toBe(true);
+  state = await getPhraseEditorState(page);
+  summary = invariantSummary(state.workingPhrase!);
+  expect(state.workingPhrase?.segments).toHaveLength(initialPhrase!.segments.length);
+  expect(summary.breathCount).toBe(initial.breathCount);
+  expect(summary.connectorCountsValid).toBe(true);
+  expect(summary.ordered).toBe(true);
+  await expect(page.getByTestId("anchor-phrase-editor-breath")).toHaveCount(initial.breathCount);
+  expect(state.selectedConnector).toEqual({ segmentIndex: 0, connectorIndex: 0 });
+
+  const removed = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      phraseEditor?: {
+        removeAnchor(segmentIndex: number, anchorIndex: number): {
+          changed: boolean;
+          phrase: { segments: { anchors: unknown[]; connectors: unknown[] }[] };
+          valid: boolean;
+        };
+      };
+    };
+    return appWindow.phraseEditor?.removeAnchor(0, 1);
+  });
+  expect(removed?.valid).toBe(true);
+  expect(removed?.changed).toBe(true);
+  state = await getPhraseEditorState(page);
+  summary = invariantSummary(state.workingPhrase!);
+  expect(summary.anchorCount).toBe(initial.anchorCount);
+  expect(summary.connectorCount).toBe(initial.connectorCount);
+  expect(summary.connectorCountsValid).toBe(true);
+  expect(summary.ordered).toBe(true);
+  const override = await getPhraseEditorOverridePattern(page);
+  expect(override?.events.every((event) => event === null || Number.isInteger(event.scaleDegree))).toBe(true);
+
+  await page.getByTestId("anchor-phrase-editor-revert").click();
+  expect((await getPhraseEditorState(page)).overrideActive).toBe(false);
+  expect(await getActiveProsodyPattern(page)).toBeUndefined();
+
+  await setWrittenEvolvingDial(page, 0.85);
+  await expect(page.getByTestId("written-evolving-regime")).toHaveText("evolving");
+  await expect(page.getByTestId("anchor-phrase-editor-edit-toggle")).toBeDisabled();
+  const disabledAdd = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      phraseEditor?: {
+        addAnchor(segmentIndex: number, atBeat: number): { errors: string[]; valid: boolean };
+        enterEditMode(): unknown;
+      };
+    };
+    appWindow.phraseEditor?.enterEditMode();
+    return appWindow.phraseEditor?.addAnchor(0, 1.5);
+  });
+  expect(disabledAdd?.valid).toBe(false);
+  expect(disabledAdd?.errors[0]).toContain("edit mode is not active");
   await setWrittenEvolvingDial(page, 0);
 });
 

@@ -1,6 +1,13 @@
 import { expect, test } from "@playwright/test";
-import { ANCHOR_PHRASE_CAPS, type AnchorPhrase } from "../src/anchor-phrase";
-import { editAnchorInPhrase, editConnectorInPhrase } from "../src/anchor-phrase-edit";
+import { ANCHOR_PHRASE_CAPS, type AnchorPhrase, validateAnchorPhrase } from "../src/anchor-phrase";
+import {
+  addAnchorToPhrase,
+  editAnchorInPhrase,
+  editConnectorInPhrase,
+  joinSegmentsInPhrase,
+  removeAnchorFromPhrase,
+  splitSegmentInPhrase,
+} from "../src/anchor-phrase-edit";
 
 const BASE_PHRASE: AnchorPhrase = {
   segments: [
@@ -191,5 +198,131 @@ test.describe("anchor phrase anchor edits", () => {
     expect(result.valid).toBe(true);
     expect(result.changed).toBe(false);
     expect(result.phrase).toEqual(BASE_PHRASE);
+  });
+
+  test("adds an anchor into available space and maintains connector counts", () => {
+    const result = addAnchorToPhrase(BASE_PHRASE, 0, 4.12, {
+      dynamics: 0.5,
+    });
+
+    expect(result.valid).toBe(true);
+    expect(result.changed).toBe(true);
+    expect(validateAnchorPhrase(result.phrase).valid).toBe(true);
+    expect(result.phrase.segments[0].anchors).toHaveLength(3);
+    expect(result.phrase.segments[0].connectors).toHaveLength(2);
+    const inserted = result.phrase.segments[0].anchors[2];
+    expect(inserted.startBeat).toBe(4);
+    expect(inserted.startBeat + inserted.durationBeats).toBeLessThanOrEqual(
+      result.phrase.segments[1].anchors[0].startBeat,
+    );
+    expect(result.clamps).toEqual(expect.arrayContaining([
+      "segments.0.anchors.new.startBeat snapped to 4",
+    ]));
+  });
+
+  test("removes an anchor and one connector while keeping the segment valid", () => {
+    const added = addAnchorToPhrase(BASE_PHRASE, 0, 4);
+    const result = removeAnchorFromPhrase(added.phrase, 0, 1);
+
+    expect(result.valid).toBe(true);
+    expect(result.changed).toBe(true);
+    expect(validateAnchorPhrase(result.phrase).valid).toBe(true);
+    expect(result.phrase.segments[0].anchors).toHaveLength(2);
+    expect(result.phrase.segments[0].connectors).toHaveLength(1);
+    expect(result.phrase.segments[0].anchors.map((anchor) => anchor.startBeat)).toEqual([0, 4]);
+  });
+
+  test("removes an empty segment when its last anchor is removed", () => {
+    const split = splitSegmentInPhrase(BASE_PHRASE, 0, 1);
+    const result = removeAnchorFromPhrase(split.phrase, 1, 0);
+
+    expect(result.valid).toBe(true);
+    expect(result.phrase.segments).toHaveLength(BASE_PHRASE.segments.length);
+    expect(validateAnchorPhrase(result.phrase).valid).toBe(true);
+  });
+
+  test("rejects removing the phrase's only anchor", () => {
+    const phrase: AnchorPhrase = {
+      segments: [
+        {
+          anchors: [{ degree: 1, octave: 4, startBeat: 0, durationBeats: 1, dynamics: 0.7 }],
+          connectors: [],
+        },
+      ],
+    };
+    const result = removeAnchorFromPhrase(phrase, 0, 0);
+
+    expect(result.valid).toBe(false);
+    expect(result.changed).toBe(false);
+    expect(result.errors).toContain("AnchorPhrase must keep at least one anchor");
+    expect(result.phrase).toEqual(phrase);
+  });
+
+  test("splits a segment, drops the crossing connector, and opens a breath", () => {
+    const result = splitSegmentInPhrase(BASE_PHRASE, 0, 1);
+
+    expect(result.valid).toBe(true);
+    expect(result.changed).toBe(true);
+    expect(validateAnchorPhrase(result.phrase).valid).toBe(true);
+    expect(result.phrase.segments).toHaveLength(3);
+    expect(result.phrase.segments[0].anchors).toHaveLength(1);
+    expect(result.phrase.segments[0].connectors).toHaveLength(0);
+    expect(result.phrase.segments[1].anchors).toHaveLength(1);
+    expect(result.phrase.segments[1].connectors).toHaveLength(0);
+    expect(result.phrase.segments[1].anchors[0].startBeat).toBe(2.5);
+    const firstEnd = result.phrase.segments[0].anchors[0].startBeat +
+      result.phrase.segments[0].anchors[0].durationBeats;
+    expect(result.phrase.segments[1].anchors[0].startBeat).toBeGreaterThan(firstEnd);
+  });
+
+  test("joins adjacent segments with one bridging connector", () => {
+    const result = joinSegmentsInPhrase(BASE_PHRASE, 0);
+
+    expect(result.valid).toBe(true);
+    expect(result.changed).toBe(true);
+    expect(validateAnchorPhrase(result.phrase).valid).toBe(true);
+    expect(result.phrase.segments).toHaveLength(1);
+    expect(result.phrase.segments[0].anchors).toHaveLength(4);
+    expect(result.phrase.segments[0].connectors).toHaveLength(3);
+    expect(result.phrase.segments[0].connectors[1].kernel).toBe("fill");
+  });
+
+  test("rejects structural edits that would break phrase caps or boundaries", () => {
+    const badSplit = splitSegmentInPhrase(BASE_PHRASE, 0, 0);
+    expect(badSplit.valid).toBe(false);
+    expect(badSplit.changed).toBe(false);
+    expect(badSplit.phrase).toEqual(BASE_PHRASE);
+
+    const badJoin = joinSegmentsInPhrase(BASE_PHRASE, 1);
+    expect(badJoin.valid).toBe(false);
+    expect(badJoin.changed).toBe(false);
+    expect(badJoin.phrase).toEqual(BASE_PHRASE);
+
+    const fullPhrase: AnchorPhrase = {
+      segments: [
+        {
+          anchors: Array.from({ length: ANCHOR_PHRASE_CAPS.maxAnchors }, (_, index) => ({
+            degree: (index % 7) + 1,
+            dynamics: 0.7,
+            durationBeats: 0.25,
+            octave: 4,
+            startBeat: index * 0.5,
+          })),
+          connectors: Array.from({ length: ANCHOR_PHRASE_CAPS.maxAnchors - 1 }, () => ({
+            kernel: "fill" as const,
+            reach: 0.5,
+            density: 0.5,
+            bias: 0,
+            pull: 0.5,
+            color: 0,
+            skew: 0,
+          })),
+        },
+      ],
+    };
+    const badAdd = addAnchorToPhrase(fullPhrase, 0, 0.25);
+    expect(badAdd.valid).toBe(false);
+    expect(badAdd.changed).toBe(false);
+    expect(badAdd.phrase).toEqual(fullPhrase);
   });
 });

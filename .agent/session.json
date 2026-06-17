@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Implement Byte L3b connector kernel and knob editing",
-  "status": "l3b-connector-editing-approved-merged-local",
-  "updatedAt": "2026-06-17T17:45:00Z",
+  "lastTask": "Implement Byte L3c segment and gap structural editing",
+  "status": "l3c-structural-editing-ready-for-review",
+  "updatedAt": "2026-06-17T19:12:43Z",
   "lastHandoff": "",
-  "branch": "main",
-  "commit": "3cc5218",
+  "branch": "codex/byte-l3c-structural-editing",
+  "commit": "codex/byte-l3c-structural-editing branch HEAD; exact review sha in handoff",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte L3b is approved by Claude and fast-forwarded into local main at 3cc5218. The melody editor now has connector selection, kernel palette controls, reach/density/bias/pull/skew sliders, and a single window.phraseEditor.editConnector() mutation path through src/anchor-phrase-edit.ts. Connector edits clamp/validate without moving anchors or segment gaps, re-render through renderAnchorPhrase(), and are heard via the existing highest-precedence editorMelodyOverride; revert/close/song-change/evolving clear behavior remains inherited from L3a. Validation is green: build, unit suites, smoke 73/73, db:smoke, diff-check; npm audit still shows known Vite/esbuild advisories. Ready for L3c kickoff once main is pushed."
+    "summary": "Byte L3c is implemented on codex/byte-l3c-structural-editing. The melody editor now supports add/remove anchors and split/join segments through pure anchor-phrase-edit structural operations plus window.phraseEditor wrappers, with minimal UI buttons, Delete-to-remove, and double-click-empty-space-to-add. Structural edits preserve connector counts, ordering/non-overlap, gaps, caps, and at least one segment/anchor through normalizeAnchorPhrase; audible changes reuse editorMelodyOverride and the existing lookahead refresh path, with revert/close/song/evolving cleanup inherited from L3a/L3b. Validation is green: build, six unit suites, smoke 74/74, db:smoke, diff-check; npm audit still shows known Vite/esbuild advisories."
   }
 }

@@ -2,8 +2,13 @@ import "./style.css";
 import type { Anchor, AnchorPhrase, AnchorPhraseSegment, Connector } from "./anchor-phrase";
 import {
   ANCHOR_EDIT_GRID_BEATS,
+  addAnchorToPhrase,
   editAnchorInPhrase,
   editConnectorInPhrase,
+  joinSegmentsInPhrase,
+  removeAnchorFromPhrase,
+  splitSegmentInPhrase,
+  type AddAnchorOptions,
   type AnchorEditPatch,
   type AnchorEditResult,
   type ConnectorEditPatch,
@@ -616,6 +621,12 @@ ${timingFeelControls}
               type="button"
               disabled
             >Revert to generated</button>
+            <div class="phrase-editor__structure-tools" aria-label="Segment and anchor structure controls">
+              <button class="phrase-editor__tool-button" data-testid="anchor-phrase-editor-add-anchor" type="button" disabled>+ Anchor</button>
+              <button class="phrase-editor__tool-button" data-testid="anchor-phrase-editor-remove-anchor" type="button" disabled>Remove</button>
+              <button class="phrase-editor__tool-button" data-testid="anchor-phrase-editor-split-segment" type="button" disabled>Split here</button>
+              <button class="phrase-editor__tool-button" data-testid="anchor-phrase-editor-join-segments" type="button" disabled>Join breath</button>
+            </div>
             <span class="phrase-editor__selected" data-testid="anchor-phrase-editor-selected-anchor">No anchor selected</span>
             <label class="phrase-editor__dynamics">
               <span>Dynamics</span>
@@ -1046,6 +1057,10 @@ const anchorPhraseEditorEditToggle = requireElement<HTMLButtonElement>(
   "[data-testid='anchor-phrase-editor-edit-toggle']",
 );
 const anchorPhraseEditorRevert = requireElement<HTMLButtonElement>("[data-testid='anchor-phrase-editor-revert']");
+const anchorPhraseEditorAddAnchor = requireElement<HTMLButtonElement>("[data-testid='anchor-phrase-editor-add-anchor']");
+const anchorPhraseEditorRemoveAnchor = requireElement<HTMLButtonElement>("[data-testid='anchor-phrase-editor-remove-anchor']");
+const anchorPhraseEditorSplitSegment = requireElement<HTMLButtonElement>("[data-testid='anchor-phrase-editor-split-segment']");
+const anchorPhraseEditorJoinSegments = requireElement<HTMLButtonElement>("[data-testid='anchor-phrase-editor-join-segments']");
 const anchorPhraseEditorSelected = requireElement<HTMLElement>("[data-testid='anchor-phrase-editor-selected-anchor']");
 const anchorPhraseEditorDynamics = requireElement<HTMLInputElement>("[data-testid='anchor-phrase-editor-dynamics']");
 const anchorPhraseEditorKernelPalette = requireElement<HTMLElement>(
@@ -1563,6 +1578,119 @@ function editAnchorPhraseConnector(
   return result;
 }
 
+function addAnchorPhraseAnchor(
+  segmentIndex: number,
+  atBeat: number,
+  options: AddAnchorOptions = {},
+): AnchorEditResult {
+  const inactive = getInactiveAnchorPhraseEditorResult("Anchor edit mode is not active");
+  if (inactive) return inactive;
+  const disabled = getDisabledAnchorPhraseEditorResult("Anchor editing is disabled while evolving");
+  if (disabled) return disabled;
+  const result = addAnchorToPhrase(workingAnchorPhrase!, segmentIndex, atBeat, options);
+  if (!result.valid) {
+    anchorPhraseEditorMessage = `Add rejected: ${result.errors[0] ?? "invalid anchor add"}`;
+    renderAnchorPhraseEditor();
+    return result;
+  }
+  workingAnchorPhrase = result.phrase;
+  selectedAnchorRef = selectNearestAnchor(result.phrase, segmentIndex, atBeat);
+  selectedConnectorRef = undefined;
+  anchorPhraseEditorMessage = result.clamps.length > 0
+    ? `Anchor added with ${result.clamps.length} clamp${result.clamps.length === 1 ? "" : "s"}.`
+    : "Anchor added.";
+  commitAnchorPhraseEditorOverride();
+  return result;
+}
+
+function removeAnchorPhraseAnchor(segmentIndex: number, anchorIndex: number): AnchorEditResult {
+  const inactive = getInactiveAnchorPhraseEditorResult("Anchor edit mode is not active");
+  if (inactive) return inactive;
+  const disabled = getDisabledAnchorPhraseEditorResult("Anchor editing is disabled while evolving");
+  if (disabled) return disabled;
+  const result = removeAnchorFromPhrase(workingAnchorPhrase!, segmentIndex, anchorIndex);
+  if (!result.valid) {
+    anchorPhraseEditorMessage = `Remove rejected: ${result.errors[0] ?? "invalid anchor remove"}`;
+    renderAnchorPhraseEditor();
+    return result;
+  }
+  workingAnchorPhrase = result.phrase;
+  selectedAnchorRef = selectAnchorAfterRemoval(result.phrase, segmentIndex, anchorIndex);
+  selectedConnectorRef = undefined;
+  anchorPhraseEditorMessage = "Anchor removed.";
+  commitAnchorPhraseEditorOverride();
+  return result;
+}
+
+function splitAnchorPhraseSegment(segmentIndex: number, anchorIndex: number): AnchorEditResult {
+  const inactive = getInactiveAnchorPhraseEditorResult("Anchor edit mode is not active");
+  if (inactive) return inactive;
+  const disabled = getDisabledAnchorPhraseEditorResult("Anchor editing is disabled while evolving");
+  if (disabled) return disabled;
+  const result = splitSegmentInPhrase(workingAnchorPhrase!, segmentIndex, anchorIndex);
+  if (!result.valid) {
+    anchorPhraseEditorMessage = `Split rejected: ${result.errors[0] ?? "invalid segment split"}`;
+    renderAnchorPhraseEditor();
+    return result;
+  }
+  workingAnchorPhrase = result.phrase;
+  selectedAnchorRef = { segmentIndex: Math.min(segmentIndex + 1, result.phrase.segments.length - 1), anchorIndex: 0 };
+  selectedConnectorRef = undefined;
+  anchorPhraseEditorMessage = "Breath opened.";
+  commitAnchorPhraseEditorOverride();
+  return result;
+}
+
+function joinAnchorPhraseSegments(segmentIndex: number): AnchorEditResult {
+  const inactive = getInactiveAnchorPhraseEditorResult("Anchor edit mode is not active");
+  if (inactive) return inactive;
+  const disabled = getDisabledAnchorPhraseEditorResult("Anchor editing is disabled while evolving");
+  if (disabled) return disabled;
+  const bridgeIndex = workingAnchorPhrase?.segments[segmentIndex]?.connectors.length ?? 0;
+  const result = joinSegmentsInPhrase(workingAnchorPhrase!, segmentIndex);
+  if (!result.valid) {
+    anchorPhraseEditorMessage = `Join rejected: ${result.errors[0] ?? "invalid segment join"}`;
+    renderAnchorPhraseEditor();
+    return result;
+  }
+  workingAnchorPhrase = result.phrase;
+  selectedConnectorRef = result.phrase.segments[segmentIndex]?.connectors[bridgeIndex]
+    ? { segmentIndex, connectorIndex: bridgeIndex }
+    : undefined;
+  selectedAnchorRef = selectedConnectorRef ? undefined : selectAnchorAfterRemoval(result.phrase, segmentIndex, 0);
+  anchorPhraseEditorMessage = "Breath joined.";
+  commitAnchorPhraseEditorOverride();
+  return result;
+}
+
+function getInactiveAnchorPhraseEditorResult(message: string): AnchorEditResult | undefined {
+  if (!isAnchorPhraseEditMode || !workingAnchorPhrase) {
+    return {
+      changed: false,
+      clamps: [],
+      errors: [message],
+      phrase: getAnchorPhraseForEditor(),
+      valid: false,
+      warnings: [],
+    };
+  }
+  return undefined;
+}
+
+function getDisabledAnchorPhraseEditorResult(message: string): AnchorEditResult | undefined {
+  if (!canEditAnchorPhrase() && workingAnchorPhrase) {
+    return {
+      changed: false,
+      clamps: [],
+      errors: [message],
+      phrase: cloneAnchorPhrase(workingAnchorPhrase),
+      valid: false,
+      warnings: [],
+    };
+  }
+  return undefined;
+}
+
 function commitAnchorPhraseEditorOverride(): void {
   if (!workingAnchorPhrase) return;
   editorMelodyOverride = renderAnchorPhrase(workingAnchorPhrase, {
@@ -1667,6 +1795,8 @@ function renderAnchorPhraseEditorSelection(phrase: AnchorPhrase): void {
     ? phrase.segments[connectorRef.segmentIndex]?.connectors[connectorRef.connectorIndex]
     : undefined;
   const controlsEnabled = isAnchorPhraseEditMode && canEditAnchorPhrase();
+  const totalAnchors = countAnchorPhraseAnchors(phrase);
+  const joinSegmentIndex = getSelectedJoinSegmentIndex(phrase);
 
   if (!controlsEnabled || !anchorRef || !selectedAnchor) {
     anchorPhraseEditorSelected.textContent = "No anchor selected";
@@ -1679,6 +1809,10 @@ function renderAnchorPhraseEditorSelection(phrase: AnchorPhrase): void {
     anchorPhraseEditorDynamics.disabled = false;
     anchorPhraseEditorDynamics.value = selectedAnchor.dynamics.toFixed(2);
   }
+  anchorPhraseEditorAddAnchor.disabled = !controlsEnabled || !anchorRef || !selectedAnchor;
+  anchorPhraseEditorRemoveAnchor.disabled = !controlsEnabled || !anchorRef || !selectedAnchor || totalAnchors <= 1;
+  anchorPhraseEditorSplitSegment.disabled = !controlsEnabled || !anchorRef || !selectedAnchor || anchorRef.anchorIndex <= 0;
+  anchorPhraseEditorJoinSegments.disabled = !controlsEnabled || joinSegmentIndex === undefined;
 
   renderAnchorPhraseEditorConnectorControls(controlsEnabled ? selectedConnector : undefined);
   if (controlsEnabled && connectorRef && selectedConnector) {
@@ -1719,6 +1853,62 @@ function selectAnchorPhraseEditorConnector(ref: AnchorPhraseEditorConnectorRef):
   anchorPhraseEditorMessage = `Selected segment ${ref.segmentIndex + 1}, connector ${ref.connectorIndex + 1}.`;
   renderedAnchorPhraseEditorKey = "";
   renderAnchorPhraseEditor();
+}
+
+function countAnchorPhraseAnchors(phrase: AnchorPhrase): number {
+  return phrase.segments.reduce((sum, segment) => sum + segment.anchors.length, 0);
+}
+
+function selectNearestAnchor(
+  phrase: AnchorPhrase,
+  preferredSegmentIndex: number,
+  atBeat: number,
+): AnchorPhraseEditorAnchorRef | undefined {
+  const segmentIndex = Math.min(Math.max(0, preferredSegmentIndex), phrase.segments.length - 1);
+  const segment = phrase.segments[segmentIndex];
+  if (!segment) return selectAnchorAfterRemoval(phrase, segmentIndex, 0);
+  let nearestIndex = 0;
+  let nearestDistance = Number.POSITIVE_INFINITY;
+  for (const [index, anchor] of segment.anchors.entries()) {
+    const distance = Math.abs(anchor.startBeat - atBeat);
+    if (distance < nearestDistance) {
+      nearestDistance = distance;
+      nearestIndex = index;
+    }
+  }
+  return { anchorIndex: nearestIndex, segmentIndex };
+}
+
+function selectAnchorAfterRemoval(
+  phrase: AnchorPhrase,
+  preferredSegmentIndex: number,
+  preferredAnchorIndex: number,
+): AnchorPhraseEditorAnchorRef | undefined {
+  if (phrase.segments.length === 0) return undefined;
+  const segmentIndex = Math.min(Math.max(0, preferredSegmentIndex), phrase.segments.length - 1);
+  const segment = phrase.segments[segmentIndex];
+  if (!segment || segment.anchors.length === 0) return undefined;
+  return {
+    anchorIndex: Math.min(Math.max(0, preferredAnchorIndex), segment.anchors.length - 1),
+    segmentIndex,
+  };
+}
+
+function getSelectedJoinSegmentIndex(phrase: AnchorPhrase): number | undefined {
+  const segmentIndex = selectedAnchorRef?.segmentIndex ?? selectedConnectorRef?.segmentIndex;
+  if (segmentIndex === undefined) return undefined;
+  return phrase.segments[segmentIndex + 1] ? segmentIndex : undefined;
+}
+
+function findAnchorPhraseSegmentIndexForBeat(phrase: AnchorPhrase, beat: number): number {
+  for (let index = 0; index < phrase.segments.length; index += 1) {
+    const segment = phrase.segments[index];
+    const next = phrase.segments[index + 1];
+    const segmentStart = segment?.anchors[0]?.startBeat ?? 0;
+    const nextStart = next?.anchors[0]?.startBeat ?? Number.POSITIVE_INFINITY;
+    if (beat >= segmentStart && beat < nextStart) return index;
+  }
+  return Math.max(0, phrase.segments.length - 1);
 }
 
 function isConnectorKnob(value: string): value is "bias" | "density" | "pull" | "reach" | "skew" {
@@ -1795,7 +1985,7 @@ function applyAnchorPhraseEditorPointerEdit(event: PointerEvent, drag: AnchorPhr
 }
 
 function getAnchorPhraseEditorPointerValue(
-  event: PointerEvent,
+  event: MouseEvent | PointerEvent,
   phrase: AnchorPhrase,
 ): { beat: number; degree: number; octave: number } | undefined {
   const svg = anchorPhraseEditorRoll.querySelector<SVGSVGElement>("[data-testid='anchor-phrase-editor-svg']");
@@ -4315,6 +4505,16 @@ function handleGlobalKeydown(event: KeyboardEvent): void {
   if (event.key === "Escape" && isAnchorPhraseEditorOpen) {
     closeAnchorPhraseEditor();
     event.preventDefault();
+    return;
+  }
+  if (
+    (event.key === "Delete" || event.key === "Backspace") &&
+    isAnchorPhraseEditorOpen &&
+    isAnchorPhraseEditMode &&
+    selectedAnchorRef
+  ) {
+    removeAnchorPhraseAnchor(selectedAnchorRef.segmentIndex, selectedAnchorRef.anchorIndex);
+    event.preventDefault();
   }
 }
 
@@ -4535,6 +4735,30 @@ anchorPhraseEditorRevert.addEventListener("click", () => {
   exitAnchorPhraseEditMode("Reverted to generated prosody phrase.");
 });
 
+anchorPhraseEditorAddAnchor.addEventListener("click", () => {
+  if (!selectedAnchorRef || !workingAnchorPhrase) return;
+  const anchor = workingAnchorPhrase.segments[selectedAnchorRef.segmentIndex]?.anchors[selectedAnchorRef.anchorIndex];
+  if (!anchor) return;
+  addAnchorPhraseAnchor(selectedAnchorRef.segmentIndex, anchor.startBeat + anchor.durationBeats + ANCHOR_EDIT_GRID_BEATS);
+});
+
+anchorPhraseEditorRemoveAnchor.addEventListener("click", () => {
+  if (!selectedAnchorRef) return;
+  removeAnchorPhraseAnchor(selectedAnchorRef.segmentIndex, selectedAnchorRef.anchorIndex);
+});
+
+anchorPhraseEditorSplitSegment.addEventListener("click", () => {
+  if (!selectedAnchorRef) return;
+  splitAnchorPhraseSegment(selectedAnchorRef.segmentIndex, selectedAnchorRef.anchorIndex);
+});
+
+anchorPhraseEditorJoinSegments.addEventListener("click", () => {
+  if (!workingAnchorPhrase) return;
+  const segmentIndex = getSelectedJoinSegmentIndex(workingAnchorPhrase);
+  if (segmentIndex === undefined) return;
+  joinAnchorPhraseSegments(segmentIndex);
+});
+
 anchorPhraseEditorDynamics.addEventListener("input", () => {
   if (!selectedAnchorRef) return;
   editAnchorPhraseAnchor(selectedAnchorRef.segmentIndex, selectedAnchorRef.anchorIndex, {
@@ -4588,6 +4812,23 @@ anchorPhraseEditorRoll.addEventListener("click", (event) => {
   const anchorIndex = Number(target.dataset.anchorIndex);
   if (!Number.isInteger(segmentIndex) || !Number.isInteger(anchorIndex)) return;
   selectAnchorPhraseEditorAnchor({ segmentIndex, anchorIndex });
+});
+
+anchorPhraseEditorRoll.addEventListener("dblclick", (event) => {
+  if (!isAnchorPhraseEditMode || !workingAnchorPhrase || !canEditAnchorPhrase()) return;
+  const target = event.target instanceof Element
+    ? event.target.closest(
+      "[data-testid='anchor-phrase-editor-anchor'], [data-testid='anchor-phrase-editor-connector'], [data-testid='anchor-phrase-editor-connector-label']",
+    )
+    : null;
+  if (target) return;
+  const point = getAnchorPhraseEditorPointerValue(event, workingAnchorPhrase);
+  if (!point) return;
+  const segmentIndex = findAnchorPhraseSegmentIndexForBeat(workingAnchorPhrase, point.beat);
+  addAnchorPhraseAnchor(segmentIndex, point.beat, {
+    degree: point.degree,
+    octave: point.octave,
+  });
 });
 
 anchorPhraseEditorRoll.addEventListener("pointerdown", handleAnchorPhraseEditorPointerDown);
@@ -4860,6 +5101,7 @@ declare global {
       renderDemo(options?: { baseOctave?: number; playerId?: string; subdivisionBeats?: number }): PlayerPatternSource;
     };
     phraseEditor?: {
+      addAnchor(segmentIndex: number, atBeat: number, options?: AddAnchorOptions): AnchorEditResult;
       editAnchor(segmentIndex: number, anchorIndex: number, patch: AnchorEditPatch): AnchorEditResult;
       editConnector(segmentIndex: number, connectorIndex: number, patch: ConnectorEditPatch): AnchorEditResult;
       enterEditMode(): AnchorPhraseEditorState;
@@ -4867,7 +5109,10 @@ declare global {
       getOverridePattern(): PlayerPatternSource | undefined;
       getState(): AnchorPhraseEditorState;
       getWorkingPhrase(): AnchorPhrase | undefined;
+      joinSegments(segmentIndex: number): AnchorEditResult;
+      removeAnchor(segmentIndex: number, anchorIndex: number): AnchorEditResult;
       revert(): AnchorPhraseEditorState;
+      splitSegment(segmentIndex: number, anchorIndex: number): AnchorEditResult;
     };
     persistence?: {
       getState(): PersistenceClientState;
@@ -5101,6 +5346,7 @@ window.anchorPhrase = {
 };
 
 window.phraseEditor = {
+  addAnchor: (segmentIndex, atBeat, options) => addAnchorPhraseAnchor(segmentIndex, atBeat, options),
   editAnchor: (segmentIndex, anchorIndex, patch) => editAnchorPhraseAnchor(segmentIndex, anchorIndex, patch),
   editConnector: (segmentIndex, connectorIndex, patch) =>
     editAnchorPhraseConnector(segmentIndex, connectorIndex, patch),
@@ -5109,7 +5355,10 @@ window.phraseEditor = {
   getOverridePattern: () => getAnchorPhraseEditorOverridePattern(),
   getState: () => getAnchorPhraseEditorState(),
   getWorkingPhrase: () => workingAnchorPhrase ? cloneAnchorPhrase(workingAnchorPhrase) : undefined,
+  joinSegments: (segmentIndex) => joinAnchorPhraseSegments(segmentIndex),
+  removeAnchor: (segmentIndex, anchorIndex) => removeAnchorPhraseAnchor(segmentIndex, anchorIndex),
   revert: () => exitAnchorPhraseEditMode("Reverted to generated prosody phrase."),
+  splitSegment: (segmentIndex, anchorIndex) => splitAnchorPhraseSegment(segmentIndex, anchorIndex),
 };
 
 window.persistence = {
