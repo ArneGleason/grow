@@ -476,6 +476,34 @@ button {
   background: rgba(238, 243, 229, 0.06);
 }
 
+.phrase-editor__catalog {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  border: 1px solid rgba(174, 183, 165, 0.22);
+  border-radius: 8px;
+  padding: 7px 8px;
+  background: rgba(14, 18, 17, 0.34);
+}
+
+.phrase-editor__catalog strong {
+  min-width: 86px;
+  color: #eef3e5;
+  font-size: 0.84rem;
+  white-space: nowrap;
+}
+
+.phrase-editor__catalog-detail {
+  flex: 1 1 220px;
+  min-width: 140px;
+  color: #aeb7a5;
+  font-size: 0.8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .phrase-editor__tools {
   display: flex;
   align-items: center;
@@ -1198,6 +1226,20 @@ button {
   .phrase-editor__tools {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .phrase-editor__catalog {
+    align-items: stretch;
+    flex-wrap: wrap;
+  }
+
+  .phrase-editor__catalog strong {
+    min-width: 0;
+  }
+
+  .phrase-editor__catalog-detail {
+    flex-basis: 100%;
+    white-space: normal;
   }
 
   .phrase-editor__selected,

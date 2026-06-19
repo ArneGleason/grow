@@ -740,6 +740,126 @@ async function savePhraseEditorInApp(page: Page): Promise<{
   return result;
 }
 
+type PhraseEditorCatalogSmokeState = {
+  branchId: string;
+  entries: {
+    candidateId?: string;
+    editable: boolean;
+    fitness?: number;
+    generation?: number;
+    id: string;
+    label: string;
+    source: "generated" | "candidate";
+    status?: StoredCandidate["status"];
+    tag: string;
+  }[];
+  loading: boolean;
+  selectedId: string;
+  selectedIndex: number;
+  selectedPattern: PlayerPatternSource;
+  selectedPhrase: {
+    segments: {
+      anchors: { degree: number; durationBeats: number; dynamics: number; octave: number; startBeat: number }[];
+      connectors: { density: number; kernel: string; reach: number }[];
+    }[];
+  };
+  total: number;
+};
+
+async function getPhraseEditorCatalog(page: Page): Promise<PhraseEditorCatalogSmokeState> {
+  const result = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      phraseEditor?: { getCatalog(): PhraseEditorCatalogSmokeState };
+    };
+    return appWindow.phraseEditor?.getCatalog();
+  });
+  if (!result) {
+    throw new Error("window.phraseEditor.getCatalog() was not available");
+  }
+  return result;
+}
+
+async function selectPhraseEditorIdea(page: Page, index: number): Promise<PhraseEditorCatalogSmokeState> {
+  const result = await page.evaluate((nextIndex) => {
+    const appWindow = window as unknown as {
+      phraseEditor?: { selectIdea(index: number): PhraseEditorCatalogSmokeState };
+    };
+    return appWindow.phraseEditor?.selectIdea(nextIndex);
+  }, index);
+  if (!result) {
+    throw new Error("window.phraseEditor.selectIdea() was not available");
+  }
+  return result;
+}
+
+async function nextPhraseEditorIdea(page: Page): Promise<PhraseEditorCatalogSmokeState> {
+  const result = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      phraseEditor?: { nextIdea(): PhraseEditorCatalogSmokeState };
+    };
+    return appWindow.phraseEditor?.nextIdea();
+  });
+  if (!result) {
+    throw new Error("window.phraseEditor.nextIdea() was not available");
+  }
+  return result;
+}
+
+async function refreshPhraseEditorCatalog(page: Page): Promise<PhraseEditorCatalogSmokeState> {
+  const result = await page.evaluate(async () => {
+    const appWindow = window as unknown as {
+      phraseEditor?: { refreshCatalog(): Promise<PhraseEditorCatalogSmokeState | undefined> };
+    };
+    return appWindow.phraseEditor?.refreshCatalog();
+  });
+  if (!result) {
+    throw new Error("window.phraseEditor.refreshCatalog() was not available");
+  }
+  return result;
+}
+
+async function previewSelectedPhraseEditorIdea(page: Page): Promise<{
+  branchId: string;
+  candidate?: StoredCandidate;
+  error?: string;
+  rendered?: PlayerPatternSource;
+  savedCount?: number;
+  valid: boolean;
+}> {
+  const result = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      phraseEditor?: {
+        previewSelectedIdea(): {
+          branchId: string;
+          candidate?: StoredCandidate;
+          error?: string;
+          rendered?: PlayerPatternSource;
+          savedCount?: number;
+          valid: boolean;
+        };
+      };
+    };
+    return appWindow.phraseEditor?.previewSelectedIdea();
+  });
+  if (!result) {
+    throw new Error("window.phraseEditor.previewSelectedIdea() was not available");
+  }
+  return result;
+}
+
+async function editSelectedPhraseEditorIdea(page: Page): Promise<Awaited<ReturnType<typeof getPhraseEditorState>>> {
+  const result = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      phraseEditor?: { editSelectedIdea(): Awaited<ReturnType<typeof getPhraseEditorState>> };
+    };
+    return appWindow.phraseEditor?.editSelectedIdea();
+  });
+  if (!result) {
+    throw new Error("window.phraseEditor.editSelectedIdea() was not available");
+  }
+  return result;
+}
+
 async function getPhraseEditorOverridePattern(page: Page): Promise<PlayerPatternSource | undefined> {
   return page.evaluate(() => {
     const appWindow = window as unknown as {
@@ -2184,6 +2304,141 @@ test("anchor phrase editor saves edited phrases as idempotent persisted candidat
   const state = await getPhraseEditorState(page);
   expect(state.overrideActive).toBe(true);
   expect(await getActiveProsodyPattern(page)).toEqual(overridePattern);
+});
+
+test("anchor phrase editor catalogs saved ideas and loads selected native candidates", async ({ page }) => {
+  test.setTimeout(45_000);
+  await page.goto("/");
+
+  await openInspectDrawer(page);
+  await page.getByTestId("player-card-melody").click();
+  await expect(page.getByTestId("anchor-phrase-editor-overlay")).toBeVisible();
+  await expect(page.getByTestId("anchor-phrase-editor-catalog")).toBeVisible();
+  let catalog = await getPhraseEditorCatalog(page);
+  expect(catalog.branchId).toBe("editor-lantern");
+  expect(catalog.entries[0]).toMatchObject({
+    id: "generated",
+    source: "generated",
+    tag: "current prosody",
+  });
+
+  await page.getByTestId("anchor-phrase-editor-edit-toggle").click();
+  await expect(page.getByTestId("anchor-phrase-editor-save")).toBeEnabled();
+
+  const firstEdit = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      phraseEditor?: {
+        editAnchor(segmentIndex: number, anchorIndex: number, patch: {
+          degree?: number;
+          dynamics?: number;
+          startBeat?: number;
+        }): { changed: boolean; valid: boolean };
+      };
+    };
+    return appWindow.phraseEditor?.editAnchor(0, 0, {
+      degree: 4,
+      dynamics: 0.52,
+      startBeat: 0.25,
+    });
+  });
+  expect(firstEdit).toMatchObject({ changed: true, valid: true });
+  const firstSave = await savePhraseEditorInApp(page);
+  expect(firstSave.valid).toBe(true);
+  expect(firstSave.candidate).toBeTruthy();
+
+  const secondEdit = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      phraseEditor?: {
+        editAnchor(segmentIndex: number, anchorIndex: number, patch: {
+          degree?: number;
+          dynamics?: number;
+          octave?: number;
+        }): { changed: boolean; valid: boolean };
+      };
+    };
+    return appWindow.phraseEditor?.editAnchor(0, 1, {
+      degree: 6,
+      dynamics: 0.64,
+      octave: 5,
+    });
+  });
+  expect(secondEdit).toMatchObject({ changed: true, valid: true });
+  const secondSave = await savePhraseEditorInApp(page);
+  expect(secondSave.valid).toBe(true);
+  expect(secondSave.candidate).toBeTruthy();
+  expect(secondSave.candidate?.id).not.toBe(firstSave.candidate?.id);
+
+  await page.getByTestId("anchor-phrase-editor-revert").click();
+  expect((await getPhraseEditorState(page)).overrideActive).toBe(false);
+  expect(await getPhraseEditorOverridePattern(page)).toBeUndefined();
+
+  const branchId = firstSave.branchId;
+  const evolution = await runEvolutionInApp(page, {
+    seed: 4117,
+    kind: "phrase",
+    generations: 1,
+    count: 4,
+    eliteLimit: 2,
+    branchId,
+  });
+  expect(evolution.branchId).toBe(branchId);
+  expect(evolution.finalElite.length).toBeGreaterThan(0);
+
+  catalog = await refreshPhraseEditorCatalog(page);
+  const visibleCandidates = catalog.entries.filter((entry) => entry.source === "candidate");
+  expect(visibleCandidates.length).toBeGreaterThanOrEqual(2);
+  expect(visibleCandidates.every((entry) => entry.status !== "purged")).toBe(true);
+  const visibleFitnesses = visibleCandidates.map((entry) => entry.fitness ?? 0);
+  expect(visibleFitnesses).toEqual([...visibleFitnesses].sort((left, right) => right - left));
+
+  const allCandidates = await listCandidatesInApp(page, {
+    kind: "phrase",
+    branchId,
+    limit: 100,
+  });
+  const allSignaturesBeforeBrowse = allCandidates.map((candidate) =>
+    `${candidate.id}:${candidate.status}:${candidate.fitness.toFixed(6)}`
+  );
+  expect(allCandidates.some((candidate) => candidate.status === "purged")).toBe(true);
+  const visibleIds = new Set(visibleCandidates.map((entry) => entry.candidateId));
+  expect(allCandidates
+    .filter((candidate) => candidate.status === "purged")
+    .every((candidate) => !visibleIds.has(candidate.id))
+  ).toBe(true);
+
+  const selected = await selectPhraseEditorIdea(page, 1);
+  const selectedEntry = selected.entries[selected.selectedIndex];
+  expect(selectedEntry.source).toBe("candidate");
+  await expect(page.getByTestId("anchor-phrase-editor-idea-index")).toHaveText(`Idea 2 of ${selected.total}`);
+  await expect(page.getByTestId("anchor-phrase-editor-idea-detail")).toContainText(selectedEntry.label);
+  const selectedCandidate = allCandidates.find((candidate) => candidate.id === selectedEntry.candidateId);
+  expect(selectedCandidate).toBeTruthy();
+  expect((selectedCandidate?.genome as { format?: string }).format).toBe("anchor-phrase/v1");
+  expect(selected.selectedPattern).toEqual(renderPhraseCandidateGenome(selectedCandidate!.genome));
+  expect(selected.selectedPhrase).toEqual((selectedCandidate!.genome as { phrase: unknown }).phrase);
+  expect(await getPhraseEditorOverridePattern(page)).toBeUndefined();
+
+  const next = await nextPhraseEditorIdea(page);
+  expect(next.selectedIndex).not.toBe(selected.selectedIndex);
+  await selectPhraseEditorIdea(page, selected.selectedIndex);
+  const allCandidatesAfterBrowse = await listCandidatesInApp(page, {
+    kind: "phrase",
+    branchId,
+    limit: 100,
+  });
+  expect(allCandidatesAfterBrowse.map((candidate) =>
+    `${candidate.id}:${candidate.status}:${candidate.fitness.toFixed(6)}`
+  )).toEqual(allSignaturesBeforeBrowse);
+
+  const preview = await previewSelectedPhraseEditorIdea(page);
+  expect(preview.valid).toBe(true);
+  expect(preview.rendered).toEqual(selected.selectedPattern);
+  expect(await getPhraseEditorOverridePattern(page)).toEqual(selected.selectedPattern);
+
+  const editState = await editSelectedPhraseEditorIdea(page);
+  expect(editState.editMode).toBe(true);
+  expect(editState.workingPhrase).toEqual(selected.selectedPhrase);
+  expect(await getActiveProsodyPattern(page)).toEqual(await getPhraseEditorOverridePattern(page));
 });
 
 test("written-to-evolving dial orchestrates prosody and evolving performance", async ({ page }) => {

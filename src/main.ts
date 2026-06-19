@@ -44,7 +44,9 @@ import {
   type CandidateFitnessResult,
 } from "./candidate-fitness";
 import {
+  anchorPhraseFromPlayerPatternSource,
   createAnchorPhraseCandidateGenome,
+  isAnchorPhraseCandidateGenome,
   renderPhraseCandidateGenome,
 } from "./phrase-candidate-genome";
 import { formatExpressionSnapshot, type PlayerExpressionSnapshot } from "./expression";
@@ -233,6 +235,9 @@ let anchorPhraseEditorMessage = "Read-only prosody phrase.";
 let anchorPhraseEditorSaveInFlight = false;
 let anchorPhraseEditorSavedCount: number | undefined;
 let anchorPhraseEditorLastSavedCandidateId: string | undefined;
+let anchorPhraseCatalogCandidates: StoredCandidate[] = [];
+let anchorPhraseCatalogSelectedId = "generated";
+let anchorPhraseCatalogLoading = false;
 let candidateMelodyAudition: {
   branchId?: string;
   candidate?: StoredCandidate;
@@ -614,6 +619,36 @@ ${timingFeelControls}
           <div class="phrase-editor__meta" aria-label="Phrase summary">
             <span data-testid="anchor-phrase-editor-song">Lantern</span>
             <span data-testid="anchor-phrase-editor-summary">read-only prosody phrase</span>
+          </div>
+          <div
+            class="phrase-editor__catalog"
+            data-testid="anchor-phrase-editor-catalog"
+            aria-label="Phrase idea catalog"
+          >
+            <button
+              class="phrase-editor__tool-button"
+              data-testid="anchor-phrase-editor-catalog-prev"
+              type="button"
+            >Prev</button>
+            <strong data-testid="anchor-phrase-editor-idea-index">Idea 1 of 1</strong>
+            <button
+              class="phrase-editor__tool-button"
+              data-testid="anchor-phrase-editor-catalog-next"
+              type="button"
+            >Next</button>
+            <span class="phrase-editor__catalog-detail" data-testid="anchor-phrase-editor-idea-detail">
+              Generated · current prosody
+            </span>
+            <button
+              class="phrase-editor__tool-button"
+              data-testid="anchor-phrase-editor-preview"
+              type="button"
+            >Preview</button>
+            <button
+              class="phrase-editor__tool-button"
+              data-testid="anchor-phrase-editor-edit-selected"
+              type="button"
+            >Edit this idea</button>
           </div>
           <div class="phrase-editor__tools" aria-label="Anchor editing controls">
             <button
@@ -1069,6 +1104,12 @@ const anchorPhraseEditorClose = requireElement<HTMLButtonElement>("[data-testid=
 const anchorPhraseEditorTonal = requireElement<HTMLElement>("[data-testid='anchor-phrase-editor-tonal']");
 const anchorPhraseEditorSong = requireElement<HTMLElement>("[data-testid='anchor-phrase-editor-song']");
 const anchorPhraseEditorSummary = requireElement<HTMLElement>("[data-testid='anchor-phrase-editor-summary']");
+const anchorPhraseEditorCatalogPrev = requireElement<HTMLButtonElement>("[data-testid='anchor-phrase-editor-catalog-prev']");
+const anchorPhraseEditorCatalogNext = requireElement<HTMLButtonElement>("[data-testid='anchor-phrase-editor-catalog-next']");
+const anchorPhraseEditorIdeaIndex = requireElement<HTMLElement>("[data-testid='anchor-phrase-editor-idea-index']");
+const anchorPhraseEditorIdeaDetail = requireElement<HTMLElement>("[data-testid='anchor-phrase-editor-idea-detail']");
+const anchorPhraseEditorPreview = requireElement<HTMLButtonElement>("[data-testid='anchor-phrase-editor-preview']");
+const anchorPhraseEditorEditSelected = requireElement<HTMLButtonElement>("[data-testid='anchor-phrase-editor-edit-selected']");
 const anchorPhraseEditorEditToggle = requireElement<HTMLButtonElement>(
   "[data-testid='anchor-phrase-editor-edit-toggle']",
 );
@@ -1483,9 +1524,10 @@ function canEditAnchorPhrase(): boolean {
 }
 
 function getAnchorPhraseForEditor(): AnchorPhrase {
-  return isAnchorPhraseEditMode && workingAnchorPhrase
-    ? cloneAnchorPhrase(workingAnchorPhrase)
-    : createCurrentProsodyAnchorPhrase();
+  if (isAnchorPhraseEditMode && workingAnchorPhrase) {
+    return cloneAnchorPhrase(workingAnchorPhrase);
+  }
+  return cloneAnchorPhrase(getSelectedAnchorPhraseCatalogEntry().phrase);
 }
 
 function enterAnchorPhraseEditMode(): AnchorPhraseEditorState {
@@ -1690,30 +1732,221 @@ function resetAnchorPhraseEditorSaveState(): void {
   anchorPhraseEditorSaveInFlight = false;
   anchorPhraseEditorSavedCount = undefined;
   anchorPhraseEditorLastSavedCandidateId = undefined;
+  anchorPhraseCatalogCandidates = [];
+  anchorPhraseCatalogSelectedId = "generated";
+  anchorPhraseCatalogLoading = false;
 }
 
 async function refreshAnchorPhraseEditorSavedCount(
   options: { render?: boolean } = {},
 ): Promise<number | undefined> {
+  const catalog = await refreshAnchorPhraseCatalog(options);
+  return catalog?.entries.filter((entry) => entry.source === "candidate").length;
+}
+
+async function refreshAnchorPhraseCatalog(
+  options: { render?: boolean; selectId?: string } = {},
+): Promise<AnchorPhraseCatalogState | undefined> {
   const branchId = getAnchorPhraseEditorBranchId();
+  anchorPhraseCatalogLoading = true;
+  if (options.render) {
+    renderAnchorPhraseEditor();
+  }
   try {
     const candidates = await persistence.listCandidates({
       kind: "phrase",
       branchId,
       limit: 500,
     });
-    anchorPhraseEditorSavedCount = candidates.length;
+    anchorPhraseCatalogCandidates = candidates
+      .filter((candidate) => candidate.status !== "purged")
+      .sort(compareAnchorPhraseCatalogCandidates);
+    anchorPhraseEditorSavedCount = anchorPhraseCatalogCandidates.length;
+    if (options.selectId) {
+      anchorPhraseCatalogSelectedId = options.selectId;
+    }
+    ensureAnchorPhraseCatalogSelection();
+    anchorPhraseCatalogLoading = false;
     if (options.render) {
       renderAnchorPhraseEditor();
     }
-    return anchorPhraseEditorSavedCount;
+    return getAnchorPhraseCatalogState();
   } catch (error) {
-    console.warn("[grow] failed to refresh saved phrase ideas", error);
+    console.warn("[grow] failed to refresh phrase idea catalog", error);
+    anchorPhraseCatalogLoading = false;
     if (options.render) {
       renderAnchorPhraseEditor();
     }
     return undefined;
   }
+}
+
+function compareAnchorPhraseCatalogCandidates(left: StoredCandidate, right: StoredCandidate): number {
+  return (
+    right.fitness - left.fitness ||
+    left.generation - right.generation ||
+    left.createdAt.localeCompare(right.createdAt) ||
+    left.id.localeCompare(right.id)
+  );
+}
+
+function ensureAnchorPhraseCatalogSelection(): void {
+  const entries = getAnchorPhraseCatalogEntries();
+  if (!entries.some((entry) => entry.id === anchorPhraseCatalogSelectedId)) {
+    anchorPhraseCatalogSelectedId = entries[0]?.id ?? "generated";
+  }
+}
+
+function getAnchorPhraseCatalogEntries(): AnchorPhraseCatalogEntry[] {
+  const generatedPhrase = createCurrentProsodyAnchorPhrase();
+  const generatedPattern = renderAnchorPhrase(generatedPhrase, {
+    baseOctave: 4,
+    playerId: "melody",
+    subdivisionBeats: ANCHOR_EDIT_GRID_BEATS,
+  });
+  return [
+    {
+      editable: true,
+      id: "generated",
+      label: "Generated",
+      pattern: generatedPattern,
+      phrase: generatedPhrase,
+      source: "generated",
+      tag: "current prosody",
+    },
+    ...anchorPhraseCatalogCandidates.map(createAnchorPhraseCatalogCandidateEntry),
+  ];
+}
+
+function createAnchorPhraseCatalogCandidateEntry(candidate: StoredCandidate): AnchorPhraseCatalogEntry {
+  const genome: unknown = candidate.genome;
+  const pattern = renderPhraseCandidateGenome(genome);
+  const native = isAnchorPhraseCandidateGenome(genome);
+  const phrase = native
+    ? createAnchorPhraseCandidateGenome(genome.phrase, genome.renderOptions).phrase
+    : anchorPhraseFromPlayerPatternSource(pattern);
+  const origin = candidate.generation === 0 ? "authored" : "evolved";
+  const label = `Idea ${shortCandidateId(candidate.id)}`;
+  return {
+    candidate,
+    candidateId: candidate.id,
+    editable: native,
+    fitness: candidate.fitness,
+    generation: candidate.generation,
+    id: candidate.id,
+    label,
+    pattern,
+    phrase,
+    source: "candidate",
+    status: candidate.status,
+    tag: `${origin} · ${candidate.status} · fitness ${candidate.fitness.toFixed(3)}`,
+  };
+}
+
+function shortCandidateId(candidateId: string): string {
+  return candidateId.length > 12 ? candidateId.slice(-12) : candidateId;
+}
+
+function getSelectedAnchorPhraseCatalogEntry(): AnchorPhraseCatalogEntry {
+  const entries = getAnchorPhraseCatalogEntries();
+  return entries.find((entry) => entry.id === anchorPhraseCatalogSelectedId) ?? entries[0]!;
+}
+
+function getAnchorPhraseCatalogSelectedIndex(entries = getAnchorPhraseCatalogEntries()): number {
+  return Math.max(0, entries.findIndex((entry) => entry.id === anchorPhraseCatalogSelectedId));
+}
+
+function getAnchorPhraseCatalogState(): AnchorPhraseCatalogState {
+  const entries = getAnchorPhraseCatalogEntries();
+  const selectedIndex = getAnchorPhraseCatalogSelectedIndex(entries);
+  const selected = entries[selectedIndex] ?? entries[0]!;
+  return {
+    branchId: getAnchorPhraseEditorBranchId(),
+    entries: entries.map(summarizeAnchorPhraseCatalogEntry),
+    loading: anchorPhraseCatalogLoading,
+    selectedId: selected.id,
+    selectedIndex,
+    selectedPattern: clonePlayerPatternSource(selected.pattern),
+    selectedPhrase: cloneAnchorPhrase(selected.phrase),
+    total: entries.length,
+  };
+}
+
+function summarizeAnchorPhraseCatalogEntry(entry: AnchorPhraseCatalogEntry): AnchorPhraseCatalogEntrySummary {
+  return {
+    ...(entry.candidateId ? { candidateId: entry.candidateId } : {}),
+    editable: entry.editable,
+    ...(entry.fitness === undefined ? {} : { fitness: entry.fitness }),
+    ...(entry.generation === undefined ? {} : { generation: entry.generation }),
+    id: entry.id,
+    label: entry.label,
+    source: entry.source,
+    ...(entry.status ? { status: entry.status } : {}),
+    tag: entry.tag,
+  };
+}
+
+function selectAnchorPhraseCatalogIndex(index: number): AnchorPhraseCatalogState {
+  const entries = getAnchorPhraseCatalogEntries();
+  const nextIndex = Math.min(Math.max(0, Math.trunc(index)), entries.length - 1);
+  anchorPhraseCatalogSelectedId = entries[nextIndex]?.id ?? "generated";
+  anchorPhraseEditorMessage = `Selected ${entries[nextIndex]?.label ?? "generated phrase"} for browsing.`;
+  renderedAnchorPhraseEditorKey = "";
+  renderAnchorPhraseEditor();
+  return getAnchorPhraseCatalogState();
+}
+
+function stepAnchorPhraseCatalog(delta: number): AnchorPhraseCatalogState {
+  const entries = getAnchorPhraseCatalogEntries();
+  const currentIndex = getAnchorPhraseCatalogSelectedIndex(entries);
+  const nextIndex = entries.length === 0
+    ? 0
+    : (currentIndex + delta + entries.length) % entries.length;
+  return selectAnchorPhraseCatalogIndex(nextIndex);
+}
+
+function previewSelectedAnchorPhraseCatalogEntry(): AnchorPhraseEditorSaveResult {
+  const branchId = getAnchorPhraseEditorBranchId();
+  if (!canEditAnchorPhrase()) {
+    anchorPhraseEditorMessage = "Preview is disabled while the line is evolving.";
+    renderAnchorPhraseEditor();
+    return { branchId, valid: false, error: "Anchor editing is disabled while evolving" };
+  }
+  const selected = getSelectedAnchorPhraseCatalogEntry();
+  editorMelodyOverride = clonePlayerPatternSource(selected.pattern);
+  cachedProsodyMelody = undefined;
+  cancelSlowThinkingControllers("phrase catalog preview changed before the thought could land");
+  clearSlowThoughtPlayback();
+  refreshLookaheadSchedule();
+  anchorPhraseEditorMessage = `Previewing ${selected.label}.`;
+  renderWorld();
+  return {
+    branchId,
+    candidate: selected.candidate,
+    rendered: clonePlayerPatternSource(selected.pattern),
+    valid: true,
+  };
+}
+
+function editSelectedAnchorPhraseCatalogEntry(): AnchorPhraseEditorState {
+  if (!canEditAnchorPhrase()) {
+    anchorPhraseEditorMessage = "Edit this idea is disabled while the line is evolving.";
+    renderAnchorPhraseEditor();
+    return getAnchorPhraseEditorState();
+  }
+  const selected = getSelectedAnchorPhraseCatalogEntry();
+  if (!selected.editable) {
+    anchorPhraseEditorMessage = "Legacy flat phrase ideas are view-only in this catalog.";
+    renderAnchorPhraseEditor();
+    return getAnchorPhraseEditorState();
+  }
+  workingAnchorPhrase = cloneAnchorPhrase(selected.phrase);
+  selectedAnchorRef = { segmentIndex: 0, anchorIndex: 0 };
+  selectedConnectorRef = undefined;
+  isAnchorPhraseEditMode = true;
+  anchorPhraseEditorMessage = `Editing ${selected.label}.`;
+  commitAnchorPhraseEditorOverride();
+  return getAnchorPhraseEditorState();
 }
 
 function createAnchorPhraseEditorCandidate(phrase: AnchorPhrase): {
@@ -1765,13 +1998,13 @@ async function saveAnchorPhraseEditorCandidate(): Promise<AnchorPhraseEditorSave
     const { candidate, rendered } = createAnchorPhraseEditorCandidate(workingAnchorPhrase);
     const stored = await persistence.writeCandidate(candidate, branchId);
     anchorPhraseEditorLastSavedCandidateId = stored.id;
-    const savedCount = await refreshAnchorPhraseEditorSavedCount({ render: false });
+    const catalog = await refreshAnchorPhraseCatalog({ render: false, selectId: stored.id });
     anchorPhraseEditorMessage = `Saved phrase idea to ${branchId}.`;
     return {
       branchId,
       candidate: stored,
       rendered: clonePlayerPatternSource(rendered),
-      savedCount,
+      savedCount: catalog?.entries.filter((entry) => entry.source === "candidate").length,
       valid: true,
     };
   } catch (error) {
@@ -1894,6 +2127,7 @@ function renderAnchorPhraseEditor(): void {
   anchorPhraseEditorSave.textContent = anchorPhraseEditorSaveInFlight ? "Saving..." : "Save idea";
   anchorPhraseEditorSaveStatus.textContent = formatAnchorPhraseEditorSaveStatus();
   anchorPhraseEditorStatus.textContent = canEdit ? anchorPhraseEditorMessage : "Anchor editing pauses while the line is evolving.";
+  renderAnchorPhraseCatalogControls();
   renderAnchorPhraseEditorSelection(phrase);
   const renderKey = [
     songId,
@@ -1901,6 +2135,7 @@ function renderAnchorPhraseEditor(): void {
     isAnchorPhraseEditMode ? "edit" : "read",
     selectedAnchorRef ? `${selectedAnchorRef.segmentIndex}:${selectedAnchorRef.anchorIndex}` : "none",
     selectedConnectorRef ? `${selectedConnectorRef.segmentIndex}:${selectedConnectorRef.connectorIndex}` : "none",
+    anchorPhraseCatalogSelectedId,
     summary,
     JSON.stringify(phrase),
   ].join("|");
@@ -1959,6 +2194,26 @@ function formatAnchorPhraseEditorSaveStatus(): string {
     branchId,
     anchorPhraseEditorLastSavedCandidateId ? `last ${anchorPhraseEditorLastSavedCandidateId}` : undefined,
   ].filter(Boolean).join(" · ");
+}
+
+function renderAnchorPhraseCatalogControls(): void {
+  const state = getAnchorPhraseCatalogState();
+  const selected = state.entries[state.selectedIndex];
+  const browseEnabled = !isAnchorPhraseEditMode && state.total > 1;
+  anchorPhraseEditorCatalogPrev.disabled = !browseEnabled || state.loading;
+  anchorPhraseEditorCatalogNext.disabled = !browseEnabled || state.loading;
+  anchorPhraseEditorIdeaIndex.textContent = state.loading
+    ? "Loading ideas..."
+    : `Idea ${state.selectedIndex + 1} of ${state.total}`;
+  anchorPhraseEditorIdeaDetail.textContent = selected
+    ? `${selected.label} · ${selected.tag}`
+    : "Generated · current prosody";
+  const actionEnabled = canEditAnchorPhrase() && !state.loading && !isAnchorPhraseEditMode;
+  anchorPhraseEditorPreview.disabled = !actionEnabled;
+  anchorPhraseEditorEditSelected.disabled = !actionEnabled || !selected?.editable;
+  anchorPhraseEditorEditSelected.title = selected && !selected.editable
+    ? "Legacy flat phrase ideas are view-only in this catalog."
+    : "";
 }
 
 function renderAnchorPhraseEditorConnectorControls(connector: Connector | undefined): void {
@@ -3277,6 +3532,35 @@ interface AnchorPhraseEditorSaveResult {
   rendered?: PlayerPatternSource;
   savedCount?: number;
   valid: boolean;
+}
+
+interface AnchorPhraseCatalogEntrySummary {
+  candidateId?: string;
+  editable: boolean;
+  fitness?: number;
+  generation?: number;
+  id: string;
+  label: string;
+  source: "generated" | "candidate";
+  status?: StoredCandidate["status"];
+  tag: string;
+}
+
+interface AnchorPhraseCatalogEntry extends AnchorPhraseCatalogEntrySummary {
+  candidate?: StoredCandidate;
+  pattern: PlayerPatternSource;
+  phrase: AnchorPhrase;
+}
+
+interface AnchorPhraseCatalogState {
+  branchId: string;
+  entries: readonly AnchorPhraseCatalogEntrySummary[];
+  loading: boolean;
+  selectedId: string;
+  selectedIndex: number;
+  selectedPattern: PlayerPatternSource;
+  selectedPhrase: AnchorPhrase;
+  total: number;
 }
 
 interface AnchorPhraseEditorLayout {
@@ -4888,6 +5172,22 @@ anchorPhraseEditorRevert.addEventListener("click", () => {
   exitAnchorPhraseEditMode("Reverted to generated prosody phrase.");
 });
 
+anchorPhraseEditorCatalogPrev.addEventListener("click", () => {
+  stepAnchorPhraseCatalog(-1);
+});
+
+anchorPhraseEditorCatalogNext.addEventListener("click", () => {
+  stepAnchorPhraseCatalog(1);
+});
+
+anchorPhraseEditorPreview.addEventListener("click", () => {
+  previewSelectedAnchorPhraseCatalogEntry();
+});
+
+anchorPhraseEditorEditSelected.addEventListener("click", () => {
+  editSelectedAnchorPhraseCatalogEntry();
+});
+
 anchorPhraseEditorSave.addEventListener("click", () => {
   void saveAnchorPhraseEditorCandidate();
 });
@@ -5261,15 +5561,22 @@ declare global {
       addAnchor(segmentIndex: number, atBeat: number, options?: AddAnchorOptions): AnchorEditResult;
       editAnchor(segmentIndex: number, anchorIndex: number, patch: AnchorEditPatch): AnchorEditResult;
       editConnector(segmentIndex: number, connectorIndex: number, patch: ConnectorEditPatch): AnchorEditResult;
+      editSelectedIdea(): AnchorPhraseEditorState;
       enterEditMode(): AnchorPhraseEditorState;
       exitEditMode(): AnchorPhraseEditorState;
+      getCatalog(): AnchorPhraseCatalogState;
       getOverridePattern(): PlayerPatternSource | undefined;
       getState(): AnchorPhraseEditorState;
       getWorkingPhrase(): AnchorPhrase | undefined;
       joinSegments(segmentIndex: number): AnchorEditResult;
+      nextIdea(): AnchorPhraseCatalogState;
+      previewSelectedIdea(): AnchorPhraseEditorSaveResult;
+      previousIdea(): AnchorPhraseCatalogState;
+      refreshCatalog(): Promise<AnchorPhraseCatalogState | undefined>;
       removeAnchor(segmentIndex: number, anchorIndex: number): AnchorEditResult;
       revert(): AnchorPhraseEditorState;
       save(): Promise<AnchorPhraseEditorSaveResult>;
+      selectIdea(index: number): AnchorPhraseCatalogState;
       splitSegment(segmentIndex: number, anchorIndex: number): AnchorEditResult;
     };
     persistence?: {
@@ -5508,15 +5815,22 @@ window.phraseEditor = {
   editAnchor: (segmentIndex, anchorIndex, patch) => editAnchorPhraseAnchor(segmentIndex, anchorIndex, patch),
   editConnector: (segmentIndex, connectorIndex, patch) =>
     editAnchorPhraseConnector(segmentIndex, connectorIndex, patch),
+  editSelectedIdea: () => editSelectedAnchorPhraseCatalogEntry(),
   enterEditMode: () => enterAnchorPhraseEditMode(),
   exitEditMode: () => exitAnchorPhraseEditMode("Edit mode exited; generated phrase restored."),
+  getCatalog: () => getAnchorPhraseCatalogState(),
   getOverridePattern: () => getAnchorPhraseEditorOverridePattern(),
   getState: () => getAnchorPhraseEditorState(),
   getWorkingPhrase: () => workingAnchorPhrase ? cloneAnchorPhrase(workingAnchorPhrase) : undefined,
   joinSegments: (segmentIndex) => joinAnchorPhraseSegments(segmentIndex),
+  nextIdea: () => stepAnchorPhraseCatalog(1),
+  previewSelectedIdea: () => previewSelectedAnchorPhraseCatalogEntry(),
+  previousIdea: () => stepAnchorPhraseCatalog(-1),
+  refreshCatalog: () => refreshAnchorPhraseCatalog({ render: true }),
   removeAnchor: (segmentIndex, anchorIndex) => removeAnchorPhraseAnchor(segmentIndex, anchorIndex),
   revert: () => exitAnchorPhraseEditMode("Reverted to generated prosody phrase."),
   save: () => saveAnchorPhraseEditorCandidate(),
+  selectIdea: (index) => selectAnchorPhraseCatalogIndex(index),
   splitSegment: (segmentIndex, anchorIndex) => splitAnchorPhraseSegment(segmentIndex, anchorIndex),
 };
 
