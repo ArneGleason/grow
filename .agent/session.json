@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Implement Byte L4a save edited phrase as persisted candidate",
-  "status": "l4a-save-edited-phrase-ready-for-review",
-  "updatedAt": "2026-06-17T19:36:36Z",
+  "lastTask": "Merge approved Byte L4a save edited phrase as persisted candidate",
+  "status": "l4a-approved-merged-local",
+  "updatedAt": "2026-06-19T14:27:58Z",
   "lastHandoff": "",
-  "branch": "codex/byte-l4a-save-edited-phrase",
-  "commit": "pending-review",
+  "branch": "main",
+  "commit": "5808876",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte L4a is implemented on codex/byte-l4a-save-edited-phrase and ready for Claude review. The melody editor Save idea action persists the current edit-mode AnchorPhrase as a normal scored phrase candidate with native anchor-phrase/v1 genome on stable per-song branches such as editor-lantern. The save path reuses createAnchorPhraseCandidateGenome, renderPhraseCandidateGenome, scoreProsody, and persistence.writeCandidate; same-phrase saves dedup through the existing content-hash id and branch scoping. The live editor override is preserved, and there is no catalog browse UI, server/schema/scorer change, or new playback path. Validation: build green, six unit suites green, smoke 75/75, db:smoke green, diff-check green; npm audit still reports the known Vite/esbuild advisories."
+    "summary": "Byte L4a is approved by Claude and fast-forwarded into local main at 5808876. The melody editor Save idea action persists the current edit-mode AnchorPhrase as a normal scored phrase candidate with native anchor-phrase/v1 genome on stable per-song branches such as editor-lantern. Claude live-verified saved native genomes, override round-trip identity, idempotent same-phrase dedup, strict branch filtering, and clean runEvolution cycles over the authored branch. Carry forward for L4b: editor-<songId> branches can contain both generation-0 saved ideas and evolved descendants/purged rows, so the catalog should present or filter that distinction deliberately."
   }
 }
