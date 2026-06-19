@@ -1874,7 +1874,7 @@ test("anchor phrase editor edits anchors into an audible reversible override", a
   expect(enteredEditor.overrideActive).toBe(false);
   expect(enteredEditor.workingPhrase?.segments.length).toBe(2);
 
-  const editResult = await page.evaluate(() => {
+  const editResult = await page.evaluate((nextDynamics) => {
     const appWindow = window as unknown as {
       phraseEditor?: {
         editAnchor(segmentIndex: number, anchorIndex: number, patch: {
@@ -2232,10 +2232,22 @@ test("anchor phrase editor saves edited phrases as idempotent persisted candidat
   await openInspectDrawer(page);
   await page.getByTestId("player-card-melody").click();
   await expect(page.getByTestId("anchor-phrase-editor-overlay")).toBeVisible();
+  const initialCandidates = await listCandidatesInApp(page, {
+    kind: "phrase",
+    branchId: "editor-lantern",
+    limit: 500,
+  });
+  const initialVisibleIds = new Set(
+    initialCandidates
+      .filter((candidate) => candidate.status !== "purged")
+      .map((candidate) => candidate.id),
+  );
+  const initialVisibleCount = initialVisibleIds.size;
   await page.getByTestId("anchor-phrase-editor-edit-toggle").click();
   await expect(page.getByTestId("anchor-phrase-editor-save")).toBeEnabled();
 
-  const editResult = await page.evaluate(() => {
+  const uniqueDynamics = Number((0.41 + (Date.now() % 1000) / 10_000).toFixed(4));
+  const editResult = await page.evaluate((nextDynamics) => {
     const appWindow = window as unknown as {
       phraseEditor?: {
         editAnchor(segmentIndex: number, anchorIndex: number, patch: {
@@ -2247,10 +2259,10 @@ test("anchor phrase editor saves edited phrases as idempotent persisted candidat
     };
     return appWindow.phraseEditor?.editAnchor(0, 0, {
       degree: 4,
-      dynamics: 0.52,
+      dynamics: nextDynamics,
       startBeat: 0.25,
     });
-  });
+  }, uniqueDynamics);
   expect(editResult).toMatchObject({ changed: true, valid: true });
 
   const overridePattern = await getPhraseEditorOverridePattern(page);
@@ -2259,16 +2271,21 @@ test("anchor phrase editor saves edited phrases as idempotent persisted candidat
   expect(firstSave.valid).toBe(true);
   expect(firstSave.branchId).toBe("editor-lantern");
   expect(firstSave.candidate).toBeTruthy();
-  expect(firstSave.savedCount).toBe(1);
-  await expect(page.getByTestId("anchor-phrase-editor-save-status")).toContainText("Saved ideas: 1");
+  expect(firstSave.savedCount).toBe(initialVisibleIds.has(firstSave.candidate!.id)
+    ? initialVisibleCount
+    : initialVisibleCount + 1);
+  await expect(page.getByTestId("anchor-phrase-editor-save-status")).toContainText(
+    `Saved ideas: ${firstSave.savedCount}`,
+  );
 
   const candidates = await listCandidatesInApp(page, {
     kind: "phrase",
     branchId: firstSave.branchId,
-    limit: 20,
+    limit: 500,
   });
-  expect(candidates).toHaveLength(1);
-  const saved = candidates[0];
+  const savedMatches = candidates.filter((candidate) => candidate.id === firstSave.candidate?.id);
+  expect(savedMatches).toHaveLength(1);
+  const saved = savedMatches[0];
   expect(saved.id).toBe(firstSave.candidate?.id);
   expect(saved.branchId).toBe("editor-lantern");
   expect(saved.kind).toBe("phrase");
@@ -2280,13 +2297,13 @@ test("anchor phrase editor saves edited phrases as idempotent persisted candidat
   const secondSave = await savePhraseEditorInApp(page);
   expect(secondSave.valid).toBe(true);
   expect(secondSave.candidate?.id).toBe(saved.id);
-  expect(secondSave.savedCount).toBe(1);
+  expect(secondSave.savedCount).toBe(firstSave.savedCount);
   const candidatesAfterRepeatSave = await listCandidatesInApp(page, {
     kind: "phrase",
     branchId: firstSave.branchId,
-    limit: 20,
+    limit: 500,
   });
-  expect(candidatesAfterRepeatSave.map((candidate) => candidate.id)).toEqual([saved.id]);
+  expect(candidatesAfterRepeatSave.filter((candidate) => candidate.id === saved.id)).toHaveLength(1);
 
   const evolution = await runEvolutionInApp(page, {
     seed: 909,
@@ -2325,7 +2342,10 @@ test("anchor phrase editor catalogs saved ideas and loads selected native candid
   await page.getByTestId("anchor-phrase-editor-edit-toggle").click();
   await expect(page.getByTestId("anchor-phrase-editor-save")).toBeEnabled();
 
-  const firstEdit = await page.evaluate(() => {
+  const runStamp = Date.now() % 1000;
+  const firstDynamics = Number((0.46 + runStamp / 10_000).toFixed(4));
+  const secondDynamics = Number((0.58 + runStamp / 10_000).toFixed(4));
+  const firstEdit = await page.evaluate((nextDynamics) => {
     const appWindow = window as unknown as {
       phraseEditor?: {
         editAnchor(segmentIndex: number, anchorIndex: number, patch: {
@@ -2337,16 +2357,16 @@ test("anchor phrase editor catalogs saved ideas and loads selected native candid
     };
     return appWindow.phraseEditor?.editAnchor(0, 0, {
       degree: 4,
-      dynamics: 0.52,
+      dynamics: nextDynamics,
       startBeat: 0.25,
     });
-  });
+  }, firstDynamics);
   expect(firstEdit).toMatchObject({ changed: true, valid: true });
   const firstSave = await savePhraseEditorInApp(page);
   expect(firstSave.valid).toBe(true);
   expect(firstSave.candidate).toBeTruthy();
 
-  const secondEdit = await page.evaluate(() => {
+  const secondEdit = await page.evaluate((nextDynamics) => {
     const appWindow = window as unknown as {
       phraseEditor?: {
         editAnchor(segmentIndex: number, anchorIndex: number, patch: {
@@ -2358,10 +2378,10 @@ test("anchor phrase editor catalogs saved ideas and loads selected native candid
     };
     return appWindow.phraseEditor?.editAnchor(0, 1, {
       degree: 6,
-      dynamics: 0.64,
+      dynamics: nextDynamics,
       octave: 5,
     });
-  });
+  }, secondDynamics);
   expect(secondEdit).toMatchObject({ changed: true, valid: true });
   const secondSave = await savePhraseEditorInApp(page);
   expect(secondSave.valid).toBe(true);
@@ -2406,10 +2426,18 @@ test("anchor phrase editor catalogs saved ideas and loads selected native candid
     .every((candidate) => !visibleIds.has(candidate.id))
   ).toBe(true);
 
-  const selected = await selectPhraseEditorIdea(page, 1);
+  const nativeCandidateIndex = catalog.entries.findIndex((entry) =>
+    entry.source === "candidate" &&
+    (allCandidates.find((candidate) => candidate.id === entry.candidateId)?.genome as { format?: string } | undefined)?.format === "anchor-phrase/v1"
+  );
+  expect(nativeCandidateIndex).toBeGreaterThan(0);
+
+  const selected = await selectPhraseEditorIdea(page, nativeCandidateIndex);
   const selectedEntry = selected.entries[selected.selectedIndex];
   expect(selectedEntry.source).toBe("candidate");
-  await expect(page.getByTestId("anchor-phrase-editor-idea-index")).toHaveText(`Idea 2 of ${selected.total}`);
+  await expect(page.getByTestId("anchor-phrase-editor-idea-index")).toHaveText(
+    `Idea ${nativeCandidateIndex + 1} of ${selected.total}`,
+  );
   await expect(page.getByTestId("anchor-phrase-editor-idea-detail")).toContainText(selectedEntry.label);
   const selectedCandidate = allCandidates.find((candidate) => candidate.id === selectedEntry.candidateId);
   expect(selectedCandidate).toBeTruthy();

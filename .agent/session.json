@@ -24,12 +24,12 @@
   },
   "lastTask": "Implement Byte L4b idea-catalog browse/select",
   "status": "l4b-implemented-pending-review",
-  "updatedAt": "2026-06-19T14:50:33Z",
+  "updatedAt": "2026-06-19T15:12:00Z",
   "lastHandoff": "",
   "branch": "codex/byte-l4b-idea-catalog",
   "commit": "HEAD",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte L4b is implemented on codex/byte-l4b-idea-catalog and ready for Claude review. The melody editor now has a per-song idea catalog scoped to editor-<songId>, showing generated prosody plus non-purged saved/evolved phrase candidates sorted by fitness. Browsing renders selected ideas read-only without mutating persistence or the audible override; explicit Preview reuses editorMelodyOverride, and Edit this idea seeds L3 edit mode for native anchor-phrase/v1 genomes while legacy flat candidates remain view-only. No persistence endpoint/schema/server/scorer/transport/scheduler path changed. Validation: build green, six unit suites green, smoke 76/76, db:smoke green, diff-check green; npm audit still reports the known Vite/esbuild advisories."
+    "summary": "Byte L4b is feature-approved by Claude on codex/byte-l4b-idea-catalog, with the requested non-hermetic smoke fix implemented on the branch. The melody editor idea catalog is scoped to editor-<songId>, shows generated prosody plus non-purged saved/evolved candidates sorted by fitness, keeps browsing read-only, uses explicit Preview for editorMelodyOverride, and seeds L3 edit mode from native anchor-phrase/v1 genomes. The L4a/L4b smokes no longer assume a clean editor-lantern branch and pass against a reused DB. No persistence endpoint/schema/server/scorer/transport/scheduler path changed. Validation: build green, targeted L4 smokes green, full smoke 76/76 on reused DB, db:smoke green, diff-check green; npm audit still reports the known Vite/esbuild advisories. Next byte should be the editor layout/discoverability cleanup before L4c."
   }
 }
