@@ -238,6 +238,12 @@ let anchorPhraseEditorLastSavedCandidateId: string | undefined;
 let anchorPhraseCatalogCandidates: StoredCandidate[] = [];
 let anchorPhraseCatalogSelectedId = "generated";
 let anchorPhraseCatalogLoading = false;
+let anchorPhraseCatalogListOpen = false;
+let anchorPhraseAnchorPanelOpen = false;
+let anchorPhraseConnectorPanelOpen = false;
+let anchorPhraseConnectorMoreOpen = false;
+let playerActionMenuOpen = false;
+let playerActionMenuTrigger: HTMLElement | undefined;
 let candidateMelodyAudition: {
   branchId?: string;
   candidate?: StoredCandidate;
@@ -572,6 +578,35 @@ ${timingFeelControls}
       </div>
     </header>
 
+    <section class="player-entry-strip" data-testid="player-entry-strip" aria-label="Players">
+      <button
+        class="player-entry-button"
+        data-testid="player-entry-melody"
+        data-player-id="melody"
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded="false"
+      >
+        <span>Melody</span>
+        <strong>Graphical phrase</strong>
+      </button>
+      <div
+        class="player-action-menu"
+        data-testid="player-action-menu"
+        role="menu"
+        aria-labelledby="player-menu-title"
+        hidden
+      >
+        <strong id="player-menu-title" data-testid="player-menu-title">Melody</strong>
+        <button
+          class="player-action-menu__item"
+          data-testid="player-menu-graphical-phrase"
+          type="button"
+          role="menuitem"
+        >Graphical phrase</button>
+      </div>
+    </section>
+
     <section class="stage" data-testid="stage" aria-label="Terrarium stage">
       <div class="terrarium-panel">
         <div
@@ -598,8 +633,12 @@ ${timingFeelControls}
           tabindex="-1"
         >
           <header class="phrase-editor__header">
-            <div>
-              <p class="phrase-editor__eyebrow">Melody idea</p>
+            <div class="phrase-editor__title-group">
+              <p class="phrase-editor__eyebrow">
+                <span>Melody</span>
+                <span aria-hidden="true">/</span>
+                <span>Graphical phrase</span>
+              </p>
               <h2 id="anchor-phrase-editor-title" data-testid="anchor-phrase-editor-title">Graphical phrase</h2>
             </div>
             <div class="phrase-editor__readouts">
@@ -608,6 +647,12 @@ ${timingFeelControls}
                 data-mode-classical="mixolydian"
                 title="Strut · Mixolydian · key of C"
               >C Strut</strong>
+              <button
+                class="phrase-editor__tool-button phrase-editor__edit-toggle"
+                data-testid="anchor-phrase-editor-edit-toggle"
+                type="button"
+                aria-pressed="false"
+              >Edit</button>
               <button
                 class="phrase-editor__close"
                 data-testid="anchor-phrase-editor-close"
@@ -625,44 +670,54 @@ ${timingFeelControls}
             data-testid="anchor-phrase-editor-catalog"
             aria-label="Phrase idea catalog"
           >
-            <button
-              class="phrase-editor__tool-button"
-              data-testid="anchor-phrase-editor-catalog-prev"
-              type="button"
-            >Prev</button>
-            <strong data-testid="anchor-phrase-editor-idea-index">Idea 1 of 1</strong>
-            <button
-              class="phrase-editor__tool-button"
-              data-testid="anchor-phrase-editor-catalog-next"
-              type="button"
-            >Next</button>
+            <div class="phrase-editor__catalog-stepper">
+              <button
+                class="phrase-editor__tool-button"
+                data-testid="anchor-phrase-editor-catalog-prev"
+                type="button"
+              >Prev</button>
+              <strong data-testid="anchor-phrase-editor-idea-index">Idea 1 of 1</strong>
+              <button
+                class="phrase-editor__tool-button"
+                data-testid="anchor-phrase-editor-catalog-next"
+                type="button"
+              >Next</button>
+            </div>
             <span class="phrase-editor__catalog-detail" data-testid="anchor-phrase-editor-idea-detail">
               Generated · current prosody
             </span>
             <button
               class="phrase-editor__tool-button"
-              data-testid="anchor-phrase-editor-preview"
+              data-testid="anchor-phrase-editor-catalog-list-toggle"
               type="button"
-            >Preview</button>
-            <button
-              class="phrase-editor__tool-button"
-              data-testid="anchor-phrase-editor-edit-selected"
-              type="button"
-            >Edit this idea</button>
+              aria-expanded="false"
+            >Catalog</button>
+            <div class="phrase-editor__catalog-actions">
+              <button
+                class="phrase-editor__tool-button"
+                data-testid="anchor-phrase-editor-preview"
+                type="button"
+              >Preview</button>
+              <button
+                class="phrase-editor__tool-button"
+                data-testid="anchor-phrase-editor-edit-selected"
+                type="button"
+              >Edit idea</button>
+            </div>
+            <div
+              class="phrase-editor__catalog-list"
+              data-testid="anchor-phrase-editor-catalog-list"
+              hidden
+            ></div>
           </div>
-          <div class="phrase-editor__tools" aria-label="Anchor editing controls">
-            <button
-              class="phrase-editor__tool-button"
-              data-testid="anchor-phrase-editor-edit-toggle"
-              type="button"
-              aria-pressed="false"
-            >Edit anchors</button>
+          <div class="phrase-editor__roll" data-testid="anchor-phrase-editor-roll"></div>
+          <div class="phrase-editor__phrase-actions" aria-label="Phrase actions">
             <button
               class="phrase-editor__tool-button"
               data-testid="anchor-phrase-editor-revert"
               type="button"
               disabled
-            >Revert to generated</button>
+            >Revert</button>
             <button
               class="phrase-editor__tool-button"
               data-testid="anchor-phrase-editor-save"
@@ -672,64 +727,99 @@ ${timingFeelControls}
             <span class="phrase-editor__save-status" data-testid="anchor-phrase-editor-save-status">
               Saved ideas: 0
             </span>
-            <div class="phrase-editor__structure-tools" aria-label="Segment and anchor structure controls">
-              <button class="phrase-editor__tool-button" data-testid="anchor-phrase-editor-add-anchor" type="button" disabled>+ Anchor</button>
-              <button class="phrase-editor__tool-button" data-testid="anchor-phrase-editor-remove-anchor" type="button" disabled>Remove</button>
-              <button class="phrase-editor__tool-button" data-testid="anchor-phrase-editor-split-segment" type="button" disabled>Split here</button>
-              <button class="phrase-editor__tool-button" data-testid="anchor-phrase-editor-join-segments" type="button" disabled>Join breath</button>
-            </div>
-            <span class="phrase-editor__selected" data-testid="anchor-phrase-editor-selected-anchor">No anchor selected</span>
-            <label class="phrase-editor__dynamics">
-              <span>Dynamics</span>
-              <input
-                data-testid="anchor-phrase-editor-dynamics"
-                type="range"
-                min="0"
-                max="1"
-                step="0.01"
-                value="0.7"
-                disabled
-              />
-            </label>
           </div>
-          <div
-            class="phrase-editor__connector-tools"
-            data-testid="anchor-phrase-editor-connector-tools"
-            aria-label="Connector editing controls"
-          >
-            <div class="phrase-editor__kernel-palette" data-testid="anchor-phrase-editor-kernel-palette">
-              <span>Kernel</span>
-              <button class="phrase-editor__kernel-button" data-testid="anchor-phrase-editor-kernel-fill" data-kernel="fill" type="button">Fill</button>
-              <button class="phrase-editor__kernel-button" data-testid="anchor-phrase-editor-kernel-detour" data-kernel="detour" type="button">Detour</button>
-              <button class="phrase-editor__kernel-button" data-testid="anchor-phrase-editor-kernel-approach" data-kernel="approach" type="button">Approach</button>
-              <button class="phrase-editor__kernel-button" data-testid="anchor-phrase-editor-kernel-orbit" data-kernel="orbit" type="button">Orbit</button>
-              <button class="phrase-editor__kernel-button" data-testid="anchor-phrase-editor-kernel-skip" data-kernel="skip" type="button">Skip</button>
+          <section class="phrase-editor__panel phrase-editor__panel--anchor" aria-label="Anchor editing controls">
+            <button
+              class="phrase-editor__panel-toggle"
+              data-testid="anchor-phrase-editor-anchor-panel-toggle"
+              type="button"
+              aria-expanded="false"
+            >
+              <span>Anchor</span>
+              <span class="phrase-editor__panel-cue" aria-hidden="true">Select one</span>
+            </button>
+            <div
+              class="phrase-editor__panel-body"
+              data-testid="anchor-phrase-editor-anchor-panel"
+              hidden
+            >
+              <span class="phrase-editor__selected" data-testid="anchor-phrase-editor-selected-anchor">No anchor selected</span>
+              <label class="phrase-editor__dynamics">
+                <span>Dynamics</span>
+                <input
+                  data-testid="anchor-phrase-editor-dynamics"
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  value="0.7"
+                  disabled
+                />
+              </label>
+              <div class="phrase-editor__structure-tools" aria-label="Segment and anchor structure controls">
+                <button class="phrase-editor__tool-button" data-testid="anchor-phrase-editor-add-anchor" type="button" disabled>+ Anchor</button>
+                <button class="phrase-editor__tool-button" data-testid="anchor-phrase-editor-remove-anchor" type="button" disabled>Remove</button>
+                <button class="phrase-editor__tool-button" data-testid="anchor-phrase-editor-split-segment" type="button" disabled>Split here</button>
+                <button class="phrase-editor__tool-button" data-testid="anchor-phrase-editor-join-segments" type="button" disabled>Join breath</button>
+              </div>
             </div>
-            <div class="phrase-editor__connector-sliders">
-              <label>
-                <span>Reach</span>
-                <input data-testid="anchor-phrase-editor-connector-reach" data-connector-knob="reach" type="range" min="0" max="1" step="0.01" value="0.5" disabled />
-              </label>
-              <label>
-                <span>Density</span>
-                <input data-testid="anchor-phrase-editor-connector-density" data-connector-knob="density" type="range" min="0" max="1" step="0.01" value="0.5" disabled />
-              </label>
-              <label>
-                <span>Bias</span>
-                <input data-testid="anchor-phrase-editor-connector-bias" data-connector-knob="bias" type="range" min="-1" max="1" step="0.01" value="0" disabled />
-              </label>
-              <label>
-                <span>Pull</span>
-                <input data-testid="anchor-phrase-editor-connector-pull" data-connector-knob="pull" type="range" min="0" max="1" step="0.01" value="0.5" disabled />
-              </label>
-              <label>
-                <span>Skew</span>
-                <input data-testid="anchor-phrase-editor-connector-skew" data-connector-knob="skew" type="range" min="-1" max="1" step="0.01" value="0" disabled />
-              </label>
+          </section>
+          <section class="phrase-editor__panel phrase-editor__panel--connector" aria-label="Connector editing controls">
+            <button
+              class="phrase-editor__panel-toggle"
+              data-testid="anchor-phrase-editor-connector-panel-toggle"
+              type="button"
+              aria-expanded="false"
+            >
+              <span>Connector</span>
+              <span class="phrase-editor__panel-cue" aria-hidden="true">Select one</span>
+            </button>
+            <div
+              class="phrase-editor__panel-body phrase-editor__connector-tools"
+              data-testid="anchor-phrase-editor-connector-tools"
+              hidden
+            >
+              <div class="phrase-editor__kernel-palette" data-testid="anchor-phrase-editor-kernel-palette">
+                <span>Kernel</span>
+                <button class="phrase-editor__kernel-button" data-testid="anchor-phrase-editor-kernel-fill" data-kernel="fill" type="button">Fill</button>
+                <button class="phrase-editor__kernel-button" data-testid="anchor-phrase-editor-kernel-detour" data-kernel="detour" type="button">Detour</button>
+                <button class="phrase-editor__kernel-button" data-testid="anchor-phrase-editor-kernel-approach" data-kernel="approach" type="button">Approach</button>
+                <button class="phrase-editor__kernel-button" data-testid="anchor-phrase-editor-kernel-orbit" data-kernel="orbit" type="button">Orbit</button>
+                <button class="phrase-editor__kernel-button" data-testid="anchor-phrase-editor-kernel-skip" data-kernel="skip" type="button">Skip</button>
+              </div>
+              <div class="phrase-editor__connector-sliders">
+                <label>
+                  <span>Reach</span>
+                  <input data-testid="anchor-phrase-editor-connector-reach" data-connector-knob="reach" type="range" min="0" max="1" step="0.01" value="0.5" disabled />
+                </label>
+                <label>
+                  <span>Density</span>
+                  <input data-testid="anchor-phrase-editor-connector-density" data-connector-knob="density" type="range" min="0" max="1" step="0.01" value="0.5" disabled />
+                </label>
+              </div>
+              <button
+                class="phrase-editor__tool-button phrase-editor__more-toggle"
+                data-testid="anchor-phrase-editor-connector-more-toggle"
+                type="button"
+                aria-expanded="false"
+              >More</button>
+              <div class="phrase-editor__connector-more" data-testid="anchor-phrase-editor-connector-more" hidden>
+                <label>
+                  <span>Bias</span>
+                  <input data-testid="anchor-phrase-editor-connector-bias" data-connector-knob="bias" type="range" min="-1" max="1" step="0.01" value="0" disabled />
+                </label>
+                <label>
+                  <span>Pull</span>
+                  <input data-testid="anchor-phrase-editor-connector-pull" data-connector-knob="pull" type="range" min="0" max="1" step="0.01" value="0.5" disabled />
+                </label>
+                <label>
+                  <span>Skew</span>
+                  <input data-testid="anchor-phrase-editor-connector-skew" data-connector-knob="skew" type="range" min="-1" max="1" step="0.01" value="0" disabled />
+                </label>
+              </div>
+              <span class="phrase-editor__connector-note">Color stays diatonic-only for now.</span>
             </div>
-            <span class="phrase-editor__connector-note">Color stays diatonic-only for now.</span>
-          </div>
-          <div class="phrase-editor__roll" data-testid="anchor-phrase-editor-roll"></div>
+          </section>
           <p class="phrase-editor__note" data-testid="anchor-phrase-editor-status">
             Read-only for now. This shows the current prosody idea in anchors, connectors, and breaths.
           </p>
@@ -1096,6 +1186,9 @@ const timingFeelControl = requireElement<HTMLDivElement>("[data-testid='timing-f
 const timingFeelCurrent = requireElement<HTMLElement>("[data-testid='timing-feel-current']");
 const persistenceStatus = requireElement<HTMLElement>("[data-testid='persistence-status']");
 const musicalEventBufferStatus = requireElement<HTMLElement>("[data-testid='musical-event-buffer-status']");
+const playerEntryMelody = requireElement<HTMLButtonElement>("[data-testid='player-entry-melody']");
+const playerActionMenu = requireElement<HTMLElement>("[data-testid='player-action-menu']");
+const playerMenuGraphicalPhrase = requireElement<HTMLButtonElement>("[data-testid='player-menu-graphical-phrase']");
 const playerList = requireElement<HTMLDivElement>("#player-list");
 const anchorPhraseEditorOverlay = requireElement<HTMLElement>("[data-testid='anchor-phrase-editor-overlay']");
 const anchorPhraseEditor = requireElement<HTMLElement>("[data-testid='anchor-phrase-editor']");
@@ -1110,6 +1203,10 @@ const anchorPhraseEditorIdeaIndex = requireElement<HTMLElement>("[data-testid='a
 const anchorPhraseEditorIdeaDetail = requireElement<HTMLElement>("[data-testid='anchor-phrase-editor-idea-detail']");
 const anchorPhraseEditorPreview = requireElement<HTMLButtonElement>("[data-testid='anchor-phrase-editor-preview']");
 const anchorPhraseEditorEditSelected = requireElement<HTMLButtonElement>("[data-testid='anchor-phrase-editor-edit-selected']");
+const anchorPhraseEditorCatalogListToggle = requireElement<HTMLButtonElement>(
+  "[data-testid='anchor-phrase-editor-catalog-list-toggle']",
+);
+const anchorPhraseEditorCatalogList = requireElement<HTMLElement>("[data-testid='anchor-phrase-editor-catalog-list']");
 const anchorPhraseEditorEditToggle = requireElement<HTMLButtonElement>(
   "[data-testid='anchor-phrase-editor-edit-toggle']",
 );
@@ -1122,6 +1219,22 @@ const anchorPhraseEditorSplitSegment = requireElement<HTMLButtonElement>("[data-
 const anchorPhraseEditorJoinSegments = requireElement<HTMLButtonElement>("[data-testid='anchor-phrase-editor-join-segments']");
 const anchorPhraseEditorSelected = requireElement<HTMLElement>("[data-testid='anchor-phrase-editor-selected-anchor']");
 const anchorPhraseEditorDynamics = requireElement<HTMLInputElement>("[data-testid='anchor-phrase-editor-dynamics']");
+const anchorPhraseEditorAnchorPanelToggle = requireElement<HTMLButtonElement>(
+  "[data-testid='anchor-phrase-editor-anchor-panel-toggle']",
+);
+const anchorPhraseEditorAnchorPanel = requireElement<HTMLElement>("[data-testid='anchor-phrase-editor-anchor-panel']");
+const anchorPhraseEditorConnectorPanelToggle = requireElement<HTMLButtonElement>(
+  "[data-testid='anchor-phrase-editor-connector-panel-toggle']",
+);
+const anchorPhraseEditorConnectorPanel = requireElement<HTMLElement>(
+  "[data-testid='anchor-phrase-editor-connector-tools']",
+);
+const anchorPhraseEditorConnectorMoreToggle = requireElement<HTMLButtonElement>(
+  "[data-testid='anchor-phrase-editor-connector-more-toggle']",
+);
+const anchorPhraseEditorConnectorMore = requireElement<HTMLElement>(
+  "[data-testid='anchor-phrase-editor-connector-more']",
+);
 const anchorPhraseEditorKernelPalette = requireElement<HTMLElement>(
   "[data-testid='anchor-phrase-editor-kernel-palette']",
 );
@@ -1387,9 +1500,10 @@ function renderPlayerInspector(
       if (canOpenPhraseEditor) {
         card.tabIndex = 0;
         card.setAttribute("role", "button");
-        card.setAttribute("aria-haspopup", "dialog");
-        card.setAttribute("aria-label", "Open Melody graphical phrase editor");
-        card.title = "Open Melody graphical phrase editor";
+        card.setAttribute("aria-haspopup", "menu");
+        card.setAttribute("aria-expanded", String(playerActionMenuOpen));
+        card.setAttribute("aria-label", "Open Melody player actions");
+        card.title = "Open Melody player actions";
       }
 
       const dl = document.createElement("dl");
@@ -1493,6 +1607,7 @@ function renderPlayerInspector(
 }
 
 function openAnchorPhraseEditor(): void {
+  closePlayerActionMenu({ restoreFocus: false });
   if (!isAnchorPhraseEditorOpen) {
     isAnchorPhraseEditorOpen = true;
     anchorPhraseEditorOverlay.hidden = false;
@@ -1511,8 +1626,40 @@ function closeAnchorPhraseEditor(options: { restoreFocus?: boolean } = {}): void
   isAnchorPhraseEditorOpen = false;
   anchorPhraseEditorOverlay.hidden = true;
   if (options.restoreFocus !== false) {
-    getMelodyPlayerCard()?.focus();
+    getMelodyPlayerActionTrigger()?.focus();
   }
+}
+
+function openPlayerActionMenu(trigger: HTMLElement): void {
+  playerActionMenuOpen = true;
+  playerActionMenuTrigger = trigger;
+  playerActionMenu.hidden = false;
+  syncPlayerActionMenuTriggerState();
+  requestAnimationFrame(() => {
+    playerMenuGraphicalPhrase.focus();
+  });
+}
+
+function closePlayerActionMenu(options: { restoreFocus?: boolean } = {}): void {
+  if (!playerActionMenuOpen) return;
+  const trigger = playerActionMenuTrigger;
+  playerActionMenuOpen = false;
+  playerActionMenuTrigger = undefined;
+  playerActionMenu.hidden = true;
+  syncPlayerActionMenuTriggerState();
+  if (options.restoreFocus !== false) {
+    trigger?.focus();
+  }
+}
+
+function syncPlayerActionMenuTriggerState(): void {
+  const expanded = String(playerActionMenuOpen);
+  playerEntryMelody.setAttribute("aria-expanded", expanded);
+  getMelodyPlayerCard()?.setAttribute("aria-expanded", expanded);
+}
+
+function getMelodyPlayerActionTrigger(): HTMLElement | null {
+  return playerActionMenuTrigger ?? playerEntryMelody ?? getMelodyPlayerCard();
 }
 
 function getMelodyPlayerCard(): HTMLElement | null {
@@ -1537,15 +1684,19 @@ function enterAnchorPhraseEditMode(): AnchorPhraseEditorState {
     workingAnchorPhrase = undefined;
     selectedAnchorRef = undefined;
     selectedConnectorRef = undefined;
+    anchorPhraseAnchorPanelOpen = false;
+    anchorPhraseConnectorPanelOpen = false;
     renderAnchorPhraseEditor();
     return getAnchorPhraseEditorState();
   }
   if (!isAnchorPhraseEditMode || !workingAnchorPhrase) {
     workingAnchorPhrase = createCurrentProsodyAnchorPhrase();
-    selectedAnchorRef = { segmentIndex: 0, anchorIndex: 0 };
+    selectedAnchorRef = undefined;
     selectedConnectorRef = undefined;
+    anchorPhraseAnchorPanelOpen = false;
+    anchorPhraseConnectorPanelOpen = false;
     isAnchorPhraseEditMode = true;
-    anchorPhraseEditorMessage = "Edit mode: move, retune, resize, or shape anchor dynamics.";
+    anchorPhraseEditorMessage = "Edit mode: select an anchor or connector to reveal its tools.";
     renderedAnchorPhraseEditorKey = "";
   }
   renderAnchorPhraseEditor();
@@ -1591,6 +1742,8 @@ function editAnchorPhraseAnchor(
   workingAnchorPhrase = result.phrase;
   selectedAnchorRef = { segmentIndex, anchorIndex };
   selectedConnectorRef = undefined;
+  anchorPhraseAnchorPanelOpen = true;
+  anchorPhraseConnectorPanelOpen = false;
   anchorPhraseEditorMessage = result.clamps.length > 0
     ? `Edit applied with ${result.clamps.length} clamp${result.clamps.length === 1 ? "" : "s"}.`
     : "Edit applied.";
@@ -1632,6 +1785,8 @@ function editAnchorPhraseConnector(
   workingAnchorPhrase = result.phrase;
   selectedConnectorRef = { segmentIndex, connectorIndex };
   selectedAnchorRef = undefined;
+  anchorPhraseConnectorPanelOpen = true;
+  anchorPhraseAnchorPanelOpen = false;
   anchorPhraseEditorMessage = result.clamps.length > 0
     ? `Connector edit applied with ${result.clamps.length} clamp${result.clamps.length === 1 ? "" : "s"}.`
     : "Connector edit applied.";
@@ -1657,6 +1812,8 @@ function addAnchorPhraseAnchor(
   workingAnchorPhrase = result.phrase;
   selectedAnchorRef = selectNearestAnchor(result.phrase, segmentIndex, atBeat);
   selectedConnectorRef = undefined;
+  anchorPhraseAnchorPanelOpen = true;
+  anchorPhraseConnectorPanelOpen = false;
   anchorPhraseEditorMessage = result.clamps.length > 0
     ? `Anchor added with ${result.clamps.length} clamp${result.clamps.length === 1 ? "" : "s"}.`
     : "Anchor added.";
@@ -1678,6 +1835,8 @@ function removeAnchorPhraseAnchor(segmentIndex: number, anchorIndex: number): An
   workingAnchorPhrase = result.phrase;
   selectedAnchorRef = selectAnchorAfterRemoval(result.phrase, segmentIndex, anchorIndex);
   selectedConnectorRef = undefined;
+  anchorPhraseAnchorPanelOpen = Boolean(selectedAnchorRef);
+  anchorPhraseConnectorPanelOpen = false;
   anchorPhraseEditorMessage = "Anchor removed.";
   commitAnchorPhraseEditorOverride();
   return result;
@@ -1697,6 +1856,8 @@ function splitAnchorPhraseSegment(segmentIndex: number, anchorIndex: number): An
   workingAnchorPhrase = result.phrase;
   selectedAnchorRef = { segmentIndex: Math.min(segmentIndex + 1, result.phrase.segments.length - 1), anchorIndex: 0 };
   selectedConnectorRef = undefined;
+  anchorPhraseAnchorPanelOpen = true;
+  anchorPhraseConnectorPanelOpen = false;
   anchorPhraseEditorMessage = "Breath opened.";
   commitAnchorPhraseEditorOverride();
   return result;
@@ -1719,6 +1880,8 @@ function joinAnchorPhraseSegments(segmentIndex: number): AnchorEditResult {
     ? { segmentIndex, connectorIndex: bridgeIndex }
     : undefined;
   selectedAnchorRef = selectedConnectorRef ? undefined : selectAnchorAfterRemoval(result.phrase, segmentIndex, 0);
+  anchorPhraseConnectorPanelOpen = Boolean(selectedConnectorRef);
+  anchorPhraseAnchorPanelOpen = !selectedConnectorRef && Boolean(selectedAnchorRef);
   anchorPhraseEditorMessage = "Breath joined.";
   commitAnchorPhraseEditorOverride();
   return result;
@@ -1735,6 +1898,7 @@ function resetAnchorPhraseEditorSaveState(): void {
   anchorPhraseCatalogCandidates = [];
   anchorPhraseCatalogSelectedId = "generated";
   anchorPhraseCatalogLoading = false;
+  anchorPhraseCatalogListOpen = false;
 }
 
 async function refreshAnchorPhraseEditorSavedCount(
@@ -1941,8 +2105,10 @@ function editSelectedAnchorPhraseCatalogEntry(): AnchorPhraseEditorState {
     return getAnchorPhraseEditorState();
   }
   workingAnchorPhrase = cloneAnchorPhrase(selected.phrase);
-  selectedAnchorRef = { segmentIndex: 0, anchorIndex: 0 };
+  selectedAnchorRef = undefined;
   selectedConnectorRef = undefined;
+  anchorPhraseAnchorPanelOpen = false;
+  anchorPhraseConnectorPanelOpen = false;
   isAnchorPhraseEditMode = true;
   anchorPhraseEditorMessage = `Editing ${selected.label}.`;
   commitAnchorPhraseEditorOverride();
@@ -2069,6 +2235,9 @@ function resetAnchorPhraseEditorSession(
   workingAnchorPhrase = undefined;
   selectedAnchorRef = undefined;
   selectedConnectorRef = undefined;
+  anchorPhraseAnchorPanelOpen = false;
+  anchorPhraseConnectorPanelOpen = false;
+  anchorPhraseConnectorMoreOpen = false;
   editorMelodyOverride = undefined;
   anchorPhraseEditorMessage = canEditAnchorPhrase() ? message : "Anchor editing pauses while the line is evolving.";
   renderedAnchorPhraseEditorKey = "";
@@ -2129,6 +2298,7 @@ function renderAnchorPhraseEditor(): void {
   anchorPhraseEditorStatus.textContent = canEdit ? anchorPhraseEditorMessage : "Anchor editing pauses while the line is evolving.";
   renderAnchorPhraseCatalogControls();
   renderAnchorPhraseEditorSelection(phrase);
+  renderAnchorPhraseEditorDisclosures();
   const renderKey = [
     songId,
     prosodySeedForSong(songId),
@@ -2185,6 +2355,26 @@ function renderAnchorPhraseEditorSelection(phrase: AnchorPhrase): void {
   }
 }
 
+function renderAnchorPhraseEditorDisclosures(): void {
+  const anchorOpen = anchorPhraseAnchorPanelOpen && isAnchorPhraseEditMode;
+  const connectorOpen = anchorPhraseConnectorPanelOpen && isAnchorPhraseEditMode;
+  anchorPhraseEditorAnchorPanel.hidden = !anchorOpen;
+  anchorPhraseEditorAnchorPanelToggle.setAttribute("aria-expanded", String(anchorOpen));
+  anchorPhraseEditorAnchorPanelToggle.querySelector(".phrase-editor__panel-cue")!.textContent = selectedAnchorRef
+    ? "Selected"
+    : "Select one";
+  anchorPhraseEditorConnectorPanel.hidden = !connectorOpen;
+  anchorPhraseEditorConnectorPanelToggle.setAttribute("aria-expanded", String(connectorOpen));
+  anchorPhraseEditorConnectorPanelToggle.querySelector(".phrase-editor__panel-cue")!.textContent = selectedConnectorRef
+    ? "Selected"
+    : "Select one";
+  anchorPhraseEditorConnectorMore.hidden = !anchorPhraseConnectorMoreOpen || !connectorOpen;
+  anchorPhraseEditorConnectorMoreToggle.setAttribute(
+    "aria-expanded",
+    String(anchorPhraseConnectorMoreOpen && connectorOpen),
+  );
+}
+
 function formatAnchorPhraseEditorSaveStatus(): string {
   const count = anchorPhraseEditorSavedCount;
   const branchId = getAnchorPhraseEditorBranchId();
@@ -2214,6 +2404,20 @@ function renderAnchorPhraseCatalogControls(): void {
   anchorPhraseEditorEditSelected.title = selected && !selected.editable
     ? "Legacy flat phrase ideas are view-only in this catalog."
     : "";
+  anchorPhraseEditorCatalogList.hidden = !anchorPhraseCatalogListOpen;
+  anchorPhraseEditorCatalogListToggle.setAttribute("aria-expanded", String(anchorPhraseCatalogListOpen));
+  anchorPhraseEditorCatalogList.innerHTML = state.entries.map((entry, index) => `
+    <button
+      class="phrase-editor__catalog-item${index === state.selectedIndex ? " is-selected" : ""}"
+      data-catalog-index="${index}"
+      data-testid="anchor-phrase-editor-catalog-item"
+      type="button"
+      ${isAnchorPhraseEditMode ? "disabled" : ""}
+    >
+      <span>${entry.label}</span>
+      <small>${entry.tag}</small>
+    </button>
+  `).join("");
 }
 
 function renderAnchorPhraseEditorConnectorControls(connector: Connector | undefined): void {
@@ -2235,6 +2439,8 @@ function selectAnchorPhraseEditorAnchor(ref: AnchorPhraseEditorAnchorRef): void 
   if (!isAnchorPhraseEditMode || !workingAnchorPhrase) return;
   selectedAnchorRef = { ...ref };
   selectedConnectorRef = undefined;
+  anchorPhraseAnchorPanelOpen = true;
+  anchorPhraseConnectorPanelOpen = false;
   anchorPhraseEditorMessage = `Selected segment ${ref.segmentIndex + 1}, anchor ${ref.anchorIndex + 1}.`;
   renderedAnchorPhraseEditorKey = "";
   renderAnchorPhraseEditor();
@@ -2244,6 +2450,8 @@ function selectAnchorPhraseEditorConnector(ref: AnchorPhraseEditorConnectorRef):
   if (!isAnchorPhraseEditMode || !workingAnchorPhrase) return;
   selectedConnectorRef = { ...ref };
   selectedAnchorRef = undefined;
+  anchorPhraseConnectorPanelOpen = true;
+  anchorPhraseAnchorPanelOpen = false;
   anchorPhraseEditorMessage = `Selected segment ${ref.segmentIndex + 1}, connector ${ref.connectorIndex + 1}.`;
   renderedAnchorPhraseEditorKey = "";
   renderAnchorPhraseEditor();
@@ -2337,6 +2545,9 @@ function handleAnchorPhraseEditorPointerDown(event: PointerEvent): void {
   const anchorIndex = Number(target.dataset.anchorIndex);
   if (!Number.isInteger(segmentIndex) || !Number.isInteger(anchorIndex)) return;
   selectedAnchorRef = { segmentIndex, anchorIndex };
+  selectedConnectorRef = undefined;
+  anchorPhraseAnchorPanelOpen = true;
+  anchorPhraseConnectorPanelOpen = false;
   const rect = target.querySelector("rect")?.getBoundingClientRect();
   const mode = rect && event.clientX >= rect.right - 10 ? "resize" : "move";
   anchorPhraseEditorDrag = { segmentIndex, anchorIndex, mode };
@@ -4938,6 +5149,11 @@ function handlePageHide(): void {
 }
 
 function handleGlobalKeydown(event: KeyboardEvent): void {
+  if (event.key === "Escape" && playerActionMenuOpen) {
+    closePlayerActionMenu();
+    event.preventDefault();
+    return;
+  }
   if (event.key === "Escape" && isAnchorPhraseEditorOpen) {
     closeAnchorPhraseEditor();
     event.preventDefault();
@@ -5136,19 +5352,59 @@ inspectToggle.addEventListener("click", () => {
   setInspectDrawerOpen(!isInspectDrawerOpen);
 });
 
+playerEntryMelody.addEventListener("click", () => {
+  if (playerActionMenuOpen && playerActionMenuTrigger === playerEntryMelody) {
+    closePlayerActionMenu();
+    return;
+  }
+  openPlayerActionMenu(playerEntryMelody);
+});
+
+playerEntryMelody.addEventListener("keydown", (event) => {
+  if (event.key !== "ArrowDown") return;
+  event.preventDefault();
+  openPlayerActionMenu(playerEntryMelody);
+});
+
+playerMenuGraphicalPhrase.addEventListener("click", () => {
+  openAnchorPhraseEditor();
+});
+
+playerActionMenu.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") return;
+  event.preventDefault();
+  closePlayerActionMenu();
+});
+
+document.addEventListener("click", (event) => {
+  if (!playerActionMenuOpen) return;
+  const target = event.target;
+  if (!(target instanceof Element)) return;
+  if (
+    target.closest("[data-testid='player-action-menu']") ||
+    target.closest("[data-testid='player-entry-melody']") ||
+    target.closest("[data-testid='player-card-melody']")
+  ) {
+    return;
+  }
+  closePlayerActionMenu({ restoreFocus: false });
+});
+
 playerList.addEventListener("click", (event) => {
   const target = event.target;
   if (!(target instanceof Element)) return;
-  if (!target.closest("[data-testid='player-card-melody']")) return;
-  openAnchorPhraseEditor();
+  const card = target.closest<HTMLElement>("[data-testid='player-card-melody']");
+  if (!card) return;
+  openPlayerActionMenu(card);
 });
 
 playerList.addEventListener("keydown", (event) => {
   if (event.key !== "Enter" && event.key !== " ") return;
   const target = event.target;
   if (!(target instanceof Element)) return;
-  if (!target.closest("[data-testid='player-card-melody']")) return;
-  openAnchorPhraseEditor();
+  const card = target.closest<HTMLElement>("[data-testid='player-card-melody']");
+  if (!card) return;
+  openPlayerActionMenu(card);
   event.preventDefault();
 });
 
@@ -5180,6 +5436,19 @@ anchorPhraseEditorCatalogNext.addEventListener("click", () => {
   stepAnchorPhraseCatalog(1);
 });
 
+anchorPhraseEditorCatalogListToggle.addEventListener("click", () => {
+  anchorPhraseCatalogListOpen = !anchorPhraseCatalogListOpen;
+  renderAnchorPhraseEditor();
+});
+
+anchorPhraseEditorCatalogList.addEventListener("click", (event) => {
+  const target = event.target instanceof Element
+    ? event.target.closest<HTMLButtonElement>("[data-catalog-index]")
+    : null;
+  if (!target || target.disabled) return;
+  selectAnchorPhraseCatalogIndex(Number(target.dataset.catalogIndex));
+});
+
 anchorPhraseEditorPreview.addEventListener("click", () => {
   previewSelectedAnchorPhraseCatalogEntry();
 });
@@ -5190,6 +5459,27 @@ anchorPhraseEditorEditSelected.addEventListener("click", () => {
 
 anchorPhraseEditorSave.addEventListener("click", () => {
   void saveAnchorPhraseEditorCandidate();
+});
+
+anchorPhraseEditorAnchorPanelToggle.addEventListener("click", () => {
+  anchorPhraseAnchorPanelOpen = !anchorPhraseAnchorPanelOpen;
+  if (anchorPhraseAnchorPanelOpen) {
+    anchorPhraseConnectorPanelOpen = false;
+  }
+  renderAnchorPhraseEditor();
+});
+
+anchorPhraseEditorConnectorPanelToggle.addEventListener("click", () => {
+  anchorPhraseConnectorPanelOpen = !anchorPhraseConnectorPanelOpen;
+  if (anchorPhraseConnectorPanelOpen) {
+    anchorPhraseAnchorPanelOpen = false;
+  }
+  renderAnchorPhraseEditor();
+});
+
+anchorPhraseEditorConnectorMoreToggle.addEventListener("click", () => {
+  anchorPhraseConnectorMoreOpen = !anchorPhraseConnectorMoreOpen;
+  renderAnchorPhraseEditor();
 });
 
 anchorPhraseEditorAddAnchor.addEventListener("click", () => {

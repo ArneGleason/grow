@@ -473,6 +473,13 @@ async function openInspectDrawer(page: Page): Promise<void> {
   await expect(page.getByTestId("player-inspector")).toHaveAttribute("data-open", "true");
 }
 
+async function openMelodyPhraseEditor(page: Page): Promise<void> {
+  await page.getByTestId("player-entry-melody").click();
+  await expect(page.getByTestId("player-action-menu")).toBeVisible();
+  await page.getByTestId("player-menu-graphical-phrase").click();
+  await expect(page.getByTestId("anchor-phrase-editor-overlay")).toBeVisible();
+}
+
 async function getPersistenceState(page: Page): Promise<PersistenceClientState> {
   const state = await page.evaluate(() => {
     const appWindow = window as unknown as {
@@ -1813,20 +1820,41 @@ test("melody player opens a read-only anchor phrase editor overlay", async ({ pa
   await expect(page.getByTestId("anchor-phrase-editor-overlay")).toBeHidden();
   const before = await getTransportState(page);
 
-  await openInspectDrawer(page);
-  const melodyCard = page.getByTestId("player-card-melody");
-  await expect(melodyCard).toBeVisible();
-  await expect(melodyCard).toHaveAttribute("role", "button");
-  await expect(melodyCard).toHaveAttribute("aria-haspopup", "dialog");
+  await expect(page.getByTestId("player-entry-melody")).toBeVisible();
+  await expect(page.getByTestId("player-entry-melody")).toHaveAttribute("aria-haspopup", "menu");
+  await page.getByTestId("player-entry-melody").click();
+  await expect(page.getByTestId("player-action-menu")).toBeVisible();
+  await expect(page.getByTestId("player-menu-graphical-phrase")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("player-action-menu")).toBeHidden();
 
-  await melodyCard.click();
-  await expect(page.getByTestId("anchor-phrase-editor-overlay")).toBeVisible();
+  await openMelodyPhraseEditor(page);
   await expect(page.getByTestId("anchor-phrase-editor-tonal")).toHaveText("C Strut");
   await expect(page.getByTestId("anchor-phrase-editor-tonal")).toHaveAttribute("data-mode-classical", "mixolydian");
   await expect(page.getByTestId("anchor-phrase-editor-tonal")).toHaveAttribute("title", "Strut · Mixolydian · key of C");
   await expect(page.getByTestId("anchor-phrase-editor-song")).toContainText("Lantern");
   await expect(page.getByTestId("anchor-phrase-editor-summary")).toContainText("2 segments");
   await expect(page.getByTestId("anchor-phrase-editor-summary")).toContainText("1 breath");
+  const editorBox = await page.getByTestId("anchor-phrase-editor").evaluate((node) => {
+    const rect = node.getBoundingClientRect();
+    return {
+      bottom: rect.bottom,
+      clientHeight: node.clientHeight,
+      clientWidth: node.clientWidth,
+      right: rect.right,
+      scrollHeight: node.scrollHeight,
+      viewportHeight: window.innerHeight,
+      viewportWidth: window.innerWidth,
+      width: rect.width,
+    };
+  });
+  expect(editorBox.width).toBeLessThanOrEqual(380);
+  expect(editorBox.right).toBeLessThanOrEqual(editorBox.viewportWidth);
+  expect(editorBox.bottom).toBeLessThanOrEqual(editorBox.viewportHeight);
+  expect(editorBox.scrollHeight).toBeGreaterThanOrEqual(editorBox.clientHeight);
+  await expect(page.getByTestId("anchor-phrase-editor-anchor-panel")).toBeHidden();
+  await expect(page.getByTestId("anchor-phrase-editor-connector-tools")).toBeHidden();
+  await expect(page.getByTestId("anchor-phrase-editor-catalog-list")).toBeHidden();
   await expect(page.getByTestId("anchor-phrase-editor-svg")).toBeVisible();
   expect(await page.getByTestId("anchor-phrase-editor-anchor").count()).toBeGreaterThan(4);
   expect(await page.getByTestId("anchor-phrase-editor-connector").count()).toBeGreaterThan(2);
@@ -1842,7 +1870,9 @@ test("melody player opens a read-only anchor phrase editor overlay", async ({ pa
 
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("anchor-phrase-editor-overlay")).toBeHidden();
-  await melodyCard.press("Enter");
+  await page.getByTestId("player-entry-melody").press("Enter");
+  await expect(page.getByTestId("player-action-menu")).toBeVisible();
+  await page.getByTestId("player-menu-graphical-phrase").click();
   await expect(page.getByTestId("anchor-phrase-editor-overlay")).toBeVisible();
   await page.getByTestId("anchor-phrase-editor-close").click();
   await expect(page.getByTestId("anchor-phrase-editor-overlay")).toBeHidden();
@@ -1856,10 +1886,7 @@ test("anchor phrase editor edits anchors into an audible reversible override", a
   test.setTimeout(25_000);
   await page.goto("/");
 
-  await openInspectDrawer(page);
-  const melodyCard = page.getByTestId("player-card-melody");
-  await melodyCard.click();
-  await expect(page.getByTestId("anchor-phrase-editor-overlay")).toBeVisible();
+  await openMelodyPhraseEditor(page);
   await expect(page.getByTestId("anchor-phrase-editor-edit-toggle")).toHaveAttribute("aria-pressed", "false");
 
   const initialEditor = await getPhraseEditorState(page);
@@ -1869,10 +1896,14 @@ test("anchor phrase editor edits anchors into an audible reversible override", a
 
   await page.getByTestId("anchor-phrase-editor-edit-toggle").click();
   await expect(page.getByTestId("anchor-phrase-editor-edit-toggle")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("anchor-phrase-editor-anchor-panel")).toBeHidden();
+  await expect(page.getByTestId("anchor-phrase-editor-connector-tools")).toBeHidden();
   const enteredEditor = await getPhraseEditorState(page);
   expect(enteredEditor.editMode).toBe(true);
   expect(enteredEditor.overrideActive).toBe(false);
   expect(enteredEditor.workingPhrase?.segments.length).toBe(2);
+  expect(enteredEditor.selectedAnchor).toBeUndefined();
+  expect(enteredEditor.selectedConnector).toBeUndefined();
 
   const editResult = await page.evaluate((nextDynamics) => {
     const appWindow = window as unknown as {
@@ -1903,6 +1934,7 @@ test("anchor phrase editor edits anchors into an audible reversible override", a
   });
 
   await expect(page.getByTestId("anchor-phrase-editor-status")).toContainText("Edit applied");
+  await expect(page.getByTestId("anchor-phrase-editor-anchor-panel")).toBeVisible();
   await expect(page.getByTestId("anchor-phrase-editor-selected-anchor")).toContainText("degree 5");
   await expect(page.getByTestId("anchor-phrase-editor-anchor").first()).toContainText("5.4");
 
@@ -1933,8 +1965,7 @@ test("anchor phrase editor edits anchors into an audible reversible override", a
 
   await setWrittenEvolvingDial(page, 0.85);
   await expect(page.getByTestId("written-evolving-regime")).toHaveText("evolving");
-  await melodyCard.click();
-  await expect(page.getByTestId("anchor-phrase-editor-overlay")).toBeVisible();
+  await openMelodyPhraseEditor(page);
   await expect(page.getByTestId("anchor-phrase-editor-edit-toggle")).toBeDisabled();
   const disabledEditor = await page.evaluate(() => {
     const appWindow = window as unknown as {
@@ -1954,12 +1985,15 @@ test("anchor phrase editor edits connector kernels and knobs into the audible ov
   test.setTimeout(25_000);
   await page.goto("/");
 
-  await openInspectDrawer(page);
-  await page.getByTestId("player-card-melody").click();
+  await openMelodyPhraseEditor(page);
   await page.getByTestId("anchor-phrase-editor-edit-toggle").click();
   await expect(page.getByTestId("anchor-phrase-editor-edit-toggle")).toHaveAttribute("aria-pressed", "true");
 
   await page.getByTestId("anchor-phrase-editor-connector-label").nth(1).click();
+  await expect(page.getByTestId("anchor-phrase-editor-connector-tools")).toBeVisible();
+  await expect(page.getByTestId("anchor-phrase-editor-connector-more")).toBeHidden();
+  await page.getByTestId("anchor-phrase-editor-connector-more-toggle").click();
+  await expect(page.getByTestId("anchor-phrase-editor-connector-more")).toBeVisible();
   await expect(page.getByTestId("anchor-phrase-editor-selected-anchor")).toContainText("connector 2");
   const selected = await getPhraseEditorState(page);
   expect(selected.selectedConnector).toEqual({ segmentIndex: 0, connectorIndex: 1 });
@@ -2081,11 +2115,11 @@ test("anchor phrase editor performs structural edits without breaking phrase inv
   test.setTimeout(25_000);
   await page.goto("/");
 
-  await openInspectDrawer(page);
-  await page.getByTestId("player-card-melody").click();
+  await openMelodyPhraseEditor(page);
   await page.getByTestId("anchor-phrase-editor-edit-toggle").click();
   await expect(page.getByTestId("anchor-phrase-editor-edit-toggle")).toHaveAttribute("aria-pressed", "true");
-  await expect(page.getByTestId("anchor-phrase-editor-add-anchor")).toBeEnabled();
+  await expect(page.getByTestId("anchor-phrase-editor-anchor-panel")).toBeHidden();
+  await expect(page.getByTestId("anchor-phrase-editor-add-anchor")).toBeDisabled();
   await expect(page.getByTestId("anchor-phrase-editor-split-segment")).toBeDisabled();
 
   const invariantSummary = (phrase: NonNullable<Awaited<ReturnType<typeof getPhraseEditorState>>["workingPhrase"]>) => ({
@@ -2130,6 +2164,7 @@ test("anchor phrase editor performs structural edits without breaking phrase inv
   expect(summary.connectorCount).toBe(initial.connectorCount + 1);
   expect(summary.connectorCountsValid).toBe(true);
   expect(summary.ordered).toBe(true);
+  await expect(page.getByTestId("anchor-phrase-editor-anchor-panel")).toBeVisible();
   expect(state.selectedAnchor?.segmentIndex).toBe(0);
   expect(state.workingPhrase?.segments[0].anchors[state.selectedAnchor?.anchorIndex ?? -1]?.startBeat).toBeGreaterThanOrEqual(4);
   expect(await getActiveProsodyPattern(page)).toEqual(await getPhraseEditorOverridePattern(page));
@@ -2229,9 +2264,7 @@ test("anchor phrase editor saves edited phrases as idempotent persisted candidat
   test.setTimeout(35_000);
   await page.goto("/");
 
-  await openInspectDrawer(page);
-  await page.getByTestId("player-card-melody").click();
-  await expect(page.getByTestId("anchor-phrase-editor-overlay")).toBeVisible();
+  await openMelodyPhraseEditor(page);
   const initialCandidates = await listCandidatesInApp(page, {
     kind: "phrase",
     branchId: "editor-lantern",
@@ -2327,10 +2360,9 @@ test("anchor phrase editor catalogs saved ideas and loads selected native candid
   test.setTimeout(45_000);
   await page.goto("/");
 
-  await openInspectDrawer(page);
-  await page.getByTestId("player-card-melody").click();
-  await expect(page.getByTestId("anchor-phrase-editor-overlay")).toBeVisible();
+  await openMelodyPhraseEditor(page);
   await expect(page.getByTestId("anchor-phrase-editor-catalog")).toBeVisible();
+  await expect(page.getByTestId("anchor-phrase-editor-catalog-list")).toBeHidden();
   let catalog = await getPhraseEditorCatalog(page);
   expect(catalog.branchId).toBe("editor-lantern");
   expect(catalog.entries[0]).toMatchObject({
@@ -2431,6 +2463,9 @@ test("anchor phrase editor catalogs saved ideas and loads selected native candid
     (allCandidates.find((candidate) => candidate.id === entry.candidateId)?.genome as { format?: string } | undefined)?.format === "anchor-phrase/v1"
   );
   expect(nativeCandidateIndex).toBeGreaterThan(0);
+  await page.getByTestId("anchor-phrase-editor-catalog-list-toggle").click();
+  await expect(page.getByTestId("anchor-phrase-editor-catalog-list")).toBeVisible();
+  expect(await page.getByTestId("anchor-phrase-editor-catalog-item").count()).toBe(catalog.total);
 
   const selected = await selectPhraseEditorIdea(page, nativeCandidateIndex);
   const selectedEntry = selected.entries[selected.selectedIndex];

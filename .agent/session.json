@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Implement Byte L4b idea-catalog browse/select",
-  "status": "l4b-implemented-pending-review",
-  "updatedAt": "2026-06-19T15:12:00Z",
+  "lastTask": "Implement Byte editor-ux-cleanup progressive disclosure + player menu",
+  "status": "editor-ux-cleanup-implemented-pending-review",
+  "updatedAt": "2026-06-19T18:04:12Z",
   "lastHandoff": "",
-  "branch": "codex/byte-l4b-idea-catalog",
+  "branch": "codex/byte-editor-ux-cleanup",
   "commit": "HEAD",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte L4b is feature-approved by Claude on codex/byte-l4b-idea-catalog, with the requested non-hermetic smoke fix implemented on the branch. The melody editor idea catalog is scoped to editor-<songId>, shows generated prosody plus non-purged saved/evolved candidates sorted by fitness, keeps browsing read-only, uses explicit Preview for editorMelodyOverride, and seeds L3 edit mode from native anchor-phrase/v1 genomes. The L4a/L4b smokes no longer assume a clean editor-lantern branch and pass against a reused DB. No persistence endpoint/schema/server/scorer/transport/scheduler path changed. Validation: build green, targeted L4 smokes green, full smoke 76/76 on reused DB, db:smoke green, diff-check green; npm audit still reports the known Vite/esbuild advisories. Next byte should be the editor layout/discoverability cleanup before L4c."
+    "summary": "Byte editor-ux-cleanup is implemented on codex/byte-editor-ux-cleanup, stacked on the L4b branch because origin/main does not yet include L4b. The melody editor now opens from a visible Melody action through a compact player menu, the overlay is narrow and internally scroll-contained, and edit/catalog controls use progressive disclosure: catalog list inside the editor, Anchor/Connector panels collapsed until selection, Connector More for secondary knobs. This is presentation-only: no edit model, persistence/catalog semantics, renderer, scorer, transport, scheduling, server, or window.phraseEditor behavior changed. Validation: build green, six unit suites green, editor-focused smoke green, full smoke 76/76 twice on a reused non-clean DB, db:smoke green, diff-check green; npm audit still reports known Vite/esbuild advisories."
   }
 }
