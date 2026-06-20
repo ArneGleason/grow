@@ -23,13 +23,13 @@
     }
   },
   "lastTask": "Implement Byte editor-ux-cleanup progressive disclosure + player menu",
-  "status": "editor-ux-cleanup-implemented-pending-review",
-  "updatedAt": "2026-06-19T18:04:12Z",
+  "status": "editor-ux-cleanup-approved-and-merged",
+  "updatedAt": "2026-06-20T12:05:45Z",
   "lastHandoff": "",
-  "branch": "codex/byte-editor-ux-cleanup",
-  "commit": "HEAD",
+  "branch": "main",
+  "commit": "6f26b42750cc6467a8b7be1ac4b9fd7b1cb0d378",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte editor-ux-cleanup is implemented on codex/byte-editor-ux-cleanup, stacked on the L4b branch because origin/main does not yet include L4b. The melody editor now opens from a visible Melody action through a compact player menu, the overlay is narrow and internally scroll-contained, and edit/catalog controls use progressive disclosure: catalog list inside the editor, Anchor/Connector panels collapsed until selection, Connector More for secondary knobs. This is presentation-only: no edit model, persistence/catalog semantics, renderer, scorer, transport, scheduling, server, or window.phraseEditor behavior changed. Validation: build green, six unit suites green, editor-focused smoke green, full smoke 76/76 twice on a reused non-clean DB, db:smoke green, diff-check green; npm audit still reports known Vite/esbuild advisories."
+    "summary": "Byte L4b and Byte editor-ux-cleanup are approved and merged locally to main in order. The melody editor now opens from a visible Melody action through a compact player menu, the overlay is narrow and internally scroll-contained, and edit/catalog controls use progressive disclosure: catalog list inside the editor, Anchor/Connector panels collapsed until selection, Connector More for secondary knobs. Claude live-verified the UX at 821x942 and confirmed the boundary stayed presentation-only: no edit model, persistence/catalog semantics, renderer, scorer, transport, scheduling, server, or window.phraseEditor behavior changed. Validation before merge: build green, six unit suites green, full smoke 76/76 twice on a reused non-clean DB, db:smoke green, diff-check green; npm audit still reports known Vite/esbuild advisories."
   }
 }
