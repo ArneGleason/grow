@@ -5,6 +5,7 @@ import {
   normalizeAnchorPhrase,
   validateAnchorPhrase,
 } from "../src/anchor-phrase";
+import { createMinimalAuthoringAnchorPhrase } from "../src/anchor-phrase-templates";
 
 const WELL_FORMED_PHRASE = {
   segments: [
@@ -195,5 +196,23 @@ test.describe("Anchor phrase representation", () => {
     });
     expect(overlappingSegments.valid).toBe(false);
     expect(overlappingSegments.errors).toContain("segments.1 must start at or after previous segment end 4");
+  });
+
+  test("creates a minimal valid authoring template", () => {
+    const phrase = createMinimalAuthoringAnchorPhrase(4);
+    const result = normalizeAnchorPhrase(phrase);
+
+    expect(result.valid).toBe(true);
+    expect(result.errors).toEqual([]);
+    expect(result.clamps).toEqual([]);
+    expect(result.phrase).toEqual(phrase);
+    expect(phrase.segments).toHaveLength(1);
+    expect(phrase.segments[0].anchors).toHaveLength(3);
+    expect(phrase.segments[0].connectors).toHaveLength(2);
+    expect(phrase.segments[0].anchors.map((anchor) => anchor.degree)).toEqual([1, 5, 1]);
+    expect(phrase.segments[0].connectors.every((connector) => connector.kernel === "fill")).toBe(true);
+    expect(phrase.segments[0].anchors.every((anchor) =>
+      Number.isInteger(anchor.degree) && anchor.degree >= 1 && anchor.degree <= 7
+    )).toBe(true);
   });
 });

@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Implement Byte editor-ux-cleanup progressive disclosure + player menu",
-  "status": "editor-ux-cleanup-approved-and-merged",
-  "updatedAt": "2026-06-20T12:05:45Z",
+  "lastTask": "Implement Byte L4c-1 new idea authoring",
+  "status": "byte-l4c1-new-idea-ready-for-review",
+  "updatedAt": "2026-06-20T13:45:00Z",
   "lastHandoff": "",
-  "branch": "main",
-  "commit": "6f26b42750cc6467a8b7be1ac4b9fd7b1cb0d378",
+  "branch": "codex/byte-l4c1-new-idea",
+  "commit": "codex/byte-l4c1-new-idea HEAD",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte L4b and Byte editor-ux-cleanup are approved and merged locally to main in order. The melody editor now opens from a visible Melody action through a compact player menu, the overlay is narrow and internally scroll-contained, and edit/catalog controls use progressive disclosure: catalog list inside the editor, Anchor/Connector panels collapsed until selection, Connector More for secondary knobs. Claude live-verified the UX at 821x942 and confirmed the boundary stayed presentation-only: no edit model, persistence/catalog semantics, renderer, scorer, transport, scheduling, server, or window.phraseEditor behavior changed. Validation before merge: build green, six unit suites green, full smoke 76/76 twice on a reused non-clean DB, db:smoke green, diff-check green; npm audit still reports known Vite/esbuild advisories."
+    "summary": "Byte L4c-1 is implemented on codex/byte-l4c1-new-idea and ready for Claude review. The melody editor now has a small + New idea affordance plus window.phraseEditor.newIdea(), which seeds a pure minimal 1->5->1 AnchorPhrase template into edit mode as a transient New idea/new-unsaved draft catalog entry. The draft is immediately audible through the existing editorMelodyOverride path, remains in-session until saved, and Save reuses the L4a writeCandidate flow to persist a scored native anchor-phrase/v1 candidate in editor-<songId>; the draft entry clears after save and generated prosody stays unchanged. No persistence endpoint, schema, server normalizer, renderer, scorer, transport, scheduling, or candidate-store logic changed. Validation: build green, six unit suites green, targeted new-idea smoke green, full smoke 77/77 twice on a reused non-clean DB, db:smoke green, diff-check green; npm audit still reports known Vite/esbuild advisories."
   }
 }

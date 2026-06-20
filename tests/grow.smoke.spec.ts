@@ -23,6 +23,7 @@ import {
   previewCandidateFitness,
 } from "../src/candidate-fitness";
 import { renderPhraseCandidateGenome } from "../src/phrase-candidate-genome";
+import { createMinimalAuthoringAnchorPhrase } from "../src/anchor-phrase-templates";
 import { selectStrictlyBetterElite } from "../src/evolving-performance";
 import {
   calculateCandidateDiversityMetrics,
@@ -747,6 +748,19 @@ async function savePhraseEditorInApp(page: Page): Promise<{
   return result;
 }
 
+async function startNewPhraseIdeaInApp(page: Page): Promise<Awaited<ReturnType<typeof getPhraseEditorState>>> {
+  const result = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      phraseEditor?: { newIdea(): Awaited<ReturnType<typeof getPhraseEditorState>> };
+    };
+    return appWindow.phraseEditor?.newIdea();
+  });
+  if (!result) {
+    throw new Error("window.phraseEditor.newIdea() was not available");
+  }
+  return result;
+}
+
 type PhraseEditorCatalogSmokeState = {
   branchId: string;
   entries: {
@@ -756,7 +770,7 @@ type PhraseEditorCatalogSmokeState = {
     generation?: number;
     id: string;
     label: string;
-    source: "generated" | "candidate";
+    source: "generated" | "draft" | "candidate";
     status?: StoredCandidate["status"];
     tag: string;
   }[];
@@ -2354,6 +2368,91 @@ test("anchor phrase editor saves edited phrases as idempotent persisted candidat
   const state = await getPhraseEditorState(page);
   expect(state.overrideActive).toBe(true);
   expect(await getActiveProsodyPattern(page)).toEqual(overridePattern);
+});
+
+test("anchor phrase editor authors a fresh idea from the minimal template", async ({ page }) => {
+  test.setTimeout(35_000);
+  await page.goto("/");
+
+  await openMelodyPhraseEditor(page);
+  await expect(page.getByTestId("anchor-phrase-editor-new-idea")).toBeEnabled();
+  const generatedBefore = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      anchorPhrase?: { fromProsody(): unknown };
+    };
+    return appWindow.anchorPhrase?.fromProsody();
+  });
+  const initialCandidates = await listCandidatesInApp(page, {
+    kind: "phrase",
+    branchId: "editor-lantern",
+    limit: 500,
+  });
+  const initialIds = new Set(initialCandidates.map((candidate) => candidate.id));
+
+  const newState = await startNewPhraseIdeaInApp(page);
+  expect(newState.editMode).toBe(true);
+  expect(newState.overrideActive).toBe(true);
+  expect(newState.workingPhrase).toEqual(createMinimalAuthoringAnchorPhrase(4));
+  await expect(page.getByTestId("anchor-phrase-editor-new-idea")).toBeDisabled();
+  await expect(page.getByTestId("anchor-phrase-editor-idea-detail")).toContainText("New idea · new · unsaved");
+
+  let catalog = await getPhraseEditorCatalog(page);
+  expect(catalog.selectedId).toBe("new-unsaved");
+  expect(catalog.entries[catalog.selectedIndex]).toMatchObject({
+    id: "new-unsaved",
+    label: "New idea",
+    source: "draft",
+    tag: "new · unsaved",
+  });
+  expect(catalog.entries[0]).toMatchObject({ id: "generated", source: "generated" });
+  expect(catalog.selectedPattern).toEqual(await getPhraseEditorOverridePattern(page));
+  expect(catalog.selectedPattern.events.every((event) => event === null || Number.isInteger(event.scaleDegree))).toBe(true);
+  expect(await getActiveProsodyPattern(page)).toEqual(catalog.selectedPattern);
+
+  const uniqueDynamics = Number((0.35 + (Date.now() % 200_000) / 1_000_000).toFixed(6));
+  const editResult = await page.evaluate((nextDynamics) => {
+    const appWindow = window as unknown as {
+      phraseEditor?: {
+        editAnchor(segmentIndex: number, anchorIndex: number, patch: {
+          degree?: number;
+          dynamics?: number;
+          octave?: number;
+        }): { changed: boolean; valid: boolean };
+      };
+    };
+    return appWindow.phraseEditor?.editAnchor(0, 1, {
+      degree: 6,
+      dynamics: nextDynamics,
+      octave: 5,
+    });
+  }, uniqueDynamics);
+  expect(editResult).toMatchObject({ changed: true, valid: true });
+
+  const overrideAfterEdit = await getPhraseEditorOverridePattern(page);
+  expect(overrideAfterEdit).toBeTruthy();
+  const save = await savePhraseEditorInApp(page);
+  expect(save.valid).toBe(true);
+  expect(save.branchId).toBe("editor-lantern");
+  expect(save.candidate).toBeTruthy();
+  expect(initialIds.has(save.candidate!.id)).toBe(false);
+  expect((save.candidate!.genome as { format?: string }).format).toBe("anchor-phrase/v1");
+  expect(save.candidate!.generation).toBe(0);
+  expect(save.candidate!.fitness).toBeGreaterThan(0);
+  expect(renderPhraseCandidateGenome(save.candidate!.genome)).toEqual(overrideAfterEdit);
+
+  catalog = await refreshPhraseEditorCatalog(page);
+  expect(catalog.selectedId).toBe(save.candidate!.id);
+  expect(catalog.entries.some((entry) => entry.source === "draft")).toBe(false);
+  expect(catalog.entries.some((entry) => entry.candidateId === save.candidate!.id)).toBe(true);
+  expect(catalog.entries[0]).toMatchObject({ id: "generated", source: "generated" });
+
+  const generatedAfter = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      anchorPhrase?: { fromProsody(): unknown };
+    };
+    return appWindow.anchorPhrase?.fromProsody();
+  });
+  expect(generatedAfter).toEqual(generatedBefore);
 });
 
 test("anchor phrase editor catalogs saved ideas and loads selected native candidates", async ({ page }) => {

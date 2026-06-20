@@ -14,6 +14,7 @@ import {
   type ConnectorEditPatch,
 } from "./anchor-phrase-edit";
 import { DEMO_ANCHOR_PHRASE, renderAnchorPhrase, renderDemoAnchorPhrase } from "./anchor-phrase-render";
+import { createMinimalAuthoringAnchorPhrase } from "./anchor-phrase-templates";
 import type {
   CandidateCapOptions,
   Candidate,
@@ -213,6 +214,7 @@ function requireElement<T extends Element>(selector: string): T {
 
 const app = requireElement<HTMLDivElement>("#app");
 const world = new GrowWorldState(PLAYER_REGISTRY);
+const ANCHOR_PHRASE_DRAFT_ID = "new-unsaved";
 let ollamaConfig = createDefaultOllamaConfig();
 let ollamaHealth = createInitialOllamaHealth(ollamaConfig);
 let ollamaThoughtTest = createInitialOllamaThoughtTest(ollamaConfig);
@@ -237,6 +239,7 @@ let anchorPhraseEditorSavedCount: number | undefined;
 let anchorPhraseEditorLastSavedCandidateId: string | undefined;
 let anchorPhraseCatalogCandidates: StoredCandidate[] = [];
 let anchorPhraseCatalogSelectedId = "generated";
+let anchorPhraseDraftActive = false;
 let anchorPhraseCatalogLoading = false;
 let anchorPhraseCatalogListOpen = false;
 let anchorPhraseAnchorPanelOpen = false;
@@ -693,6 +696,11 @@ ${timingFeelControls}
               aria-expanded="false"
             >Catalog</button>
             <div class="phrase-editor__catalog-actions">
+              <button
+                class="phrase-editor__tool-button"
+                data-testid="anchor-phrase-editor-new-idea"
+                type="button"
+              >+ New idea</button>
               <button
                 class="phrase-editor__tool-button"
                 data-testid="anchor-phrase-editor-preview"
@@ -1201,6 +1209,7 @@ const anchorPhraseEditorCatalogPrev = requireElement<HTMLButtonElement>("[data-t
 const anchorPhraseEditorCatalogNext = requireElement<HTMLButtonElement>("[data-testid='anchor-phrase-editor-catalog-next']");
 const anchorPhraseEditorIdeaIndex = requireElement<HTMLElement>("[data-testid='anchor-phrase-editor-idea-index']");
 const anchorPhraseEditorIdeaDetail = requireElement<HTMLElement>("[data-testid='anchor-phrase-editor-idea-detail']");
+const anchorPhraseEditorNewIdea = requireElement<HTMLButtonElement>("[data-testid='anchor-phrase-editor-new-idea']");
 const anchorPhraseEditorPreview = requireElement<HTMLButtonElement>("[data-testid='anchor-phrase-editor-preview']");
 const anchorPhraseEditorEditSelected = requireElement<HTMLButtonElement>("[data-testid='anchor-phrase-editor-edit-selected']");
 const anchorPhraseEditorCatalogListToggle = requireElement<HTMLButtonElement>(
@@ -1691,6 +1700,7 @@ function enterAnchorPhraseEditMode(): AnchorPhraseEditorState {
   }
   if (!isAnchorPhraseEditMode || !workingAnchorPhrase) {
     workingAnchorPhrase = createCurrentProsodyAnchorPhrase();
+    anchorPhraseDraftActive = false;
     selectedAnchorRef = undefined;
     selectedConnectorRef = undefined;
     anchorPhraseAnchorPanelOpen = false;
@@ -1897,6 +1907,7 @@ function resetAnchorPhraseEditorSaveState(): void {
   anchorPhraseEditorLastSavedCandidateId = undefined;
   anchorPhraseCatalogCandidates = [];
   anchorPhraseCatalogSelectedId = "generated";
+  anchorPhraseDraftActive = false;
   anchorPhraseCatalogLoading = false;
   anchorPhraseCatalogListOpen = false;
 }
@@ -1968,6 +1979,9 @@ function getAnchorPhraseCatalogEntries(): AnchorPhraseCatalogEntry[] {
     playerId: "melody",
     subdivisionBeats: ANCHOR_EDIT_GRID_BEATS,
   });
+  const draftEntries: AnchorPhraseCatalogEntry[] = anchorPhraseDraftActive && workingAnchorPhrase
+    ? [createAnchorPhraseCatalogDraftEntry(workingAnchorPhrase)]
+    : [];
   return [
     {
       editable: true,
@@ -1978,8 +1992,25 @@ function getAnchorPhraseCatalogEntries(): AnchorPhraseCatalogEntry[] {
       source: "generated",
       tag: "current prosody",
     },
+    ...draftEntries,
     ...anchorPhraseCatalogCandidates.map(createAnchorPhraseCatalogCandidateEntry),
   ];
+}
+
+function createAnchorPhraseCatalogDraftEntry(phrase: AnchorPhrase): AnchorPhraseCatalogEntry {
+  return {
+    editable: true,
+    id: ANCHOR_PHRASE_DRAFT_ID,
+    label: "New idea",
+    pattern: renderAnchorPhrase(phrase, {
+      baseOctave: 4,
+      playerId: "melody",
+      subdivisionBeats: ANCHOR_EDIT_GRID_BEATS,
+    }),
+    phrase: cloneAnchorPhrase(phrase),
+    source: "draft",
+    tag: "new · unsaved",
+  };
 }
 
 function createAnchorPhraseCatalogCandidateEntry(candidate: StoredCandidate): AnchorPhraseCatalogEntry {
@@ -2105,12 +2136,33 @@ function editSelectedAnchorPhraseCatalogEntry(): AnchorPhraseEditorState {
     return getAnchorPhraseEditorState();
   }
   workingAnchorPhrase = cloneAnchorPhrase(selected.phrase);
+  anchorPhraseDraftActive = false;
   selectedAnchorRef = undefined;
   selectedConnectorRef = undefined;
   anchorPhraseAnchorPanelOpen = false;
   anchorPhraseConnectorPanelOpen = false;
   isAnchorPhraseEditMode = true;
   anchorPhraseEditorMessage = `Editing ${selected.label}.`;
+  commitAnchorPhraseEditorOverride();
+  return getAnchorPhraseEditorState();
+}
+
+function startNewAnchorPhraseIdea(): AnchorPhraseEditorState {
+  if (!canEditAnchorPhrase()) {
+    anchorPhraseEditorMessage = "New ideas are disabled while the line is evolving.";
+    renderAnchorPhraseEditor();
+    return getAnchorPhraseEditorState();
+  }
+  workingAnchorPhrase = createMinimalAuthoringAnchorPhrase(4);
+  selectedAnchorRef = undefined;
+  selectedConnectorRef = undefined;
+  anchorPhraseAnchorPanelOpen = false;
+  anchorPhraseConnectorPanelOpen = false;
+  anchorPhraseConnectorMoreOpen = false;
+  anchorPhraseDraftActive = true;
+  anchorPhraseCatalogSelectedId = ANCHOR_PHRASE_DRAFT_ID;
+  isAnchorPhraseEditMode = true;
+  anchorPhraseEditorMessage = "New idea: home to dominant and back. Edit it, then save when it feels right.";
   commitAnchorPhraseEditorOverride();
   return getAnchorPhraseEditorState();
 }
@@ -2164,6 +2216,7 @@ async function saveAnchorPhraseEditorCandidate(): Promise<AnchorPhraseEditorSave
     const { candidate, rendered } = createAnchorPhraseEditorCandidate(workingAnchorPhrase);
     const stored = await persistence.writeCandidate(candidate, branchId);
     anchorPhraseEditorLastSavedCandidateId = stored.id;
+    anchorPhraseDraftActive = false;
     const catalog = await refreshAnchorPhraseCatalog({ render: false, selectId: stored.id });
     anchorPhraseEditorMessage = `Saved phrase idea to ${branchId}.`;
     return {
@@ -2233,6 +2286,7 @@ function resetAnchorPhraseEditorSession(
   const hadOverride = Boolean(editorMelodyOverride);
   isAnchorPhraseEditMode = false;
   workingAnchorPhrase = undefined;
+  anchorPhraseDraftActive = false;
   selectedAnchorRef = undefined;
   selectedConnectorRef = undefined;
   anchorPhraseAnchorPanelOpen = false;
@@ -2399,6 +2453,7 @@ function renderAnchorPhraseCatalogControls(): void {
     ? `${selected.label} · ${selected.tag}`
     : "Generated · current prosody";
   const actionEnabled = canEditAnchorPhrase() && !state.loading && !isAnchorPhraseEditMode;
+  anchorPhraseEditorNewIdea.disabled = !actionEnabled || anchorPhraseEditorSaveInFlight;
   anchorPhraseEditorPreview.disabled = !actionEnabled;
   anchorPhraseEditorEditSelected.disabled = !actionEnabled || !selected?.editable;
   anchorPhraseEditorEditSelected.title = selected && !selected.editable
@@ -3752,7 +3807,7 @@ interface AnchorPhraseCatalogEntrySummary {
   generation?: number;
   id: string;
   label: string;
-  source: "generated" | "candidate";
+  source: "generated" | "draft" | "candidate";
   status?: StoredCandidate["status"];
   tag: string;
 }
@@ -5449,6 +5504,10 @@ anchorPhraseEditorCatalogList.addEventListener("click", (event) => {
   selectAnchorPhraseCatalogIndex(Number(target.dataset.catalogIndex));
 });
 
+anchorPhraseEditorNewIdea.addEventListener("click", () => {
+  startNewAnchorPhraseIdea();
+});
+
 anchorPhraseEditorPreview.addEventListener("click", () => {
   previewSelectedAnchorPhraseCatalogEntry();
 });
@@ -5859,6 +5918,7 @@ declare global {
       getState(): AnchorPhraseEditorState;
       getWorkingPhrase(): AnchorPhrase | undefined;
       joinSegments(segmentIndex: number): AnchorEditResult;
+      newIdea(): AnchorPhraseEditorState;
       nextIdea(): AnchorPhraseCatalogState;
       previewSelectedIdea(): AnchorPhraseEditorSaveResult;
       previousIdea(): AnchorPhraseCatalogState;
@@ -6113,6 +6173,7 @@ window.phraseEditor = {
   getState: () => getAnchorPhraseEditorState(),
   getWorkingPhrase: () => workingAnchorPhrase ? cloneAnchorPhrase(workingAnchorPhrase) : undefined,
   joinSegments: (segmentIndex) => joinAnchorPhraseSegments(segmentIndex),
+  newIdea: () => startNewAnchorPhraseIdea(),
   nextIdea: () => stepAnchorPhraseCatalog(1),
   previewSelectedIdea: () => previewSelectedAnchorPhraseCatalogEntry(),
   previousIdea: () => stepAnchorPhraseCatalog(-1),
