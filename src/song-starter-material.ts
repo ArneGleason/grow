@@ -1,10 +1,12 @@
-import { generateProsodicMelody } from "./melody-prosody";
+import type { Anchor, AnchorPhrase, Connector } from "./anchor-phrase";
+import { renderAnchorPhrase } from "./anchor-phrase-render";
 import type { PatternNoteSource, PlayerPatternSource, SongMaterial } from "./song-material";
 import type { SongLibraryStarter } from "./song-library";
 
 const STARTER_PATTERN_BEATS = 16;
 const PULSE_SUBDIVISION_BEATS = 1;
 const BASS_SUBDIVISION_BEATS = 0.5;
+const MELODY_SUBDIVISION_BEATS = 0.25;
 const DEFAULT_ROOT_CYCLE = [0, 4, 6, 4] as const;
 
 const MODE_ROOT_CYCLES = {
@@ -19,14 +21,15 @@ const MODE_ROOT_CYCLES = {
 export function createSongStarterMaterial(base: SongMaterial, starter: SongLibraryStarter): SongMaterial {
   const seed = starter.materialSeed ?? hashStarterMaterialKey(`${starter.sourcePrompt}:${base.id}`);
   const rootCycle = createStarterRootCycle(base, starter, seed);
+  const connectorProfile = createConnectorStarterProfile(starter, seed);
   return {
     ...base,
     label: `${base.label} starter`,
-    description: `${base.description} Prompt-seeded into a 16-beat phrase pack.`,
+    description: `${base.description} Prompt-seeded into a connector-first 16-beat phrase pack (${connectorProfile.summary}).`,
     patterns: [
       createStarterPulsePattern(starter, rootCycle, seed),
       createStarterBassPattern(starter, rootCycle, seed),
-      createStarterMelodyPattern(starter, seed),
+      createStarterMelodyPattern(starter, rootCycle, connectorProfile, seed),
     ],
   };
 }
@@ -93,18 +96,28 @@ function createStarterBassPattern(
 
 function createStarterMelodyPattern(
   starter: SongLibraryStarter,
+  roots: readonly number[],
+  profile: ConnectorStarterProfile,
   seed: number,
 ): PlayerPatternSource {
   if (!isPlayerEnabled(starter, "melody")) {
     return {
-      subdivisionBeats: 0.25,
-      events: Array.from({ length: STARTER_PATTERN_BEATS / 0.25 }, () => null),
+      subdivisionBeats: MELODY_SUBDIVISION_BEATS,
+      events: Array.from({ length: STARTER_PATTERN_BEATS / MELODY_SUBDIVISION_BEATS }, () => null),
     };
   }
-  const melody = generateProsodicMelody({
+  const phrase = createConnectorFirstStarterAnchorPhrase({
+    roots,
     seed,
     baseOctave: starter.goal.energy > 0.7 ? 5 : 4,
-    bars: STARTER_PATTERN_BEATS / 4,
+    energy: starter.goal.energy,
+    surprise: starter.goal.surpriseTarget,
+    profile,
+  });
+  const melody = renderAnchorPhrase(phrase, {
+    baseOctave: starter.goal.energy > 0.7 ? 5 : 4,
+    playerId: "melody",
+    subdivisionBeats: MELODY_SUBDIVISION_BEATS,
   });
   const velocityScale = 0.88 + clamp01(starter.goal.energy) * 0.28;
   return {
@@ -117,6 +130,156 @@ function createStarterMelodyPattern(
         }
         : null
     ),
+  };
+}
+
+export interface ConnectorStarterProfile {
+  blueNoteIntent: boolean;
+  chromaticIntent: boolean;
+  glideIntent: boolean;
+  density: number;
+  summary: string;
+}
+
+interface ConnectorFirstStarterInput {
+  roots: readonly number[];
+  seed: number;
+  baseOctave: number;
+  energy: number;
+  surprise: number;
+  profile: ConnectorStarterProfile;
+}
+
+export function createConnectorFirstStarterAnchorPhrase(input: ConnectorFirstStarterInput): AnchorPhrase {
+  const roots = input.roots.length > 0 ? input.roots : DEFAULT_ROOT_CYCLE;
+  const baseOctave = Math.max(3, Math.min(5, Math.trunc(input.baseOctave)));
+  const energy = clamp01(input.energy);
+  const surprise = clamp01(input.surprise);
+  const profile = input.profile;
+  const highPoint = normalizeDegree((roots[1] ?? 4) + (profile.blueNoteIntent ? 2 : 1));
+  const questionCadence = normalizeDegree(roots[1] ?? 4);
+  const answerCadence = normalizeDegree(roots[3] ?? 0);
+  const tail = normalizeDegree(roots[0] ?? 0);
+  const anchorDynamics = 0.44 + energy * 0.24;
+
+  const firstSegmentAnchors = [
+    starterAnchor(roots[0] ?? 0, baseOctave, 0, 0.75, anchorDynamics - 0.08),
+    starterAnchor(highPoint, baseOctave + (energy > 0.68 ? 1 : 0), 3, 0.5, anchorDynamics),
+    starterAnchor(questionCadence, baseOctave, 6.5, 1.0, anchorDynamics + 0.04),
+  ];
+  const secondSegmentAnchors = [
+    starterAnchor(normalizeDegree((roots[2] ?? 6) + (seedBit(input.seed, 3) ? 1 : -1)), baseOctave, 8.5, 0.5, anchorDynamics - 0.1),
+    starterAnchor(normalizeDegree((roots[2] ?? 6) + (profile.chromaticIntent ? 3 : 2)), baseOctave + 1, 11.25, 0.5, anchorDynamics + 0.02),
+    starterAnchor(answerCadence, baseOctave, 14, 0.75, anchorDynamics + 0.03),
+    starterAnchor(tail, baseOctave, 15.25, 0.75, anchorDynamics + 0.06),
+  ];
+
+  return {
+    segments: [
+      {
+        anchors: firstSegmentAnchors,
+        connectors: [
+          starterConnector(profile.glideIntent ? "skip" : "fill", profile, {
+            density: 0.78 + profile.density * 0.12,
+            reach: profile.glideIntent ? 0.9 : 0.48,
+            bias: surprise > 0.52 ? 0.3 : -0.2,
+            pull: 0.48,
+            skew: -0.12,
+          }),
+          starterConnector(profile.blueNoteIntent ? "detour" : "approach", profile, {
+            density: profile.blueNoteIntent ? 0.72 : 0.56,
+            reach: profile.blueNoteIntent ? 0.92 : 0.55,
+            bias: profile.blueNoteIntent ? -0.7 : 0.15,
+            pull: 0.82,
+            skew: 0.22,
+          }),
+        ],
+      },
+      {
+        anchors: secondSegmentAnchors,
+        connectors: [
+          starterConnector(profile.chromaticIntent ? "detour" : "fill", profile, {
+            density: 0.72 + profile.density * 0.16,
+            reach: profile.chromaticIntent ? 1 : 0.58,
+            bias: profile.chromaticIntent ? 0.8 : -0.15,
+            pull: 0.44,
+            skew: -0.18,
+          }),
+          starterConnector(profile.glideIntent ? "skip" : "fill", profile, {
+            density: profile.glideIntent ? 0.62 : 0.7,
+            reach: profile.glideIntent ? 1 : 0.5,
+            bias: 0.35,
+            pull: 0.58,
+            skew: 0.1,
+          }),
+          starterConnector("approach", profile, {
+            density: 0.5,
+            reach: profile.blueNoteIntent ? 0.85 : 0.48,
+            bias: profile.blueNoteIntent ? -0.6 : -0.25,
+            pull: 1,
+            skew: 0.42,
+          }),
+        ],
+      },
+    ],
+  };
+}
+
+function createConnectorStarterProfile(starter: SongLibraryStarter, seed: number): ConnectorStarterProfile {
+  const text = [
+    starter.sourcePrompt,
+    ...starter.playerPlans.map((plan) => plan.brief),
+    ...starter.goal.influenceHints,
+  ].join(" ").toLowerCase();
+  const blueNoteIntent = /\b(blues|bluesy|blue note|bent|bend|smear|dirty|worry|worried)\b/.test(text);
+  const chromaticIntent = blueNoteIntent ||
+    /\b(chromatic|outside|passing|enclosure|slip|slide|crawl)\b/.test(text);
+  const glideIntent = /\b(glide|gliss|glissando|portamento|slide|swoop|sweep)\b/.test(text);
+  const density = clamp01(starter.goal.surpriseTarget * 0.7 + starter.goal.energy * 0.3 + (seedBit(seed, 7) ? 0.08 : 0));
+  const palette = [
+    "modal core",
+    chromaticIntent ? "chromatic connector intent" : undefined,
+    blueNoteIntent ? "blue-note inflection intent" : undefined,
+    glideIntent ? "glide/portamento intent" : undefined,
+  ].filter((part): part is string => Boolean(part)).join(" + ");
+  return {
+    blueNoteIntent,
+    chromaticIntent,
+    glideIntent,
+    density,
+    summary: `${palette}; sparse anchors, dense connectors`,
+  };
+}
+
+function starterAnchor(
+  engineDegree: number,
+  octave: number,
+  startBeat: number,
+  durationBeats: number,
+  dynamics: number,
+): Anchor {
+  return {
+    degree: normalizeDegree(engineDegree) + 1,
+    octave,
+    startBeat,
+    durationBeats,
+    dynamics: round3(Math.max(0.16, Math.min(0.82, dynamics))),
+  };
+}
+
+function starterConnector(
+  kernel: Connector["kernel"],
+  profile: ConnectorStarterProfile,
+  values: Partial<Omit<Connector, "kernel">>,
+): Connector {
+  return {
+    kernel,
+    reach: values.reach ?? 0.5,
+    density: Math.max(0, Math.min(1, values.density ?? profile.density)),
+    bias: Math.max(-1, Math.min(1, values.bias ?? 0)),
+    pull: Math.max(0, Math.min(1, values.pull ?? 0.5)),
+    color: profile.chromaticIntent || profile.blueNoteIntent ? 1 : 0,
+    skew: Math.max(-1, Math.min(1, values.skew ?? 0)),
   };
 }
 

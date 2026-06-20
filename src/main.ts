@@ -151,6 +151,8 @@ import {
   renameSongLibraryEntry,
   selectSongLibraryEntry,
   updateSongLibraryEntryBase,
+  updateSongLibraryEntryStarter,
+  cloneSongLibraryStarter,
   type SongLibraryEntry,
   type SongLibraryPlayerPlan,
   type SongLibrarySnapshot,
@@ -247,6 +249,7 @@ let songId: SongId = getActiveSongLibraryEntry().baseSongId;
 let cachedSongStarterMaterialKey = "";
 let cachedSongStarterMaterial: SongMaterial | undefined;
 let songStarterOpen = false;
+let songStarterEditingSongId: string | undefined;
 let songStarterGeneration: SongStarterGeneration | undefined;
 let timingFeelMode: TimingFeelMode = "feel";
 let melodyDevelopmentMode: MelodyDevelopmentMode = "repaired";
@@ -640,21 +643,25 @@ function getDefaultSongStarterPlayerBrief(player: Player): string {
   }
 }
 
-function openSongStarterComposer(): void {
+function openSongStarterComposer(song: SongLibraryEntry | undefined = undefined): void {
   songStarterOpen = true;
+  songStarterEditingSongId = song?.id;
   songStarterGeneration = undefined;
   songStarterOverlay.hidden = false;
-  songStarterPrompt.value = "";
-  songStarterTonicSelect.value = "";
-  songStarterModeSelect.value = "";
-  songStarterTempoInput.value = "";
-  songStarterFormSelect.value = "";
+  const starter = song?.starter;
+  songStarterPrompt.value = starter?.sourcePrompt ?? "";
+  songStarterTonicSelect.value = starter?.goal.tonic ?? "";
+  songStarterModeSelect.value = starter?.goal.mode ?? "";
+  songStarterTempoInput.value = starter?.goal.tempoBpm ? String(starter.goal.tempoBpm) : "";
+  songStarterFormSelect.value = starter?.goal.formPreference ?? "";
   for (const player of PLAYER_REGISTRY) {
     const checkbox = getSongStarterPlayerCheckbox(player.id);
     const briefInput = getSongStarterPlayerBriefInput(player.id);
-    checkbox.checked = player.role === "melody" || player.role === "pulse" || player.role === "bass";
-    briefInput.value = getDefaultSongStarterPlayerBrief(player);
+    const plan = starter?.playerPlans.find((candidate) => candidate.playerId === player.id);
+    checkbox.checked = plan?.enabled ?? (player.role === "melody" || player.role === "pulse" || player.role === "bass");
+    briefInput.value = plan?.brief ?? getDefaultSongStarterPlayerBrief(player);
   }
+  songStarterCreate.textContent = songStarterEditingSongId ? "Update starter" : "Create starter";
   renderSongStarterPreview();
   songStarter.focus();
   window.setTimeout(() => songStarterPrompt.focus(), 0);
@@ -662,6 +669,7 @@ function openSongStarterComposer(): void {
 
 function closeSongStarterComposer(restoreFocus = true): void {
   songStarterOpen = false;
+  songStarterEditingSongId = undefined;
   songStarterOverlay.hidden = true;
   if (restoreFocus) songLibraryNewButton.focus();
 }
@@ -710,12 +718,14 @@ function createSongFromStarterComposer(): SongLibrarySnapshot | undefined {
     goal: cloneSongGoal(interpretation.goal),
     playerPlans: generated.playerPlans.map((plan) => ({ ...plan })),
   };
-  const snapshot = createLibrarySong(
-    createSongStarterTitle(interpretation.goal.sourceIdea, songLibraryState.songs.length),
-    generated.baseSongId,
-    starter,
-    "song-starter",
-  );
+  const snapshot = songStarterEditingSongId
+    ? updateLibrarySongStarter(songStarterEditingSongId, generated.baseSongId, starter)
+    : createLibrarySong(
+      createSongStarterTitle(interpretation.goal.sourceIdea, songLibraryState.songs.length),
+      generated.baseSongId,
+      starter,
+      "song-starter",
+    );
   songGoalInterpretation = interpretation;
   songGoalIdeaInput.value = interpretation.goal.sourceIdea;
   applySongGoalSetup(interpretation);
@@ -920,7 +930,7 @@ function createSongStarterStructureSummary(goal: SongGoal, baseSongId: SongId): 
   const emphasis = Object.entries(goal.sectionEmphasis)
     .map(([section, value]) => `${section} ${Number(value).toFixed(2)}`)
     .join(", ");
-  return `${variant.label} over ${getSongLabel(baseSongId)} material; ${emphasis || "balanced section emphasis"}.`;
+  return `${variant.label} over ${getSongLabel(baseSongId)} roots; connector-led melody; ${emphasis || "balanced section emphasis"}.`;
 }
 
 function hashStarterSeed(value: string): number {
@@ -1016,6 +1026,21 @@ ${sessionModeControls}
             data-testid="song-library-new"
             type="button"
           >New song</button>
+          <button
+            class="song-library-control__step"
+            data-testid="song-library-edit-starter"
+            type="button"
+          >Edit</button>
+          <button
+            class="song-library-control__step"
+            data-testid="song-library-regenerate-starter"
+            type="button"
+          >Regen</button>
+          <button
+            class="song-library-control__step"
+            data-testid="song-library-clone"
+            type="button"
+          >Clone</button>
           <span class="song-library-control__count" data-testid="song-library-count">1 / 1</span>
         </section>
         <fieldset class="mode-control timing-control">
@@ -1824,6 +1849,11 @@ const songLibraryPreviousButton = requireElement<HTMLButtonElement>("[data-testi
 const songLibraryNextButton = requireElement<HTMLButtonElement>("[data-testid='song-library-next']");
 const songLibraryTitleInput = requireElement<HTMLInputElement>("[data-testid='song-library-title-input']");
 const songLibraryNewButton = requireElement<HTMLButtonElement>("[data-testid='song-library-new']");
+const songLibraryEditStarterButton = requireElement<HTMLButtonElement>("[data-testid='song-library-edit-starter']");
+const songLibraryRegenerateStarterButton = requireElement<HTMLButtonElement>(
+  "[data-testid='song-library-regenerate-starter']",
+);
+const songLibraryCloneButton = requireElement<HTMLButtonElement>("[data-testid='song-library-clone']");
 const songLibraryCount = requireElement<HTMLElement>("[data-testid='song-library-count']");
 const songStarterOverlay = requireElement<HTMLElement>("[data-testid='song-starter-overlay']");
 const songStarter = requireElement<HTMLElement>("[data-testid='song-starter']");
@@ -5382,6 +5412,9 @@ function renderSongLibraryControls(): void {
     : `${active.title} · starter ${getSongLabel(active.baseSongId)}`;
   songLibraryPreviousButton.disabled = songs.length <= 1;
   songLibraryNextButton.disabled = songs.length <= 1;
+  songLibraryEditStarterButton.disabled = !active.starter;
+  songLibraryRegenerateStarterButton.disabled = !active.starter;
+  songLibraryCloneButton.disabled = songs.length >= 64;
   songLibraryCount.textContent = `${activeIndex + 1} / ${songs.length}`;
 }
 
@@ -6176,7 +6209,8 @@ function applySongContextChange(
   const nextLibrarySongId = nextSong.id;
   const libraryChanged = previousLibrarySongId !== nextLibrarySongId;
   const materialChanged = previousSongId !== nextSong.baseSongId;
-  if (!libraryChanged && !materialChanged) return nextSong;
+  const starterChanged = JSON.stringify(previousSong.starter ?? null) !== JSON.stringify(nextSong.starter ?? null);
+  if (!libraryChanged && !materialChanged && !starterChanged) return nextSong;
   songId = nextSong.baseSongId;
   resetAnchorPhraseEditorSession("Song changed; generated phrase restored.", { refresh: false, render: false });
   resetAnchorPhraseEditorSaveState();
@@ -6228,6 +6262,57 @@ function createLibrarySong(
   const snapshot = getActiveSongLibrarySnapshot();
   applySongContextChange(previousSong, snapshot.active, source);
   return snapshot;
+}
+
+function updateLibrarySongStarter(
+  songLibraryId: string,
+  baseSongId: SongId,
+  starter: SongLibraryStarter,
+): SongLibrarySnapshot {
+  const previousSong = getActiveSongLibraryEntry();
+  songLibraryState = updateSongLibraryEntryStarter(songLibraryState, songLibraryId, starter, baseSongId);
+  songLibraryState = normalizeSongLibraryState(songLibraryState);
+  persistSongLibraryState();
+  const snapshot = getActiveSongLibrarySnapshot();
+  applySongContextChange(previousSong, snapshot.active, "song-starter-edit");
+  return snapshot;
+}
+
+function regenerateActiveLibrarySongStarter(): SongLibrarySnapshot | undefined {
+  const active = getActiveSongLibraryEntry();
+  if (!active.starter) return undefined;
+  const previousSong = active;
+  const nextSeed = hashStarterSeed([
+    active.id,
+    active.starter.sourcePrompt,
+    active.starter.materialSeed ?? 0,
+    Date.now(),
+    "regenerate",
+  ].join("|"));
+  const starter = {
+    ...cloneSongLibraryStarter(active.starter)!,
+    materialSeed: nextSeed,
+    structureSummary: createSongStarterStructureSummary(active.starter.goal, active.starter.baseSongId ?? active.baseSongId),
+  };
+  songLibraryState = updateSongLibraryEntryStarter(
+    songLibraryState,
+    active.id,
+    starter,
+    starter.baseSongId ?? active.baseSongId,
+  );
+  songLibraryState = normalizeSongLibraryState(songLibraryState);
+  persistSongLibraryState();
+  const snapshot = getActiveSongLibrarySnapshot();
+  applySongContextChange(previousSong, snapshot.active, "song-library-regenerate-starter");
+  renderWorld();
+  return snapshot;
+}
+
+function cloneActiveLibrarySong(): SongLibrarySnapshot {
+  const active = getActiveSongLibraryEntry();
+  const starter = cloneSongLibraryStarter(active.starter);
+  const title = `${active.title} copy`.slice(0, 80);
+  return createLibrarySong(title, active.baseSongId, starter, "song-library-clone");
 }
 
 function renameActiveLibrarySong(title: string): SongLibrarySnapshot {
@@ -6699,6 +6784,20 @@ songLibraryNextButton.addEventListener("click", () => {
 
 songLibraryNewButton.addEventListener("click", () => {
   openSongStarterComposer();
+});
+
+songLibraryEditStarterButton.addEventListener("click", () => {
+  const active = getActiveSongLibraryEntry();
+  if (!active.starter) return;
+  openSongStarterComposer(active);
+});
+
+songLibraryRegenerateStarterButton.addEventListener("click", () => {
+  regenerateActiveLibrarySongStarter();
+});
+
+songLibraryCloneButton.addEventListener("click", () => {
+  cloneActiveLibrarySong();
 });
 
 songLibraryTitleInput.addEventListener("change", () => {

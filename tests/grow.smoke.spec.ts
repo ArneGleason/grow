@@ -3024,6 +3024,7 @@ test("song library creates, renames, and switches deterministic starter material
   await expect(page.getByTestId("song-starter-generated-setup")).toContainText("G Smoke");
   await expect(page.getByTestId("song-starter-generated-material")).toContainText("Switchback");
   await expect(page.getByTestId("song-starter-generated-structure")).toContainText("Wide Return");
+  await expect(page.getByTestId("song-starter-generated-structure")).toContainText("connector-led melody");
   await expect(page.getByTestId("song-starter-generated-players")).toContainText("bass:");
   await expect(page.getByTestId("song-starter-player-bass-brief")).toHaveValue(/Direction: Walk the room/);
   await page.getByTestId("song-starter-create").click();
@@ -3076,6 +3077,7 @@ test("song library creates, renames, and switches deterministic starter material
   expect(libraryState.library?.active.starter?.baseSongId).toBe("switchback");
   expect(libraryState.library?.active.starter?.materialSeed).toEqual(expect.any(Number));
   expect(libraryState.library?.active.starter?.structureSummary).toContain("Wide Return");
+  expect(libraryState.library?.active.starter?.structureSummary).toContain("connector-led melody");
   expect(libraryState.library?.active.starter?.sourcePrompt).toContain("basement machinery");
   expect(libraryState.library?.active.starter?.playerPlans.find((plan) => plan.playerId === "bass")).toMatchObject({
     enabled: true,
@@ -3115,6 +3117,36 @@ test("song library creates, renames, and switches deterministic starter material
     .toBeGreaterThan(4);
   expect(firstActiveMaterial.patternSummaries?.find((pattern) => pattern.playerId === "bass")?.rootDegrees.length)
     .toBeGreaterThan(2);
+  expect(firstActiveMaterial.patternSummaries?.find((pattern) => pattern.playerId === "melody")?.noteCount)
+    .toBeGreaterThan(14);
+
+  await expect(page.getByTestId("song-library-edit-starter")).toBeEnabled();
+  await expect(page.getByTestId("song-library-regenerate-starter")).toBeEnabled();
+  await expect(page.getByTestId("song-library-clone")).toBeEnabled();
+  await page.getByTestId("song-library-edit-starter").click();
+  await expect(page.getByTestId("song-starter-overlay")).toBeVisible();
+  await expect(page.getByTestId("song-starter-prompt")).toHaveValue(/basement machinery/);
+  await expect(page.getByTestId("song-starter-create")).toHaveText("Update starter");
+  await page.getByTestId("song-starter-close").click();
+  await expect(page.getByTestId("song-starter-overlay")).toBeHidden();
+
+  await page.getByTestId("song-library-regenerate-starter").click();
+  const regeneratedMaterial = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      song?: { getActiveMaterial(): unknown };
+      songLibrary?: { getState(): { active: { starter?: { materialSeed?: number } } } };
+    };
+    return {
+      material: JSON.stringify(appWindow.song?.getActiveMaterial()),
+      seed: appWindow.songLibrary?.getState().active.starter?.materialSeed,
+    };
+  });
+  expect(regeneratedMaterial.seed).toEqual(expect.any(Number));
+  expect(regeneratedMaterial.material).not.toBe(firstActiveMaterial.serializedPatterns);
+
+  await page.getByTestId("song-library-clone").click();
+  await expect(page.getByTestId("song-current")).toHaveText("Basement take copy");
+  await expect(page.getByTestId("song-library-count")).toHaveText("3 / 3");
   const firstGeneratedPhrase = await page.evaluate(() => {
     const appWindow = window as unknown as {
       anchorPhrase?: { fromProsody(): unknown };
@@ -3140,7 +3172,7 @@ test("song library creates, renames, and switches deterministic starter material
   await page.getByTestId("song-starter-create").click();
   await expect(page.getByTestId("song-starter-overlay")).toBeHidden();
   await expect(page.getByTestId("song-current")).toHaveText("Bright Phrygian Glass Pulse");
-  await expect(page.getByTestId("song-library-count")).toHaveText("3 / 3");
+  await expect(page.getByTestId("song-library-count")).toHaveText("4 / 4");
   expect((await getTransportState(page)).songId).toBe("glass");
   const secondGeneratedPhrase = await page.evaluate(() => {
     const appWindow = window as unknown as {
@@ -3163,7 +3195,7 @@ test("song library creates, renames, and switches deterministic starter material
   }).toBe(true);
 
   await page.getByTestId("song-library-previous").click();
-  await expect(page.getByTestId("song-current")).toHaveText("Basement take");
+  await expect(page.getByTestId("song-current")).toHaveText("Basement take copy");
   expect((await getTransportState(page)).songId).toBe("switchback");
 
   await button.click();

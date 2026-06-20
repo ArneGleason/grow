@@ -167,6 +167,27 @@ export function updateSongLibraryEntryBase(
   };
 }
 
+export function updateSongLibraryEntryStarter(
+  state: SongLibraryState,
+  songId: string,
+  starter: SongLibraryStarter,
+  baseSongId?: SongId,
+  now = new Date(),
+): SongLibraryState {
+  const normalized = normalizeSongLibraryState(state);
+  return {
+    ...normalized,
+    songs: normalized.songs.map((song) => song.id === songId
+      ? {
+        ...song,
+        baseSongId: baseSongId && isSongId(baseSongId) ? baseSongId : song.baseSongId,
+        starter: cloneSongLibraryStarter(starter),
+        updatedAt: toIsoString(now),
+      }
+      : song),
+  };
+}
+
 export function appendSongLibraryEntry(state: SongLibraryState, entry: SongLibraryEntry): SongLibraryState {
   const normalized = normalizeSongLibraryState(state);
   const existingIds = new Set(normalized.songs.map((song) => song.id));
