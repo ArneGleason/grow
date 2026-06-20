@@ -238,6 +238,190 @@ button {
   font-variant-numeric: tabular-nums;
 }
 
+.song-starter-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+}
+
+.song-starter-overlay[hidden] {
+  display: none;
+}
+
+.song-starter-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(5, 7, 6, 0.66);
+}
+
+.song-starter {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 12px;
+  width: min(720px, calc(100vw - 36px));
+  max-height: min(88vh, 780px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  border: 1px solid rgba(238, 243, 229, 0.24);
+  border-radius: 8px;
+  box-shadow: 0 26px 90px rgba(0, 0, 0, 0.5);
+  background: rgba(12, 17, 14, 0.98);
+  color: #eef3e5;
+  padding: 14px;
+}
+
+.song-starter:focus-visible,
+.song-starter select:focus-visible,
+.song-starter input:focus-visible,
+.song-starter textarea:focus-visible,
+.song-starter button:focus-visible {
+  outline: 3px solid #f6cc6b;
+  outline-offset: 2px;
+}
+
+.song-starter__header,
+.song-starter__footer {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.song-starter__footer {
+  align-items: center;
+}
+
+.song-starter__eyebrow {
+  margin: 0 0 4px;
+  color: #aeb7a5;
+  font-size: 0.76rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.song-starter h2 {
+  margin: 0;
+  font-size: 1.08rem;
+}
+
+.song-starter__close {
+  min-height: 32px;
+  border: 1px solid rgba(174, 183, 165, 0.34);
+  border-radius: 7px;
+  background: rgba(238, 243, 229, 0.08);
+  color: #eef3e5;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+}
+
+.song-starter__prompt,
+.song-starter__setup label,
+.song-starter-player {
+  display: grid;
+  gap: 6px;
+}
+
+.song-starter__prompt span,
+.song-starter__setup span {
+  color: #aeb7a5;
+  font-size: 0.76rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.song-starter textarea,
+.song-starter select,
+.song-starter input[type="number"],
+.song-starter-player input[type="text"] {
+  width: 100%;
+  border: 1px solid rgba(174, 183, 165, 0.26);
+  border-radius: 7px;
+  background: rgba(4, 8, 7, 0.78);
+  color: #eef3e5;
+  font: inherit;
+}
+
+.song-starter textarea {
+  min-height: 108px;
+  padding: 9px 10px;
+  resize: vertical;
+}
+
+.song-starter select,
+.song-starter input[type="number"],
+.song-starter-player input[type="text"] {
+  min-height: 36px;
+  padding: 7px 9px;
+}
+
+.song-starter__setup {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.song-starter__players {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  border: 1px solid rgba(174, 183, 165, 0.22);
+  border-radius: 8px;
+  background: rgba(14, 18, 17, 0.36);
+  padding: 10px;
+}
+
+.song-starter__players legend {
+  color: #aeb7a5;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 0 5px;
+  text-transform: uppercase;
+}
+
+.song-starter-player {
+  grid-template-columns: minmax(120px, 0.36fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+
+.song-starter-player__toggle {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+}
+
+.song-starter-player__toggle input {
+  accent-color: #d9f7a7;
+}
+
+.song-starter-player__toggle strong {
+  color: #eef3e5;
+  font-size: 0.86rem;
+  line-height: 1.1;
+}
+
+.song-starter-player__toggle small {
+  grid-column: 2;
+  color: #aeb7a5;
+  font-size: 0.72rem;
+}
+
+.song-starter__preview {
+  min-height: 38px;
+  border: 1px solid rgba(174, 183, 165, 0.18);
+  border-radius: 8px;
+  background: rgba(217, 247, 167, 0.08);
+  color: #d7dfcf;
+  padding: 9px 10px;
+  font-size: 0.82rem;
+}
+
 .transport-button {
   min-width: 104px;
   height: 42px;
@@ -1551,6 +1735,19 @@ button {
 
   .control-readout {
     flex: 1 1 0;
+  }
+
+  .song-starter {
+    width: 100%;
+    max-height: calc(100vh - 28px);
+  }
+
+  .song-starter__setup {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .song-starter-player {
+    grid-template-columns: 1fr;
   }
 
   .mode-control {

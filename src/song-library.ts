@@ -4,6 +4,8 @@ import {
   SONG_MATERIALS,
   type SongId,
 } from "./song-material";
+import type { PlayerRole } from "./players";
+import { validateSongGoal, type SongGoal } from "./song-goal";
 
 export const SONG_LIBRARY_STORAGE_KEY = "grow.songLibrary.v1";
 export const DEFAULT_LIBRARY_SONG_TITLE = "Untitled song 1";
@@ -14,9 +16,24 @@ export interface SongLibraryEntry {
   id: string;
   title: string;
   baseSongId: SongId;
+  starter?: SongLibraryStarter;
   createdAt: string;
   updatedAt: string;
   version: 1;
+}
+
+export interface SongLibraryPlayerPlan {
+  playerId: string;
+  role: PlayerRole | string;
+  enabled: boolean;
+  brief: string;
+}
+
+export interface SongLibraryStarter {
+  source: "deterministic-keywords" | "model";
+  sourcePrompt: string;
+  goal: SongGoal;
+  playerPlans: readonly SongLibraryPlayerPlan[];
 }
 
 export interface SongLibraryState {
@@ -34,6 +51,7 @@ export interface CreateSongLibraryEntryInput {
   id?: string;
   title?: string;
   baseSongId?: SongId;
+  starter?: SongLibraryStarter;
   now?: Date;
 }
 
@@ -61,6 +79,7 @@ export function createSongLibraryEntry(input: CreateSongLibraryEntryInput = {}):
     id,
     title: sanitizeSongTitle(input.title) || "Untitled song",
     baseSongId,
+    starter: cloneSongLibraryStarter(input.starter),
     createdAt: timestamp,
     updatedAt: timestamp,
     version: 1,
@@ -188,15 +207,63 @@ function readSongLibraryEntry(candidate: unknown): SongLibraryEntry | undefined 
   if (!id) return undefined;
   const title = sanitizeSongTitle(raw.title) || "Untitled song";
   const baseSongId = raw.baseSongId && isSongId(raw.baseSongId) ? raw.baseSongId : DEFAULT_SONG_ID;
+  const starter = readSongLibraryStarter(raw.starter);
   const createdAt = readIsoString(raw.createdAt) ?? new Date(0).toISOString();
   const updatedAt = readIsoString(raw.updatedAt) ?? createdAt;
   return {
     id,
     title,
     baseSongId,
+    starter,
     createdAt,
     updatedAt,
     version: 1,
+  };
+}
+
+export function cloneSongLibraryStarter(starter: SongLibraryStarter | undefined): SongLibraryStarter | undefined {
+  if (!starter) return undefined;
+  return {
+    source: starter.source,
+    sourcePrompt: starter.sourcePrompt,
+    goal: {
+      ...starter.goal,
+      dispositionBias: { ...starter.goal.dispositionBias },
+      influenceHints: [...starter.goal.influenceHints],
+      sectionEmphasis: { ...starter.goal.sectionEmphasis },
+    },
+    playerPlans: starter.playerPlans.map((plan) => ({ ...plan })),
+  };
+}
+
+function readSongLibraryStarter(candidate: unknown): SongLibraryStarter | undefined {
+  if (!candidate || typeof candidate !== "object") return undefined;
+  const raw = candidate as Partial<SongLibraryStarter>;
+  const source = raw.source === "model" ? "model" : "deterministic-keywords";
+  if (!raw.goal || typeof raw.goal !== "object") return undefined;
+  const sourcePrompt = typeof raw.sourcePrompt === "string" ? raw.sourcePrompt : "";
+  const playerPlans = Array.isArray(raw.playerPlans)
+    ? raw.playerPlans.map(readSongLibraryPlayerPlan).filter((plan): plan is SongLibraryPlayerPlan => Boolean(plan))
+    : [];
+  const validation = validateSongGoal(raw.goal);
+  return {
+    source,
+    sourcePrompt,
+    goal: validation.goal,
+    playerPlans,
+  };
+}
+
+function readSongLibraryPlayerPlan(candidate: unknown): SongLibraryPlayerPlan | undefined {
+  if (!candidate || typeof candidate !== "object") return undefined;
+  const raw = candidate as Partial<SongLibraryPlayerPlan>;
+  const playerId = typeof raw.playerId === "string" ? raw.playerId.trim() : "";
+  if (!playerId) return undefined;
+  return {
+    playerId,
+    role: typeof raw.role === "string" ? raw.role : "melody",
+    enabled: raw.enabled !== false,
+    brief: typeof raw.brief === "string" ? raw.brief.replace(/\s+/g, " ").trim().slice(0, 240) : "",
   };
 }
 

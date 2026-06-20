@@ -3005,9 +3005,26 @@ test("song library creates, renames, and switches deterministic starter material
   expect((await getTransportState(page)).songId).toBe("lantern");
 
   await page.getByTestId("song-library-new").click();
-  await expect(page.getByTestId("song-current")).toHaveText("Untitled song 2");
+  await expect(page.getByTestId("song-starter-overlay")).toBeVisible();
+  await expect(page.getByTestId("song-library-count")).toHaveText("1 / 1");
+  await expect(page.getByTestId("song-starter-create")).toBeDisabled();
+  await page.getByTestId("song-starter-prompt").fill(
+    "slow G dorian wide return basement machinery with glass hooks",
+  );
+  await page.getByTestId("song-starter-tonic").selectOption("G");
+  await page.getByTestId("song-starter-mode").selectOption("dorian");
+  await page.getByTestId("song-starter-tempo").fill("75");
+  await page.getByTestId("song-starter-form").selectOption("wide-return");
+  await page.getByTestId("song-starter-player-bass-brief").fill("Walk the room in low, patient shadows.");
+  await expect(page.getByTestId("song-starter-preview")).toContainText("G Smoke");
+  await expect(page.getByTestId("song-starter-preview")).toContainText("75 BPM");
+  await page.getByTestId("song-starter-create").click();
+  await expect(page.getByTestId("song-starter-overlay")).toBeHidden();
+  await expect(page.getByTestId("song-current")).toHaveText("Slow G Dorian Wide");
   await expect(page.getByTestId("song-library-count")).toHaveText("2 / 2");
   expect((await getTransportState(page)).songId).toBe("switchback");
+  expect((await getTransportState(page)).bpm).toBe(75);
+  await expect(page.getByTestId("control-key-readout")).toHaveText("G Smoke");
 
   await page.getByTestId("song-library-title-input").fill("Basement take");
   await page.getByTestId("song-library-title-input").press("Enter");
@@ -3015,7 +3032,20 @@ test("song library creates, renames, and switches deterministic starter material
   const libraryState = await page.evaluate(() => {
     const appWindow = window as unknown as {
       phraseEditor?: { getState(): { saveBranchId: string } };
-      songLibrary?: { getState(): { active: { id: string; title: string; baseSongId: string } } };
+      songLibrary?: {
+        getState(): {
+          active: {
+            id: string;
+            title: string;
+            baseSongId: string;
+            starter?: {
+              sourcePrompt: string;
+              goal: { tonic: string; mode: string; tempoBpm: number; formPreference: string };
+              playerPlans: Array<{ playerId: string; enabled: boolean; brief: string }>;
+            };
+          };
+        };
+      };
     };
     return {
       library: appWindow.songLibrary?.getState(),
@@ -3025,6 +3055,17 @@ test("song library creates, renames, and switches deterministic starter material
   expect(libraryState.library?.active).toMatchObject({
     title: "Basement take",
     baseSongId: "switchback",
+  });
+  expect(libraryState.library?.active.starter?.goal).toMatchObject({
+    tonic: "G",
+    mode: "dorian",
+    tempoBpm: 75,
+    formPreference: "wide-return",
+  });
+  expect(libraryState.library?.active.starter?.sourcePrompt).toContain("basement machinery");
+  expect(libraryState.library?.active.starter?.playerPlans.find((plan) => plan.playerId === "bass")).toMatchObject({
+    enabled: true,
+    brief: "Walk the room in low, patient shadows.",
   });
   expect(libraryState.editor?.saveBranchId).toBe(`editor-${libraryState.library?.active.id}`);
 
@@ -3037,7 +3078,13 @@ test("song library creates, renames, and switches deterministic starter material
   }).toBe(true);
 
   await page.getByTestId("song-library-new").click();
-  await expect(page.getByTestId("song-current")).toHaveText("Untitled song 3");
+  await expect(page.getByTestId("song-starter-overlay")).toBeVisible();
+  await page.getByTestId("song-starter-prompt").fill("bright phrygian glass pulse with a classic bridge");
+  await page.getByTestId("song-starter-mode").selectOption("phrygian");
+  await page.getByTestId("song-starter-form").selectOption("classic-arc");
+  await page.getByTestId("song-starter-create").click();
+  await expect(page.getByTestId("song-starter-overlay")).toBeHidden();
+  await expect(page.getByTestId("song-current")).toHaveText("Bright Phrygian Glass Pulse");
   await expect(page.getByTestId("song-library-count")).toHaveText("3 / 3");
   expect((await getTransportState(page)).songId).toBe("glass");
   await expect.poll(async () => {

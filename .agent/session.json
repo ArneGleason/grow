@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Implement first song library slice with named songs and per-song branches",
-  "status": "song-library-slice-ready-for-review",
-  "updatedAt": "2026-06-20T15:00:00Z",
+  "lastTask": "Add prompt-based song starter composer to the song library slice",
+  "status": "song-library-starter-ready-for-review",
+  "updatedAt": "2026-06-20T15:59:12Z",
   "lastHandoff": "",
   "branch": "codex/byte-song-library-a",
   "commit": "HEAD on codex/byte-song-library-a",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "First Song Library slice is implemented on codex/byte-song-library-a. The top bar now exposes a user song library (New song, Previous/Next, rename) instead of foregrounding the three canned materials. The old Lantern/Switchback/Glass materials remain hidden starter templates for compatibility and in-scale playback. Each library song has its own stable id, title, base starter material, editor branch editor-<librarySongId>, and evolving branch dial-<librarySongId>, so saved ideas and autonomous evolution can diverge per named song. Switching/creating songs uses the existing cleanup/refresh path. Validation: npm run build, npm run smoke (78/78), npm run db:smoke, git diff --check all green; npm audit still reports the known Vite/esbuild advisories."
+    "summary": "Song Library slice is implemented on codex/byte-song-library-a with a prompt-based starter composer. New song now opens a modal that collects an overall song direction, optional tonic/mode/tempo/form overrides, selectable player plans, and per-player briefs. The prompt is interpreted through the existing deterministic SongGoal vocabulary/validator, the validated setup is applied through applySongGoalSetup(), and starter metadata is stored on the song library entry. The old Lantern/Switchback/Glass materials remain hidden starter templates underneath for compatibility and in-scale playback, and each library song has isolated editor/evolving branches. Player plan checkboxes are metadata-only in this slice; actual transport roster inclusion/exclusion is a future scheduling byte. Validation: npm run build, npm run smoke (78/78), npm run db:smoke, git diff --check all green; npm audit still reports the known Vite/esbuild advisories."
   }
 }
