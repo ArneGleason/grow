@@ -3202,6 +3202,55 @@ test("song library creates, renames, and switches deterministic starter material
   await expect(button).toHaveText("Start");
 });
 
+test("song library exports the selected song as per-player MIDI tracks", async ({ page }) => {
+  await page.goto("/");
+
+  await expect(page.getByTestId("song-library-export-midi")).toBeVisible();
+  const exported = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      song?: {
+        exportMidi(): {
+          bytes: Uint8Array;
+          filename: string;
+          noteCount: number;
+          tempoBpm: number;
+          timingFeelMode: "grid" | "feel" | "wide";
+          totalBeats: number;
+          trackSummaries: Array<{ playerId: string; noteCount: number }>;
+        };
+      };
+    };
+    const result = appWindow.song?.exportMidi();
+    if (!result) throw new Error("window.song.exportMidi() was not available");
+    return {
+      header: Array.from(result.bytes.slice(0, 4)),
+      size: result.bytes.length,
+      filename: result.filename,
+      noteCount: result.noteCount,
+      tempoBpm: result.tempoBpm,
+      timingFeelMode: result.timingFeelMode,
+      totalBeats: result.totalBeats,
+      trackSummaries: result.trackSummaries,
+    };
+  });
+
+  expect(exported.header).toEqual([0x4d, 0x54, 0x68, 0x64]);
+  expect(exported.filename).toMatch(/untitled-song-1-grow-export\.mid$/);
+  expect(exported.size).toBeGreaterThan(1_000);
+  expect(exported.noteCount).toBeGreaterThan(100);
+  expect(exported.tempoBpm).toBe(90);
+  expect(exported.timingFeelMode).toBe("feel");
+  expect(exported.totalBeats).toBeGreaterThan(0);
+  expect(exported.trackSummaries).toEqual(expect.arrayContaining([
+    expect.objectContaining({ playerId: "pulse", noteCount: expect.any(Number) }),
+    expect.objectContaining({ playerId: "bass", noteCount: expect.any(Number) }),
+    expect.objectContaining({ playerId: "melody", noteCount: expect.any(Number) }),
+  ]));
+  for (const summary of exported.trackSummaries) {
+    expect(summary.noteCount).toBeGreaterThan(0);
+  }
+});
+
 test("song form timeline develops an in-scale chorus melody", () => {
   const arrangement = DEFAULT_SONG_ARRANGEMENT;
   expect(arrangement.totalBeats).toBe(192);

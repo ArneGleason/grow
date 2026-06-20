@@ -93,6 +93,7 @@ import {
   formatPerformedTimingSnapshot,
   type PlayerPerformedTimingSnapshot,
 } from "./performed-time";
+import { exportSongToMidi, type MidiSongExportResult } from "./midi-export";
 import {
   createPersistenceClient,
   type PersistenceClientState,
@@ -1041,6 +1042,11 @@ ${sessionModeControls}
             data-testid="song-library-clone"
             type="button"
           >Clone</button>
+          <button
+            class="song-library-control__step"
+            data-testid="song-library-export-midi"
+            type="button"
+          >Export MIDI</button>
           <span class="song-library-control__count" data-testid="song-library-count">1 / 1</span>
         </section>
         <fieldset class="mode-control timing-control">
@@ -1854,6 +1860,7 @@ const songLibraryRegenerateStarterButton = requireElement<HTMLButtonElement>(
   "[data-testid='song-library-regenerate-starter']",
 );
 const songLibraryCloneButton = requireElement<HTMLButtonElement>("[data-testid='song-library-clone']");
+const songLibraryExportMidiButton = requireElement<HTMLButtonElement>("[data-testid='song-library-export-midi']");
 const songLibraryCount = requireElement<HTMLElement>("[data-testid='song-library-count']");
 const songStarterOverlay = requireElement<HTMLElement>("[data-testid='song-starter-overlay']");
 const songStarter = requireElement<HTMLElement>("[data-testid='song-starter']");
@@ -4588,6 +4595,37 @@ function getCurrentFormScore(_state: GrowTransportState = getState()): FormScore
   });
 }
 
+function createCurrentSongMidiExport(): MidiSongExportResult {
+  const variant = getCurrentFormVariant();
+  return exportSongToMidi({
+    title: getActiveSongDisplayName(),
+    song: getCurrentSongMaterial(),
+    arrangement: variant.arrangement,
+    tonalContext: world.getTonalContext(),
+    tempoBpm: activeTempoBpm,
+    timingFeelMode,
+    players: world.getPlayers().map(({ player }) => player),
+    sectionDynamicsProfile: getGoalSectionDynamicsProfile(variant),
+    chorusDevelopment: getCurrentChorusDevelopment(),
+  });
+}
+
+function downloadCurrentSongMidi(): MidiSongExportResult {
+  const exported = createCurrentSongMidiExport();
+  const blob = new Blob([new Uint8Array(exported.bytes).buffer], { type: "audio/midi" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = exported.filename;
+  link.rel = "noopener";
+  link.style.display = "none";
+  document.body.append(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  return exported;
+}
+
 interface ScoredFormVariant {
   variant: FormVariant;
   score: FormScore;
@@ -6800,6 +6838,10 @@ songLibraryCloneButton.addEventListener("click", () => {
   cloneActiveLibrarySong();
 });
 
+songLibraryExportMidiButton.addEventListener("click", () => {
+  downloadCurrentSongMidi();
+});
+
 songLibraryTitleInput.addEventListener("change", () => {
   const snapshot = renameActiveLibrarySong(songLibraryTitleInput.value);
   songLibraryTitleInput.value = snapshot.active.title;
@@ -7000,6 +7042,7 @@ declare global {
       setMode(mode: string): SessionMode;
     };
     song?: {
+      exportMidi(): MidiSongExportResult;
       getId(): SongId;
       getActiveMaterial(): SongMaterial;
       getSongs(): readonly SongMaterial[];
@@ -7217,6 +7260,7 @@ window.session = {
 };
 
 window.song = {
+  exportMidi: () => createCurrentSongMidiExport(),
   getId: () => songId,
   getActiveMaterial: () => getCurrentSongMaterial(),
   getSongs: () => SONG_MATERIALS,

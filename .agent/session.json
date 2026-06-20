@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Spike connector-first starter songs with edit/regenerate/clone controls",
-  "status": "connector-song-spike-ready-for-review",
-  "updatedAt": "2026-06-20T18:35:00Z",
+  "lastTask": "Add the first per-player MIDI export for selected songs",
+  "status": "midi-export-a-ready-for-review",
+  "updatedAt": "2026-06-20T23:48:00Z",
   "lastHandoff": "",
-  "branch": "codex/byte-connector-song-spike-a",
-  "commit": "HEAD on codex/byte-connector-song-spike-a",
+  "branch": "codex/byte-midi-export-a",
+  "commit": "HEAD on codex/byte-midi-export-a",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "The full-form starter branch was parked after Arne's listening feedback that it sounded like a longer algorithmic pattern rather than a cohesive song. Current branch codex/byte-connector-song-spike-a changes starter-generated melody material to a sparse AnchorPhrase with seven anchors and five dense connectors rendered through renderAnchorPhrase, so connector notes carry most of the movement while the existing in-scale transport path stays unchanged. Song library controls now include Edit, Regen, and Clone: Edit reopens a stored starter; Regen creates a fresh materialSeed on the same song and refreshes lookahead; Clone creates a versioned copy. Prompt/player text can mark blue/chromatic/glide intent in connector metadata, but true non-modal/continuous pitch is still a carry-forward because PatternNoteSource resolves integer modal scaleDegree. Validation: npm run build, focused song-library smoke, npm run smoke (78/78), npm run db:smoke, git diff --check all green; npm audit still reports the known Vite/esbuild advisories."
+    "summary": "Current branch codex/byte-midi-export-a adds the first simplest MIDI export. src/midi-export.ts writes a dependency-free Standard MIDI File type 1 with a tempo/section-marker track plus one track per active player. The export renders the selected active song through arrangeSongFormPatternEvent, shared section dynamics, deterministic expression velocity, and performed-time offsets. The engine currently has one active BPM and no tempo automation, so the MIDI file writes one static tempo meta event; timing feel is baked into note start ticks and velocities. UI adds a top-bar Export MIDI button and window.song.exportMidi() for tests/inspection. Validation: npm run build green, focused MIDI smoke green, full npm run smoke 79/79 green, npm run db:smoke green, git diff --check clean; npm audit still reports the known Vite/esbuild advisories."
   }
 }
