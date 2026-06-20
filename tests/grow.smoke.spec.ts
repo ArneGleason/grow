@@ -3082,6 +3082,39 @@ test("song library creates, renames, and switches deterministic starter material
     brief: expect.stringContaining("Walk the room in low, patient shadows."),
   });
   expect(libraryState.editor?.saveBranchId).toBe(`editor-${libraryState.library?.active.id}`);
+  const firstActiveMaterial = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      song?: {
+        getActiveMaterial(): {
+          patterns: Array<{
+            subdivisionBeats: number;
+            events: Array<{ playerId?: string; scaleDegree?: number } | null>;
+          }>;
+        };
+      };
+    };
+    const material = appWindow.song?.getActiveMaterial();
+    return {
+      patternSummaries: material?.patterns.map((pattern) => ({
+        playerId: pattern.events.find((event) => event)?.playerId,
+        lengthBeats: pattern.events.length * pattern.subdivisionBeats,
+        noteCount: pattern.events.filter(Boolean).length,
+        rootDegrees: [...new Set(pattern.events.flatMap((event) =>
+          event?.scaleDegree === undefined ? [] : [((event.scaleDegree % 7) + 7) % 7]
+        ))],
+      })),
+      serializedPatterns: JSON.stringify(material?.patterns),
+    };
+  });
+  expect(firstActiveMaterial.patternSummaries).toEqual(expect.arrayContaining([
+    expect.objectContaining({ playerId: "pulse", lengthBeats: 16 }),
+    expect.objectContaining({ playerId: "bass", lengthBeats: 16 }),
+    expect.objectContaining({ playerId: "melody", lengthBeats: 16 }),
+  ]));
+  expect(firstActiveMaterial.patternSummaries?.find((pattern) => pattern.playerId === "bass")?.noteCount)
+    .toBeGreaterThan(4);
+  expect(firstActiveMaterial.patternSummaries?.find((pattern) => pattern.playerId === "bass")?.rootDegrees.length)
+    .toBeGreaterThan(2);
   const firstGeneratedPhrase = await page.evaluate(() => {
     const appWindow = window as unknown as {
       anchorPhrase?: { fromProsody(): unknown };
@@ -3116,6 +3149,13 @@ test("song library creates, renames, and switches deterministic starter material
     return JSON.stringify(appWindow.anchorPhrase?.fromProsody());
   });
   expect(secondGeneratedPhrase).not.toBe(firstGeneratedPhrase);
+  const secondActiveMaterial = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      song?: { getActiveMaterial(): unknown };
+    };
+    return JSON.stringify(appWindow.song?.getActiveMaterial());
+  });
+  expect(secondActiveMaterial).not.toBe(firstActiveMaterial.serializedPatterns);
   await expect.poll(async () => {
     const frame = await getListeningFrame(page);
     return frame.recentEvents.length > 0 &&

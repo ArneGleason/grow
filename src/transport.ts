@@ -16,6 +16,7 @@ import {
   type PatternNoteSource,
   type PlayerPatternSource,
   type SongId,
+  type SongMaterial,
 } from "./song-material";
 import {
   DEFAULT_SONG_ARRANGEMENT,
@@ -88,6 +89,7 @@ export interface TransportHandlers {
   timingFeelMode?: () => TimingFeelMode;
   chorusDevelopment?: () => ChorusDevelopment | undefined;
   melodyPhrasing?: () => PlayerPatternSource | undefined;
+  songMaterial?: () => SongMaterial;
 }
 
 export interface TransportOptions {
@@ -167,7 +169,8 @@ const wallClockFallbackTimers = new Map<number, number>();
 
 function buildPlayerPatterns(songId: SongId): readonly PlayerPattern[] {
   const melodyPhrasing = handlers.melodyPhrasing?.();
-  return getSongMaterial(songId).patterns.map((pattern) => {
+  const song = getActiveSongMaterial(songId);
+  return song.patterns.map((pattern) => {
     const isMelody = pattern.events.some((note) => note?.playerId === "melody");
     const source = isMelody && melodyPhrasing ? melodyPhrasing : pattern;
     return {
@@ -176,6 +179,10 @@ function buildPlayerPatterns(songId: SongId): readonly PlayerPattern[] {
       events: source.events.map((note) => note ? { ...note } : null),
     };
   });
+}
+
+function getActiveSongMaterial(songId = getActiveSongId()): SongMaterial {
+  return handlers.songMaterial?.() ?? getSongMaterial(songId);
 }
 
 function materializeNote(tonalContext: TonalContext, note: PatternNoteSource): ScheduledNote {
@@ -518,7 +525,7 @@ function getPatternStep(pattern: PlayerPattern, absoluteBeat: number): Scheduled
   const stepIndex = step % pattern.events.length;
   const sourceEvent = pattern.events[stepIndex] ?? null;
   const arrangedEvent = arrangeSongFormPatternEvent({
-    song: getSongMaterial(getActiveSongId()),
+    song: getActiveSongMaterial(),
     pattern: pattern.source,
     sourceEvent,
     stepIndex,
@@ -915,7 +922,7 @@ export function getState(): GrowTransportState {
       latest: [...latestPerformedTimingByPlayer.values()],
     },
     songForm: sectionAtBeat(currentBeat, getActiveSongArrangement()),
-    harmony: getSongHarmonicContext(getSongMaterial(getActiveSongId()), currentBeat, getActiveSongArrangement()),
+    harmony: getSongHarmonicContext(getActiveSongMaterial(), currentBeat, getActiveSongArrangement()),
   };
 }
 

@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Make song starter generation visible and prompt-seeded",
-  "status": "song-library-visible-generation-ready-for-review",
-  "updatedAt": "2026-06-20T16:33:22Z",
+  "lastTask": "Make starter songs drive longer prompt-seeded active material",
+  "status": "song-library-active-material-ready-for-review",
+  "updatedAt": "2026-06-20T16:54:39Z",
   "lastHandoff": "",
   "branch": "codex/byte-song-library-a",
   "commit": "HEAD on codex/byte-song-library-a",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Song Library slice is implemented on codex/byte-song-library-a with visible prompt-based generation. New song opens a modal that collects an overall song direction, optional tonic/mode/tempo/form overrides, selectable player plans, and per-player briefs. Generate starter is required before Create starter and shows the concrete seed: validated setup, chosen hidden starter template, structure summary, material seed, and generated player briefs. The prompt is interpreted through the existing deterministic SongGoal vocabulary/validator, the validated setup is applied through applySongGoalSetup(), and starter metadata is stored on the song library entry. prosodySeedForSong() now incorporates the stored materialSeed so different prompt-generated songs seed different generated phrase/evolution material. The old Lantern/Switchback/Glass materials remain hidden starter templates underneath for compatibility and in-scale playback, and each library song has isolated editor/evolving branches. Player plan checkboxes are metadata-only in this slice; actual transport roster inclusion/exclusion is a future scheduling byte. Validation: npm run build, npm run smoke (78/78), npm run db:smoke, git diff --check all green; npm audit still reports the known Vite/esbuild advisories."
+    "summary": "Song Library slice is implemented on codex/byte-song-library-a and now addresses Arne's loop-fatigue feedback more directly. New song opens a starter modal with prompt, optional setup overrides, and player plans; Generate starter is required and visibly shows the validated setup, chosen hidden template, structure summary, material seed, and generated player briefs. Starter metadata persists on the library song. New src/song-starter-material.ts derives a deterministic 16-beat active SongMaterial phrase pack for pulse, bass, and written melody from the starter goal/materialSeed/player plans. Transport consumes this through TransportHandlers.songMaterial, and song sketch/form/melody scoring now inspect the same active material the listener hears. Default untitled songs still fall back to the old canned materials. Player plan checkboxes are still not a runtime roster system; they only influence/generated silence in the starter phrase pack for now. Validation: npm run build, focused song-library smoke, npm run smoke (78/78), npm run db:smoke, git diff --check all green; npm audit still reports the known Vite/esbuild advisories."
   }
 }

@@ -138,6 +138,7 @@ import {
   type SongId,
   type SongMaterial,
 } from "./song-material";
+import { createSongStarterMaterial } from "./song-starter-material";
 import {
   SONG_LIBRARY_STORAGE_KEY,
   appendSongLibraryEntry,
@@ -243,6 +244,8 @@ let ollamaMelodyCriticTest = createInitialOllamaMelodyCriticTest(ollamaConfig);
 let ollamaRequestInFlight = false;
 let songLibraryState: SongLibraryState = loadSongLibraryState();
 let songId: SongId = getActiveSongLibraryEntry().baseSongId;
+let cachedSongStarterMaterialKey = "";
+let cachedSongStarterMaterial: SongMaterial | undefined;
 let songStarterOpen = false;
 let songStarterGeneration: SongStarterGeneration | undefined;
 let timingFeelMode: TimingFeelMode = "feel";
@@ -569,6 +572,36 @@ function getActiveSongLibraryId(): string {
 
 function getActiveSongDisplayName(): string {
   return getActiveSongLibraryEntry().title;
+}
+
+function getCurrentSongMaterial(): SongMaterial {
+  const activeSong = getActiveSongLibraryEntry();
+  const base = getSongMaterial(activeSong.baseSongId);
+  const starter = activeSong.starter;
+  if (!starter?.materialSeed) return base;
+  const cacheKey = createCurrentSongMaterialCacheKey(activeSong, starter);
+  if (!cachedSongStarterMaterial || cachedSongStarterMaterialKey !== cacheKey) {
+    cachedSongStarterMaterialKey = cacheKey;
+    cachedSongStarterMaterial = createSongStarterMaterial(base, starter);
+  }
+  return cachedSongStarterMaterial;
+}
+
+function createCurrentSongMaterialCacheKey(
+  activeSong: SongLibraryEntry,
+  starter: SongLibraryStarter,
+): string {
+  return [
+    activeSong.id,
+    activeSong.baseSongId,
+    starter.materialSeed ?? "no-seed",
+    starter.goal.id,
+    starter.goal.tonic,
+    starter.goal.mode,
+    starter.goal.tempoBpm,
+    starter.goal.formPreference,
+    starter.playerPlans.map((plan) => `${plan.playerId}:${plan.enabled}:${plan.brief}`).join(","),
+  ].join("|");
 }
 
 function loadSongLibraryState(): SongLibraryState {
@@ -4053,7 +4086,7 @@ function renderSongSketch(sketch: SongSketch): void {
 }
 
 function getCurrentSongSketch(state: GrowTransportState = getState()): SongSketch {
-  const song = getSongMaterial(state.songId);
+  const song = getCurrentSongMaterial();
   const activeSong = getActiveSongLibraryEntry();
   const tonalContext = world.getTonalContext();
   const players = world.getPlayers().map(({ player }) => ({
@@ -4164,11 +4197,11 @@ function formatSongSketchProposalResponse(response: SongSketchProposalResponse):
 }
 
 function getCurrentMelodyRepairTake(state: GrowTransportState = getState()): MelodyRepairTake {
-  const song = getSongMaterial(state.songId);
+  const song = getCurrentSongMaterial();
   const tonalContext = world.getTonalContext();
   const players = world.getPlayers().map(({ player }) => player);
   const rejectedKeys = getRejectedMelodyRepairKeys(state.songId);
-  const cacheKey = createMelodyRepairCacheKey(song, tonalContext, players, rejectedKeys);
+  const cacheKey = createMelodyRepairCacheKey(song, tonalContext, players, rejectedKeys, getActiveSongLibraryId());
   if (!cachedMelodyRepairTake || cachedMelodyRepairKey !== cacheKey) {
     cachedMelodyRepairKey = cacheKey;
     cachedMelodyRepairTake = createMelodyRepairTake({
@@ -4189,8 +4222,10 @@ function createMelodyRepairCacheKey(
   tonalContext: ListeningFrame["tonalContext"],
   players: readonly { id: string }[],
   rejectedKeys: ReadonlySet<string>,
+  songLibraryId = getActiveSongLibraryId(),
 ): string {
   return [
+    songLibraryId,
     song.id,
     tonalContext.tonic,
     tonalContext.mode,
@@ -4512,10 +4547,10 @@ function formatPerspectiveScore(score: MelodyPhraseScore): string {
   return `${score.perspectiveLabel} ${score.total.toFixed(2)} (L${score.landing.toFixed(2)} M${score.monotony.toFixed(2)} S${score.surprise.toFixed(2)})`;
 }
 
-function getCurrentFormScore(state: GrowTransportState = getState()): FormScore {
+function getCurrentFormScore(_state: GrowTransportState = getState()): FormScore {
   const variant = getCurrentFormVariant();
   return createFormScore({
-    song: getSongMaterial(state.songId),
+    song: getCurrentSongMaterial(),
     tonalContext: world.getTonalContext(),
     arrangement: variant.arrangement,
     chorusDevelopment: getCurrentChorusDevelopment(),
@@ -5137,8 +5172,8 @@ function getGoalTasteProfiles(): readonly {
   }));
 }
 
-function getCurrentFormVariantScores(state: GrowTransportState = getState()): readonly ScoredFormVariant[] {
-  const song = getSongMaterial(state.songId);
+function getCurrentFormVariantScores(_state: GrowTransportState = getState()): readonly ScoredFormVariant[] {
+  const song = getCurrentSongMaterial();
   const tonalContext = world.getTonalContext();
   const chorusDevelopment = getCurrentChorusDevelopment();
   const scored = FORM_VARIANTS.map((variant) => ({
@@ -6372,6 +6407,7 @@ initTransport({
   timingFeelMode: () => timingFeelMode,
   chorusDevelopment: () => getCurrentChorusDevelopment(),
   melodyPhrasing: () => getActiveMelodyPhrasing(),
+  songMaterial: () => getCurrentSongMaterial(),
 }, {
   tonalContext: world.getTonalContext(),
   tempoBpm: activeTempoBpm,
@@ -6866,6 +6902,7 @@ declare global {
     };
     song?: {
       getId(): SongId;
+      getActiveMaterial(): SongMaterial;
       getSongs(): readonly SongMaterial[];
       getProposal(): SongSketchProposal;
       getSketch(): SongSketch;
@@ -7082,6 +7119,7 @@ window.session = {
 
 window.song = {
   getId: () => songId,
+  getActiveMaterial: () => getCurrentSongMaterial(),
   getSongs: () => SONG_MATERIALS,
   getProposal: () => getCurrentSongSketchProposal(),
   getSketch: () => getCurrentSongSketch(),
