@@ -777,7 +777,7 @@ function renderSongStarterGeneratedSeed(generated: SongStarterGeneration | undef
   if (!generated) return;
   const { goal } = generated.interpretation;
   songStarterGeneratedSetup.textContent = `${goal.tonic} ${modeDisplayName(goal.mode) ?? goal.mode}, ${goal.tempoBpm} BPM, ${getFormVariant(goal.formPreference).label}`;
-  songStarterGeneratedMaterial.textContent = `${getSongLabel(generated.baseSongId)} template, seed ${generated.materialSeed}`;
+  songStarterGeneratedMaterial.textContent = `${getSongLabel(generated.baseSongId)} full-form draft, seed ${generated.materialSeed}`;
   songStarterGeneratedStructure.textContent = generated.structureSummary;
   const items = generated.playerPlans.map((plan) => {
     const item = document.createElement("li");

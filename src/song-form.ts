@@ -194,6 +194,10 @@ export function arrangeSongFormPatternEvent(
 
   if (playerId !== "melody") return input.sourceEvent;
 
+  if (input.song.draft?.melodyMode === "full-form") {
+    return createFullFormMelodyEvent(input.sourceEvent, context);
+  }
+
   if (context.sectionType === "chorus") {
     return createChorusMelodyEvent(input, context);
   }
@@ -206,6 +210,13 @@ export function arrangeSongFormPatternEvent(
 }
 
 export function deriveSongRootDegrees(song: SongMaterial): readonly number[] {
+  if (song.draft?.rootPlans) {
+    return limitRootPlan(uniqueDegreesInOrder([
+      ...song.draft.rootPlans.gather,
+      ...song.draft.rootPlans.answer,
+      ...song.draft.rootPlans.bridge,
+    ].map(normalizeDegree)));
+  }
   const bassPattern = song.patterns.find((pattern) => getPatternPlayerId(pattern) === "bass");
   const sourcePattern = bassPattern ?? song.patterns.find((pattern) => getPatternPlayerId(pattern));
   const roots = uniqueDegreesInOrder(
@@ -217,6 +228,13 @@ export function deriveSongRootDegrees(song: SongMaterial): readonly number[] {
 }
 
 export function deriveSongSectionRootPlans(song: SongMaterial): Record<SongHarmonicSectionId, readonly number[]> {
+  if (song.draft?.rootPlans) {
+    return {
+      gather: limitRootPlan(song.draft.rootPlans.gather.map(normalizeDegree)),
+      answer: limitRootPlan(song.draft.rootPlans.answer.map(normalizeDegree)),
+      bridge: limitRootPlan(song.draft.rootPlans.bridge.map(normalizeDegree)),
+    };
+  }
   const bassPattern = song.patterns.find((pattern) => getPatternPlayerId(pattern) === "bass");
   const sourcePattern = bassPattern ?? song.patterns.find((pattern) => getPatternPlayerId(pattern));
   const fallback = deriveSongRootDegrees(song);
@@ -272,6 +290,18 @@ function createHarmonicAccompanimentEvent(
     ...sourceEvent,
     scaleDegree,
     octave,
+  };
+}
+
+function createFullFormMelodyEvent(
+  sourceEvent: PatternNoteSource | null,
+  context: SongSectionContext,
+): PatternNoteSource | null {
+  if (!sourceEvent) return null;
+  const sectionVelocity = context.sectionType === "chorus" ? 1.08 : context.sectionType === "bridge" ? 0.86 : 1;
+  return {
+    ...sourceEvent,
+    velocity: Math.max(0.14, Math.min(0.68, sourceEvent.velocity * sectionVelocity)),
   };
 }
 

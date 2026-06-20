@@ -3086,6 +3086,13 @@ test("song library creates, renames, and switches deterministic starter material
     const appWindow = window as unknown as {
       song?: {
         getActiveMaterial(): {
+          draft?: {
+            kind: string;
+            phraseBeats: number;
+            relationTags: readonly string[];
+            melodyMode: string;
+            rootPlans: { gather: readonly number[]; answer: readonly number[]; bridge: readonly number[] };
+          };
           patterns: Array<{
             subdivisionBeats: number;
             events: Array<{ playerId?: string; scaleDegree?: number } | null>;
@@ -3095,6 +3102,7 @@ test("song library creates, renames, and switches deterministic starter material
     };
     const material = appWindow.song?.getActiveMaterial();
     return {
+      draft: material?.draft,
       patternSummaries: material?.patterns.map((pattern) => ({
         playerId: pattern.events.find((event) => event)?.playerId,
         lengthBeats: pattern.events.length * pattern.subdivisionBeats,
@@ -3106,15 +3114,24 @@ test("song library creates, renames, and switches deterministic starter material
       serializedPatterns: JSON.stringify(material?.patterns),
     };
   });
+  expect(firstActiveMaterial.draft).toMatchObject({
+    kind: "starter-full-form",
+    phraseBeats: 176,
+    melodyMode: "full-form",
+  });
+  expect(firstActiveMaterial.draft?.relationTags.length).toBeGreaterThan(2);
+  expect(firstActiveMaterial.draft?.rootPlans.answer.length).toBeGreaterThan(2);
   expect(firstActiveMaterial.patternSummaries).toEqual(expect.arrayContaining([
-    expect.objectContaining({ playerId: "pulse", lengthBeats: 16 }),
-    expect.objectContaining({ playerId: "bass", lengthBeats: 16 }),
-    expect.objectContaining({ playerId: "melody", lengthBeats: 16 }),
+    expect.objectContaining({ playerId: "pulse", lengthBeats: 176 }),
+    expect.objectContaining({ playerId: "bass", lengthBeats: 176 }),
+    expect.objectContaining({ playerId: "melody", lengthBeats: 176 }),
   ]));
   expect(firstActiveMaterial.patternSummaries?.find((pattern) => pattern.playerId === "bass")?.noteCount)
-    .toBeGreaterThan(4);
+    .toBeGreaterThan(40);
   expect(firstActiveMaterial.patternSummaries?.find((pattern) => pattern.playerId === "bass")?.rootDegrees.length)
     .toBeGreaterThan(2);
+  expect(firstActiveMaterial.patternSummaries?.find((pattern) => pattern.playerId === "melody")?.noteCount)
+    .toBeGreaterThan(70);
   const firstGeneratedPhrase = await page.evaluate(() => {
     const appWindow = window as unknown as {
       anchorPhrase?: { fromProsody(): unknown };

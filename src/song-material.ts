@@ -16,11 +16,24 @@ export interface PlayerPatternSource {
   events: Array<PatternNoteSource | null>;
 }
 
+export interface SongMaterialDraftMetadata {
+  kind: "starter-full-form";
+  phraseBeats: number;
+  relationTags: readonly string[];
+  melodyMode: "full-form";
+  rootPlans: {
+    gather: readonly number[];
+    answer: readonly number[];
+    bridge: readonly number[];
+  };
+}
+
 export interface SongMaterial {
   id: SongId;
   label: string;
   description: string;
   patterns: readonly PlayerPatternSource[];
+  draft?: SongMaterialDraftMetadata;
 }
 
 export const DEFAULT_SONG_ID: SongId = "lantern";

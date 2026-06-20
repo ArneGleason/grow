@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Merge approved song library arc and branch for wild song draft experiment",
-  "status": "song-library-merged-starting-wild-song-draft",
-  "updatedAt": "2026-06-20T17:15:40Z",
+  "lastTask": "Implement wild full-form starter song draft spike",
+  "status": "wild-song-draft-ready-for-listening-review",
+  "updatedAt": "2026-06-20T17:28:42Z",
   "lastHandoff": "",
   "branch": "codex/byte-wild-song-draft-a",
-  "commit": "b2daca6c0173110a62319de79a29d92532045626",
+  "commit": "HEAD on codex/byte-wild-song-draft-a",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Claude approved codex/byte-song-library-a at b2daca6 and it was fast-forward merged/pushed to main. The merged arc adds the user song library, prompt-based starter composer, visible Generate starter seed, and active 16-beat prompt-seeded SongMaterial phrase packs for pulse/bass/melody. A new branch codex/byte-wild-song-draft-a has been created from the merged main at b2daca6 for the next bolder musical experiment. Arne wants to stop over-optimizing small safe layers and try offbeat but promising hunches with clean rollback. Candidate next hypothesis: use human-written scores/forms as landmarks, then generate/audition a whole temporary song draft at once with section lengths, harmonic progression, tempo regions, and per-player material rather than layering more modifiers on short loops."
+    "summary": "Claude approved codex/byte-song-library-a and it was fast-forward merged/pushed to main. On the new branch codex/byte-wild-song-draft-a, the first bolder spike is implemented: starter-generated songs now produce full-form relational SongMaterial instead of 16-beat loops. SongMaterial has optional starter-full-form metadata with phraseBeats, relationTags, full-form melody mode, and rootPlans. song-form uses draft rootPlans for harmonic context, and full-form draft melody bypasses the old canned chorus/bridge hook while default/canned songs keep prior behavior. src/song-starter-material.ts now generates pulse/bass/melody patterns over the active form length (e.g. Wide Return = 176 beats) using dimensions like breath debt, bridge rupture/shadow, asymmetric roles, and return acceleration/softening. Safety line: deterministic, integer scale degrees, existing lookahead path, no new scheduler/audio/persistence path. Validation: npm run build, focused song-library smoke, npm run smoke (78/78), npm run db:smoke, git diff --check all green; npm audit still reports known Vite/esbuild advisories."
   }
 }
