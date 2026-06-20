@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Merge approved Byte L4c-2 evolution sparkline visualization",
-  "status": "byte-l4c2-approved-and-merged-l-arc-complete",
-  "updatedAt": "2026-06-20T14:26:49Z",
+  "lastTask": "Implement first song library slice with named songs and per-song branches",
+  "status": "song-library-slice-ready-for-review",
+  "updatedAt": "2026-06-20T15:00:00Z",
   "lastHandoff": "",
-  "branch": "main",
-  "commit": "e0b302e317b5212a0d0b692b63bd911efd4e582a",
+  "branch": "codex/byte-song-library-a",
+  "commit": "HEAD on codex/byte-song-library-a",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte L4c-2 is approved by Claude and merged/pushed to main at e0b302e, completing the L-arc. The melody editor has a collapsed-by-default read-only Evolution panel using the existing editor-<songId> candidate catalog read. It summarizes unfiltered phrase candidates into best/mean fitness per generation plus elite/alive/reserved/purged tally, renders a compact SVG sparkline, and exposes window.phraseEditor.getEvolution() for deterministic inspection. Claude live-verified the summary against an independent listCandidates recompute, sparse/no-evolution handling, collapsed disclosure, and no horizontal overflow. The visible catalog remains non-purged-only and sorted by fitness. No evolution algorithm, persistence endpoint/schema, scorer, renderer, transport, scheduler, or candidate-store logic changed. Carry forward: possible future extension to include dial-<songId> autonomous populations; rare full-smoke editor/transport timing flake did not recur for Claude."
+    "summary": "First Song Library slice is implemented on codex/byte-song-library-a. The top bar now exposes a user song library (New song, Previous/Next, rename) instead of foregrounding the three canned materials. The old Lantern/Switchback/Glass materials remain hidden starter templates for compatibility and in-scale playback. Each library song has its own stable id, title, base starter material, editor branch editor-<librarySongId>, and evolving branch dial-<librarySongId>, so saved ideas and autonomous evolution can diverge per named song. Switching/creating songs uses the existing cleanup/refresh path. Validation: npm run build, npm run smoke (78/78), npm run db:smoke, git diff --check all green; npm audit still reports the known Vite/esbuild advisories."
   }
 }

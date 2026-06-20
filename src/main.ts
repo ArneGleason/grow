@@ -131,7 +131,6 @@ import {
   type SectionDynamicsProfile,
 } from "./section-dynamics";
 import {
-  DEFAULT_SONG_ID,
   getSongMaterial,
   isSongId,
   SONG_MATERIALS,
@@ -139,6 +138,22 @@ import {
   type SongId,
   type SongMaterial,
 } from "./song-material";
+import {
+  SONG_LIBRARY_STORAGE_KEY,
+  appendSongLibraryEntry,
+  chooseStarterSongId,
+  createDefaultSongLibrary,
+  createNextLibrarySongTitle,
+  createSongLibraryEntry,
+  getSongLibrarySnapshot,
+  normalizeSongLibraryState,
+  renameSongLibraryEntry,
+  selectSongLibraryEntry,
+  updateSongLibraryEntryBase,
+  type SongLibraryEntry,
+  type SongLibrarySnapshot,
+  type SongLibraryState,
+} from "./song-library";
 import { generateProsodicAnchorPhrase, generateProsodicMelody } from "./melody-prosody";
 import { scoreProsody } from "./prosody-scoring";
 import { sectionAtBeat, type ChorusDevelopment } from "./song-form";
@@ -221,7 +236,8 @@ let ollamaThoughtTest = createInitialOllamaThoughtTest(ollamaConfig);
 let ollamaProposalTextTest = createInitialOllamaProposalTextTest(ollamaConfig);
 let ollamaMelodyCriticTest = createInitialOllamaMelodyCriticTest(ollamaConfig);
 let ollamaRequestInFlight = false;
-let songId: SongId = DEFAULT_SONG_ID;
+let songLibraryState: SongLibraryState = loadSongLibraryState();
+let songId: SongId = getActiveSongLibraryEntry().baseSongId;
 let timingFeelMode: TimingFeelMode = "feel";
 let melodyDevelopmentMode: MelodyDevelopmentMode = "repaired";
 let formVariantId: FormVariantId = DEFAULT_FORM_VARIANT_ID;
@@ -353,18 +369,6 @@ const sessionModeControls = SESSION_MODE_OPTIONS.map((mode) => `
               ${mode.id === DEFAULT_SESSION_MODE ? "checked" : ""}
             />
             <span>${mode.label}</span>
-          </label>
-`).join("");
-const songControls = SONG_MATERIALS.map((song) => `
-          <label class="mode-option" data-testid="song-${song.id}-option">
-            <input
-              data-testid="song-${song.id}"
-              name="song"
-              type="radio"
-              value="${song.id}"
-              ${song.id === songId ? "checked" : ""}
-            />
-            <span>${song.label}</span>
           </label>
 `).join("");
 const timingFeelControls = TIMING_FEEL_OPTIONS.map((mode) => `
@@ -503,6 +507,54 @@ function getSongLabel(nextSongId: SongId): string {
   return getSongMaterial(nextSongId).label;
 }
 
+function getActiveSongLibrarySnapshot(): SongLibrarySnapshot {
+  return getSongLibrarySnapshot(songLibraryState);
+}
+
+function getActiveSongLibraryEntry(): SongLibraryEntry {
+  return getActiveSongLibrarySnapshot().active;
+}
+
+function getActiveSongLibraryId(): string {
+  return getActiveSongLibraryEntry().id;
+}
+
+function getActiveSongDisplayName(): string {
+  return getActiveSongLibraryEntry().title;
+}
+
+function loadSongLibraryState(): SongLibraryState {
+  try {
+    const raw = window.localStorage.getItem(SONG_LIBRARY_STORAGE_KEY);
+    if (!raw) return createDefaultSongLibrary();
+    return normalizeSongLibraryState(JSON.parse(raw));
+  } catch (error) {
+    console.warn("[grow] failed to load song library", error);
+    return createDefaultSongLibrary();
+  }
+}
+
+function persistSongLibraryState(): void {
+  try {
+    window.localStorage.setItem(SONG_LIBRARY_STORAGE_KEY, JSON.stringify(songLibraryState));
+  } catch (error) {
+    console.warn("[grow] failed to persist song library", error);
+  }
+}
+
+function escapeHtmlAttribute(value: string): string {
+  return value.replace(/[&<>"']/g, (character) => {
+    switch (character) {
+      case "&": return "&amp;";
+      case "<": return "&lt;";
+      case ">": return "&gt;";
+      case "\"": return "&quot;";
+      case "'": return "&#39;";
+      default: return character;
+    }
+  });
+}
+
 app.innerHTML = `
   <section class="app-shell" aria-label="Grow Byte 17a">
     <header class="topbar">
@@ -518,13 +570,42 @@ app.innerHTML = `
 ${sessionModeControls}
           </div>
         </fieldset>
-        <fieldset class="mode-control song-control">
-          <legend class="visually-hidden">Song material</legend>
+        <section
+          class="song-library-control"
+          data-testid="song-control"
+          data-song-library-id="${escapeHtmlAttribute(getActiveSongLibraryId())}"
+          aria-label="Song library"
+        >
           <span class="mode-label" aria-hidden="true">Song</span>
-          <div class="mode-segments" data-testid="song-control">
-${songControls}
-          </div>
-        </fieldset>
+          <button
+            class="song-library-control__step"
+            data-testid="song-library-previous"
+            type="button"
+            aria-label="Previous song"
+          >Prev</button>
+          <label class="song-library-control__title">
+            <span class="visually-hidden">Song title</span>
+            <input
+              data-testid="song-library-title-input"
+              type="text"
+              maxlength="80"
+              value="${escapeHtmlAttribute(getActiveSongDisplayName())}"
+              autocomplete="off"
+            />
+          </label>
+          <button
+            class="song-library-control__step"
+            data-testid="song-library-next"
+            type="button"
+            aria-label="Next song"
+          >Next</button>
+          <button
+            class="song-library-control__new"
+            data-testid="song-library-new"
+            type="button"
+          >New song</button>
+          <span class="song-library-control__count" data-testid="song-library-count">1 / 1</span>
+        </section>
         <fieldset class="mode-control timing-control">
           <legend class="visually-hidden">Timing feel</legend>
           <span class="mode-label" aria-hidden="true">Timing</span>
@@ -1223,7 +1304,12 @@ const helpCloseButton = requireElement<HTMLButtonElement>("[data-testid='inspect
 const helpButtons = Array.from(document.querySelectorAll<HTMLButtonElement>("[data-help-topic]"));
 const sessionModeControl = requireElement<HTMLDivElement>("[data-testid='session-mode-control']");
 const sessionModeCurrent = requireElement<HTMLElement>("[data-testid='session-mode-current']");
-const songControl = requireElement<HTMLDivElement>("[data-testid='song-control']");
+const songControl = requireElement<HTMLElement>("[data-testid='song-control']");
+const songLibraryPreviousButton = requireElement<HTMLButtonElement>("[data-testid='song-library-previous']");
+const songLibraryNextButton = requireElement<HTMLButtonElement>("[data-testid='song-library-next']");
+const songLibraryTitleInput = requireElement<HTMLInputElement>("[data-testid='song-library-title-input']");
+const songLibraryNewButton = requireElement<HTMLButtonElement>("[data-testid='song-library-new']");
+const songLibraryCount = requireElement<HTMLElement>("[data-testid='song-library-count']");
 const songCurrent = requireElement<HTMLElement>("[data-testid='song-current']");
 const songSectionCurrent = requireElement<HTMLElement>("[data-testid='song-section-current']");
 const songHarmonyCurrent = requireElement<HTMLElement>("[data-testid='song-harmony-current']");
@@ -1952,8 +2038,8 @@ function joinAnchorPhraseSegments(segmentIndex: number): AnchorEditResult {
   return result;
 }
 
-function getAnchorPhraseEditorBranchId(nextSongId: SongId = songId): string {
-  return `editor-${nextSongId}`;
+function getAnchorPhraseEditorBranchId(songLibraryId = getActiveSongLibraryId()): string {
+  return `editor-${songLibraryId}`;
 }
 
 function resetAnchorPhraseEditorSaveState(): void {
@@ -2300,7 +2386,7 @@ function createAnchorPhraseEditorCandidate(phrase: AnchorPhrase): {
       scores: { ...score.subscores },
       fitness: score.overall,
       generation: 0,
-      seed: prosodySeedForSong(songId),
+      seed: prosodySeedForSong(getActiveSongLibraryId()),
       status: "alive",
     },
     rendered,
@@ -2451,7 +2537,7 @@ function renderAnchorPhraseEditor(): void {
   const phrase = getAnchorPhraseForEditor();
   const tonalContext = world.getTonalContext();
   renderTonalContextDisplay(anchorPhraseEditorTonal, tonalContext);
-  anchorPhraseEditorSong.textContent = getSongLabel(songId);
+  anchorPhraseEditorSong.textContent = getActiveSongDisplayName();
   const summary = formatAnchorPhraseSummary(phrase);
   anchorPhraseEditorSummary.textContent = summary;
   const canEdit = canEditAnchorPhrase();
@@ -2470,8 +2556,9 @@ function renderAnchorPhraseEditor(): void {
   renderAnchorPhraseEditorSelection(phrase);
   renderAnchorPhraseEditorDisclosures();
   const renderKey = [
+    getActiveSongLibraryId(),
     songId,
-    prosodySeedForSong(songId),
+    prosodySeedForSong(getActiveSongLibraryId()),
     isAnchorPhraseEditMode ? "edit" : "read",
     selectedAnchorRef ? `${selectedAnchorRef.segmentIndex}:${selectedAnchorRef.anchorIndex}` : "none",
     selectedConnectorRef ? `${selectedConnectorRef.segmentIndex}:${selectedConnectorRef.connectorIndex}` : "none",
@@ -2905,7 +2992,7 @@ function getAnchorPhraseEditorPointerValue(
 
 function createCurrentProsodyAnchorPhrase(options?: { seed?: number; baseOctave?: number; bars?: number }): AnchorPhrase {
   return generateProsodicAnchorPhrase({
-    seed: options?.seed ?? prosodySeedForSong(songId),
+    seed: options?.seed ?? prosodySeedForSong(getActiveSongLibraryId()),
     baseOctave: options?.baseOctave ?? 4,
     bars: options?.bars ?? 4,
   });
@@ -3466,12 +3553,13 @@ function renderSongSketch(sketch: SongSketch): void {
 
 function getCurrentSongSketch(state: GrowTransportState = getState()): SongSketch {
   const song = getSongMaterial(state.songId);
+  const activeSong = getActiveSongLibraryEntry();
   const tonalContext = world.getTonalContext();
   const players = world.getPlayers().map(({ player }) => ({
     playerId: player.id,
     role: player.role,
   }));
-  const cacheKey = createSongSketchCacheKey(song, tonalContext, players);
+  const cacheKey = createSongSketchCacheKey(song, tonalContext, players, activeSong.id);
   if (!cachedSongSketchBase || cachedSongSketchKey !== cacheKey) {
     cachedSongSketchKey = cacheKey;
     cachedSongSketchBase = createInspectOnlySongSketch({
@@ -3482,15 +3570,22 @@ function getCurrentSongSketch(state: GrowTransportState = getState()): SongSketc
     });
   }
 
-  return cloneSongSketch(cachedSongSketchBase, roundDisplayBeat(state.currentBeat));
+  const sketch = cloneSongSketch(cachedSongSketchBase, roundDisplayBeat(state.currentBeat));
+  return {
+    ...sketch,
+    id: `sketch-${activeSong.id}`,
+    title: `${activeSong.title} working sketch`,
+  };
 }
 
 function createSongSketchCacheKey(
   song: SongMaterial,
   tonalContext: SongSketch["tonalContext"],
   players: readonly SongSketchPlayerRef[],
+  activeSongId = getActiveSongLibraryId(),
 ): string {
   return [
+    activeSongId,
     song.id,
     tonalContext.tonic,
     tonalContext.mode,
@@ -4104,7 +4199,11 @@ function getActiveMelodyPhrasing(): PlayerPatternSource | undefined {
   }
   if (!prosodyEnabled) return undefined;
   if (!cachedProsodyMelody) {
-    cachedProsodyMelody = generateProsodicMelody({ seed: prosodySeedForSong(songId), baseOctave: 4, bars: 4 });
+    cachedProsodyMelody = generateProsodicMelody({
+      seed: prosodySeedForSong(getActiveSongLibraryId()),
+      baseOctave: 4,
+      bars: 4,
+    });
   }
   return clonePlayerPatternSource(cachedProsodyMelody);
 }
@@ -4400,7 +4499,7 @@ async function runEvolvingPerformanceStep(
   }
 }
 
-function prosodySeedForSong(nextSongId: SongId): number {
+function prosodySeedForSong(nextSongId: string): number {
   let hash = 2166136261;
   const key = `prosody:${nextSongId}`;
   for (let index = 0; index < key.length; index += 1) {
@@ -4410,7 +4509,7 @@ function prosodySeedForSong(nextSongId: SongId): number {
   return hash >>> 0;
 }
 
-function evolvingDialSeedForSong(nextSongId: SongId): number {
+function evolvingDialSeedForSong(nextSongId: string): number {
   const seed = (prosodySeedForSong(nextSongId) ^ 0x6d2b79f5) >>> 0;
   return seed === 0 ? 1 : seed;
 }
@@ -4421,10 +4520,10 @@ function getWrittenEvolvingRegime(value: number): WrittenEvolvingRegime {
   return "written";
 }
 
-function createWrittenEvolvingOptions(nextSongId: SongId = songId): WrittenEvolvingControlState["evolvingOptions"] {
+function createWrittenEvolvingOptions(nextSongKey = getActiveSongLibraryId()): WrittenEvolvingControlState["evolvingOptions"] {
   return {
-    seed: evolvingDialSeedForSong(nextSongId),
-    branchId: `dial-${nextSongId}`,
+    seed: evolvingDialSeedForSong(nextSongKey),
+    branchId: `dial-${nextSongKey}`,
     generations: 50,
     batch: 2,
     intervalMs: DEFAULT_EVOLVING_PERFORMANCE_INTERVAL_MS,
@@ -4720,16 +4819,28 @@ function renderSessionMode(): void {
   for (const input of sessionModeControl.querySelectorAll<HTMLInputElement>("input[name='session-mode']")) {
     input.checked = input.value === mode;
   }
-  songCurrent.textContent = getSongLabel(songId);
+  renderSongLibraryControls();
+  songCurrent.textContent = getActiveSongDisplayName();
   songSectionCurrent.textContent = formatSongSection(transportState.songForm);
   songHarmonyCurrent.textContent = formatSongHarmony(transportState);
-  for (const input of songControl.querySelectorAll<HTMLInputElement>("input[name='song']")) {
-    input.checked = input.value === songId;
-  }
   timingFeelCurrent.textContent = getTimingFeelModeLabel(timingFeelMode);
   for (const input of timingFeelControl.querySelectorAll<HTMLInputElement>("input[name='timing-feel']")) {
     input.checked = input.value === timingFeelMode;
   }
+}
+
+function renderSongLibraryControls(): void {
+  const snapshot = getActiveSongLibrarySnapshot();
+  const { active, activeIndex, songs } = snapshot;
+  songControl.dataset.songLibraryId = active.id;
+  songControl.dataset.baseSongId = active.baseSongId;
+  if (document.activeElement !== songLibraryTitleInput) {
+    songLibraryTitleInput.value = active.title;
+  }
+  songLibraryTitleInput.title = `${active.title} · starter ${getSongLabel(active.baseSongId)}`;
+  songLibraryPreviousButton.disabled = songs.length <= 1;
+  songLibraryNextButton.disabled = songs.length <= 1;
+  songLibraryCount.textContent = `${activeIndex + 1} / ${songs.length}`;
 }
 
 function formatSongSection(section: GrowTransportState["songForm"]): string {
@@ -4777,7 +4888,7 @@ function renderWrittenEvolvingControl(): void {
 
 function renderStatus(state: GrowTransportState): void {
   button.textContent = state.status === "playing" ? "Stop" : "Start";
-  status.value = `mode ${getSessionModeLabel(state.sessionMode).toLowerCase()} | song ${getSongLabel(state.songId)} | section ${formatSongSection(state.songForm).toLowerCase()} | ${state.status} | ${state.bpm} BPM | bar ${state.bar} | beat ${state.currentBeat.toFixed(1)} | lookahead ${state.lookahead.health} ${state.lookahead.leadBeats.toFixed(1)}/${state.lookahead.targetBeats.toFixed(0)} | pending slots ${state.lookahead.pendingSlotCount}`;
+  status.value = `mode ${getSessionModeLabel(state.sessionMode).toLowerCase()} | song ${getActiveSongDisplayName()} | section ${formatSongSection(state.songForm).toLowerCase()} | ${state.status} | ${state.bpm} BPM | bar ${state.bar} | beat ${state.currentBeat.toFixed(1)} | lookahead ${state.lookahead.health} ${state.lookahead.leadBeats.toFixed(1)}/${state.lookahead.targetBeats.toFixed(0)} | pending slots ${state.lookahead.pendingSlotCount}`;
   const tonalContext = world.getTonalContext();
   controlTempoReadout.textContent = `${state.bpm} BPM`;
   renderTonalContextDisplay(controlKeyReadout, tonalContext);
@@ -5497,10 +5608,18 @@ function applySessionMode(mode: SessionMode): SessionMode {
   return world.getSessionMode();
 }
 
-function applySongId(nextSongId: SongId): SongId {
+function applySongContextChange(
+  previousSong: SongLibraryEntry,
+  nextSong: SongLibraryEntry,
+  source: string,
+): SongLibraryEntry {
   const previousSongId = songId;
-  if (previousSongId === nextSongId) return songId;
-  songId = nextSongId;
+  const previousLibrarySongId = previousSong.id;
+  const nextLibrarySongId = nextSong.id;
+  const libraryChanged = previousLibrarySongId !== nextLibrarySongId;
+  const materialChanged = previousSongId !== nextSong.baseSongId;
+  if (!libraryChanged && !materialChanged) return nextSong;
+  songId = nextSong.baseSongId;
   resetAnchorPhraseEditorSession("Song changed; generated phrase restored.", { refresh: false, render: false });
   resetAnchorPhraseEditorSaveState();
   melodyRepairFeedbackMessage = "No feedback yet.";
@@ -5512,8 +5631,69 @@ function applySongId(nextSongId: SongId): SongId {
   world.clearMusicalEvents();
   world.resetTasteEvaluations();
   refreshLookaheadSchedule();
-  recordSongChanged(previousSongId, songId);
+  recordSongChanged(previousSongId, songId, {
+    fromLibrarySongId: previousLibrarySongId,
+    toLibrarySongId: nextLibrarySongId,
+    fromTitle: previousSong.title,
+    toTitle: nextSong.title,
+    source,
+  });
   renderWorld();
+  return nextSong;
+}
+
+function selectLibrarySong(songLibraryId: string, source = "song-library-control"): SongLibrarySnapshot {
+  const previousSong = getActiveSongLibraryEntry();
+  songLibraryState = selectSongLibraryEntry(songLibraryState, songLibraryId);
+  songLibraryState = normalizeSongLibraryState(songLibraryState);
+  persistSongLibraryState();
+  const snapshot = getActiveSongLibrarySnapshot();
+  applySongContextChange(previousSong, snapshot.active, source);
+  return snapshot;
+}
+
+function createLibrarySong(title?: string, baseSongId?: SongId): SongLibrarySnapshot {
+  const previousSong = getActiveSongLibraryEntry();
+  const count = songLibraryState.songs.length;
+  const entry = createSongLibraryEntry({
+    title: title ?? createNextLibrarySongTitle(count),
+    baseSongId: baseSongId ?? chooseStarterSongId(count),
+  });
+  songLibraryState = appendSongLibraryEntry(songLibraryState, entry);
+  persistSongLibraryState();
+  const snapshot = getActiveSongLibrarySnapshot();
+  applySongContextChange(previousSong, snapshot.active, "song-library-new");
+  return snapshot;
+}
+
+function renameActiveLibrarySong(title: string): SongLibrarySnapshot {
+  const previousTitle = getActiveSongDisplayName();
+  songLibraryState = renameSongLibraryEntry(songLibraryState, getActiveSongLibraryId(), title);
+  songLibraryState = normalizeSongLibraryState(songLibraryState);
+  persistSongLibraryState();
+  const snapshot = getActiveSongLibrarySnapshot();
+  if (snapshot.active.title !== previousTitle) {
+    cachedSongSketchKey = "";
+    renderedAnchorPhraseEditorKey = "";
+  }
+  renderWorld();
+  return snapshot;
+}
+
+function stepLibrarySong(delta: number): SongLibrarySnapshot {
+  const snapshot = getActiveSongLibrarySnapshot();
+  if (snapshot.songs.length <= 1) return snapshot;
+  const nextIndex = (snapshot.activeIndex + delta + snapshot.songs.length) % snapshot.songs.length;
+  return selectLibrarySong(snapshot.songs[nextIndex]!.id, delta < 0 ? "song-library-previous" : "song-library-next");
+}
+
+function applySongId(nextSongId: SongId): SongId {
+  const previousSong = getActiveSongLibraryEntry();
+  songLibraryState = updateSongLibraryEntryBase(songLibraryState, previousSong.id, nextSongId);
+  songLibraryState = normalizeSongLibraryState(songLibraryState);
+  persistSongLibraryState();
+  const nextSong = getActiveSongLibraryEntry();
+  applySongContextChange(previousSong, nextSong, "legacy-song-api");
   return songId;
 }
 
@@ -5539,6 +5719,8 @@ function recordSessionStarted(): void {
       source: "browser:init",
       sessionMode: world.getSessionMode(),
       songId,
+      songLibraryId: getActiveSongLibraryId(),
+      songTitle: getActiveSongDisplayName(),
       timingFeelMode,
       formVariantId,
     },
@@ -5559,7 +5741,17 @@ function recordSessionModeChanged(fromMode: SessionMode, toMode: SessionMode): v
   });
 }
 
-function recordSongChanged(fromSongId: SongId, toSongId: SongId): void {
+function recordSongChanged(
+  fromSongId: SongId,
+  toSongId: SongId,
+  options: {
+    fromLibrarySongId?: string;
+    toLibrarySongId?: string;
+    fromTitle?: string;
+    toTitle?: string;
+    source?: string;
+  } = {},
+): void {
   persistence.record({
     type: "song.changed",
     actorId: "human",
@@ -5568,7 +5760,11 @@ function recordSongChanged(fromSongId: SongId, toSongId: SongId): void {
     payload: {
       fromSongId,
       toSongId,
-      source: "song-control",
+      fromLibrarySongId: options.fromLibrarySongId,
+      toLibrarySongId: options.toLibrarySongId,
+      fromTitle: options.fromTitle,
+      toTitle: options.toTitle,
+      source: options.source ?? "song-control",
       clearedLedger: true,
       clearedSlowThinking: true,
     },
@@ -5928,12 +6124,28 @@ sessionModeControl.addEventListener("change", (event) => {
   applySessionMode(input.value);
 });
 
-songControl.addEventListener("change", (event) => {
-  const input = event.target;
-  if (!(input instanceof HTMLInputElement) || input.name !== "song") return;
-  if (!isSongId(input.value)) return;
+songLibraryPreviousButton.addEventListener("click", () => {
+  stepLibrarySong(-1);
+});
 
-  applySongId(input.value);
+songLibraryNextButton.addEventListener("click", () => {
+  stepLibrarySong(1);
+});
+
+songLibraryNewButton.addEventListener("click", () => {
+  createLibrarySong();
+  songLibraryTitleInput.focus();
+  songLibraryTitleInput.select();
+});
+
+songLibraryTitleInput.addEventListener("change", () => {
+  const snapshot = renameActiveLibrarySong(songLibraryTitleInput.value);
+  songLibraryTitleInput.value = snapshot.active.title;
+});
+
+songLibraryTitleInput.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter") return;
+  songLibraryTitleInput.blur();
 });
 
 timingFeelControl.addEventListener("change", (event) => {
@@ -6114,6 +6326,14 @@ declare global {
       getProposal(): SongSketchProposal;
       getSketch(): SongSketch;
       setId(nextSongId: string): SongId;
+    };
+    songLibrary?: {
+      createSong(input?: { title?: string; baseSongId?: string }): SongLibrarySnapshot;
+      getState(): SongLibrarySnapshot;
+      next(): SongLibrarySnapshot;
+      previous(): SongLibrarySnapshot;
+      rename(title: string): SongLibrarySnapshot;
+      select(songLibraryId: string): SongLibrarySnapshot;
     };
     songGoal?: {
       applySetup(): SongGoal | undefined;
@@ -6329,6 +6549,18 @@ window.song = {
   },
 };
 
+window.songLibrary = {
+  createSong: (input) => createLibrarySong(
+    input?.title,
+    input?.baseSongId && isSongId(input.baseSongId) ? input.baseSongId : undefined,
+  ),
+  getState: () => getActiveSongLibrarySnapshot(),
+  next: () => stepLibrarySong(1),
+  previous: () => stepLibrarySong(-1),
+  rename: (title) => renameActiveLibrarySong(title),
+  select: (songLibraryId) => selectLibrarySong(songLibraryId, "song-library-api"),
+};
+
 window.songGoal = {
   applySetup: () => applySongGoalSetup(),
   getAppliedGoal: () => appliedSongGoal ? cloneSongGoal(appliedSongGoal) : undefined,
@@ -6512,6 +6744,7 @@ if (import.meta.hot) {
     window.thinking = undefined;
     window.session = undefined;
     window.song = undefined;
+    window.songLibrary = undefined;
     window.songGoal = undefined;
     window.prosody = undefined;
     window.timing = undefined;

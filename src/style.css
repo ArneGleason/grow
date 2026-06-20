@@ -166,6 +166,78 @@ button {
   outline-offset: -3px;
 }
 
+.song-library-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: min(420px, 100%);
+  min-height: 42px;
+  border: 1px solid rgba(174, 183, 165, 0.22);
+  border-radius: 8px;
+  padding: 4px 6px;
+  background: rgba(10, 14, 12, 0.66);
+}
+
+.song-library-control__title {
+  min-width: 136px;
+  flex: 1 1 180px;
+}
+
+.song-library-control__title input {
+  width: 100%;
+  min-height: 32px;
+  border: 1px solid rgba(174, 183, 165, 0.26);
+  border-radius: 6px;
+  padding: 6px 8px;
+  background: rgba(4, 8, 7, 0.76);
+  color: #eef3e5;
+  font: inherit;
+  font-weight: 700;
+}
+
+.song-library-control__title input:focus-visible,
+.song-library-control button:focus-visible {
+  outline: 3px solid #f6cc6b;
+  outline-offset: 2px;
+}
+
+.song-library-control__step,
+.song-library-control__new {
+  min-height: 32px;
+  border: 1px solid rgba(174, 183, 165, 0.32);
+  border-radius: 6px;
+  background: rgba(217, 247, 167, 0.14);
+  color: #eef3e5;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.song-library-control__step {
+  min-width: 46px;
+}
+
+.song-library-control__new {
+  min-width: 78px;
+}
+
+.song-library-control button:hover:not(:disabled) {
+  background: rgba(217, 247, 167, 0.24);
+}
+
+.song-library-control button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.song-library-control__count {
+  min-width: 38px;
+  color: #aeb7a5;
+  font-size: 0.75rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
 .transport-button {
   min-width: 104px;
   height: 42px;

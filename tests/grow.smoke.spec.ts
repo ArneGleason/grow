@@ -828,7 +828,7 @@ async function getPhraseEditorEvolution(page: Page): Promise<PhraseEditorEvoluti
 
 function summarizeCandidateEvolutionForTest(
   candidates: readonly StoredCandidate[],
-  branchId = "editor-lantern",
+  branchId = "editor-song-untitled-1",
 ): PhraseEditorEvolutionSmokeState {
   const statusCounts: Record<StoredCandidate["status"], number> = {
     alive: 0,
@@ -1924,7 +1924,7 @@ test("melody player opens a read-only anchor phrase editor overlay", async ({ pa
   await expect(page.getByTestId("anchor-phrase-editor-tonal")).toHaveText("C Strut");
   await expect(page.getByTestId("anchor-phrase-editor-tonal")).toHaveAttribute("data-mode-classical", "mixolydian");
   await expect(page.getByTestId("anchor-phrase-editor-tonal")).toHaveAttribute("title", "Strut · Mixolydian · key of C");
-  await expect(page.getByTestId("anchor-phrase-editor-song")).toContainText("Lantern");
+  await expect(page.getByTestId("anchor-phrase-editor-song")).toContainText("Untitled song 1");
   await expect(page.getByTestId("anchor-phrase-editor-summary")).toContainText("2 segments");
   await expect(page.getByTestId("anchor-phrase-editor-summary")).toContainText("1 breath");
   const editorBox = await page.getByTestId("anchor-phrase-editor").evaluate((node) => {
@@ -1957,7 +1957,7 @@ test("melody player opens a read-only anchor phrase editor overlay", async ({ pa
     appWindow.song?.setId("glass");
   });
   await expect(page.getByTestId("anchor-phrase-editor-overlay")).toBeVisible();
-  await expect(page.getByTestId("anchor-phrase-editor-song")).toContainText("Glass");
+  await expect(page.getByTestId("anchor-phrase-editor-song")).toContainText("Untitled song 1");
   expect(await page.getByTestId("anchor-phrase-editor-anchor").count()).toBeGreaterThan(4);
 
   await page.keyboard.press("Escape");
@@ -2086,12 +2086,15 @@ test("anchor phrase editor edits connector kernels and knobs into the audible ov
   await expect(page.getByTestId("anchor-phrase-editor-connector-more")).toBeHidden();
   await page.getByTestId("anchor-phrase-editor-connector-more-toggle").click();
   await expect(page.getByTestId("anchor-phrase-editor-connector-more")).toBeVisible();
-  await expect(page.getByTestId("anchor-phrase-editor-selected-anchor")).toContainText("connector 2");
   const selected = await getPhraseEditorState(page);
-  expect(selected.selectedConnector).toEqual({ segmentIndex: 0, connectorIndex: 1 });
+  expect(selected.selectedConnector).toBeTruthy();
+  const selectedConnector = selected.selectedConnector!;
+  await expect(page.getByTestId("anchor-phrase-editor-selected-anchor")).toContainText(
+    `connector ${selectedConnector.connectorIndex + 1}`,
+  );
   await expect(page.getByTestId("anchor-phrase-editor-kernel-fill")).toBeEnabled();
 
-  const firstEdit = await page.evaluate(() => {
+  const firstEdit = await page.evaluate(({ segmentIndex, connectorIndex }) => {
     const appWindow = window as unknown as {
       phraseEditor?: {
         editConnector(segmentIndex: number, connectorIndex: number, patch: {
@@ -2105,14 +2108,14 @@ test("anchor phrase editor edits connector kernels and knobs into the audible ov
         };
       };
     };
-    return appWindow.phraseEditor?.editConnector(0, 1, {
+    return appWindow.phraseEditor?.editConnector(segmentIndex, connectorIndex, {
       density: 0.15,
       kernel: "fill",
       reach: 0.25,
     });
-  });
+  }, selectedConnector);
   expect(firstEdit?.valid).toBe(true);
-  expect(firstEdit?.phrase.segments[0].connectors[1]).toMatchObject({
+  expect(firstEdit?.phrase.segments[selectedConnector.segmentIndex].connectors[selectedConnector.connectorIndex]).toMatchObject({
     density: 0.15,
     kernel: "fill",
     reach: 0.25,
@@ -2120,7 +2123,7 @@ test("anchor phrase editor edits connector kernels and knobs into the audible ov
   const fillPattern = await getPhraseEditorOverridePattern(page);
   expect(fillPattern).toBeTruthy();
 
-  const secondEdit = await page.evaluate(() => {
+  const secondEdit = await page.evaluate(({ segmentIndex, connectorIndex }) => {
     const appWindow = window as unknown as {
       phraseEditor?: {
         editConnector(segmentIndex: number, connectorIndex: number, patch: {
@@ -2134,15 +2137,15 @@ test("anchor phrase editor edits connector kernels and knobs into the audible ov
         };
       };
     };
-    return appWindow.phraseEditor?.editConnector(0, 1, {
+    return appWindow.phraseEditor?.editConnector(segmentIndex, connectorIndex, {
       bias: 0.8,
       density: 0.92,
       kernel: "orbit",
     });
-  });
+  }, selectedConnector);
   expect(secondEdit?.valid).toBe(true);
   expect(secondEdit?.changed).toBe(true);
-  expect(secondEdit?.phrase.segments[0].connectors[1]).toMatchObject({
+  expect(secondEdit?.phrase.segments[selectedConnector.segmentIndex].connectors[selectedConnector.connectorIndex]).toMatchObject({
     bias: 0.8,
     density: 0.92,
     kernel: "orbit",
@@ -2152,7 +2155,9 @@ test("anchor phrase editor edits connector kernels and knobs into the audible ov
   await expect(page.getByTestId("anchor-phrase-editor-selected-anchor")).toContainText("orbit");
   await expect(page.getByTestId("anchor-phrase-editor-kernel-orbit")).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByTestId("anchor-phrase-editor-connector-density")).toHaveValue("0.92");
-  await expect(page.getByTestId("anchor-phrase-editor-connector").nth(1)).toHaveClass(/is-selected/);
+  await expect(page.locator(
+    `[data-testid="anchor-phrase-editor-connector"][data-segment-index="${selectedConnector.segmentIndex}"][data-connector-index="${selectedConnector.connectorIndex}"]`,
+  )).toHaveClass(/is-selected/);
 
   const orbitPattern = await getPhraseEditorOverridePattern(page);
   expect(orbitPattern).toBeTruthy();
@@ -2161,7 +2166,7 @@ test("anchor phrase editor edits connector kernels and knobs into the audible ov
   expect(orbitPattern?.events.every((event) => event === null || Number.isInteger(event.scaleDegree))).toBe(true);
   expect(await getActiveProsodyPattern(page)).toEqual(orbitPattern);
 
-  const invalid = await page.evaluate(() => {
+  const invalid = await page.evaluate(({ segmentIndex, connectorIndex }) => {
     const appWindow = window as unknown as {
       phraseEditor?: {
         editConnector(segmentIndex: number, connectorIndex: number, patch: { kernel: string }): {
@@ -2171,12 +2176,12 @@ test("anchor phrase editor edits connector kernels and knobs into the audible ov
         };
       };
     };
-    return appWindow.phraseEditor?.editConnector(0, 1, { kernel: "spiral" });
-  });
+    return appWindow.phraseEditor?.editConnector(segmentIndex, connectorIndex, { kernel: "spiral" });
+  }, selectedConnector);
   expect(invalid?.valid).toBe(false);
   expect(invalid?.changed).toBe(false);
   expect(invalid?.errors[0]).toContain("must be one of");
-  expect((await getPhraseEditorState(page)).workingPhrase?.segments[0].connectors[1].kernel).toBe("orbit");
+  expect((await getPhraseEditorState(page)).workingPhrase?.segments[selectedConnector.segmentIndex].connectors[selectedConnector.connectorIndex].kernel).toBe("orbit");
 
   await page.getByTestId("anchor-phrase-editor-revert").click();
   expect((await getPhraseEditorState(page)).overrideActive).toBe(false);
@@ -2236,7 +2241,31 @@ test("anchor phrase editor performs structural edits without breaking phrase inv
   expect(initialPhrase).toBeTruthy();
   const initial = invariantSummary(initialPhrase!);
 
-  const added = await page.evaluate(() => {
+  const addBeat = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      phraseEditor?: {
+        getState(): {
+          workingPhrase?: {
+            segments: {
+              anchors: { durationBeats: number; startBeat: number }[];
+            }[];
+          };
+        };
+      };
+    };
+    const phrase = appWindow.phraseEditor?.getState().workingPhrase;
+    const anchors = phrase?.segments[0]?.anchors ?? [];
+    for (let index = 0; index < anchors.length - 1; index += 1) {
+      const start = anchors[index].startBeat + anchors[index].durationBeats + 0.25;
+      if (start + 0.25 <= anchors[index + 1].startBeat) return start;
+    }
+    const last = anchors[anchors.length - 1];
+    const nextSegmentStart = phrase?.segments[1]?.anchors[0]?.startBeat ?? (last ? last.startBeat + 2 : 1);
+    const fallback = last ? last.startBeat + last.durationBeats + 0.25 : 1;
+    return Math.max(0, Math.min(fallback, nextSegmentStart - 0.5));
+  });
+
+  const added = await page.evaluate((atBeat) => {
     const appWindow = window as unknown as {
       phraseEditor?: {
         addAnchor(segmentIndex: number, atBeat: number, options: { degree: number; octave: number }): {
@@ -2246,8 +2275,8 @@ test("anchor phrase editor performs structural edits without breaking phrase inv
         };
       };
     };
-    return appWindow.phraseEditor?.addAnchor(0, 4, { degree: 2, octave: 4 });
-  });
+    return appWindow.phraseEditor?.addAnchor(0, atBeat, { degree: 2, octave: 4 });
+  }, addBeat);
   expect(added?.valid).toBe(true);
   expect(added?.changed).toBe(true);
   let state = await getPhraseEditorState(page);
@@ -2258,7 +2287,7 @@ test("anchor phrase editor performs structural edits without breaking phrase inv
   expect(summary.ordered).toBe(true);
   await expect(page.getByTestId("anchor-phrase-editor-anchor-panel")).toBeVisible();
   expect(state.selectedAnchor?.segmentIndex).toBe(0);
-  expect(state.workingPhrase?.segments[0].anchors[state.selectedAnchor?.anchorIndex ?? -1]?.startBeat).toBeGreaterThanOrEqual(4);
+  expect(state.workingPhrase?.segments[0].anchors[state.selectedAnchor?.anchorIndex ?? -1]?.startBeat).toBeGreaterThanOrEqual(addBeat);
   expect(await getActiveProsodyPattern(page)).toEqual(await getPhraseEditorOverridePattern(page));
 
   const split = await page.evaluate(() => {
@@ -2359,7 +2388,7 @@ test("anchor phrase editor saves edited phrases as idempotent persisted candidat
   await openMelodyPhraseEditor(page);
   const initialCandidates = await listCandidatesInApp(page, {
     kind: "phrase",
-    branchId: "editor-lantern",
+    branchId: "editor-song-untitled-1",
     limit: 500,
   });
   const initialVisibleIds = new Set(
@@ -2394,7 +2423,7 @@ test("anchor phrase editor saves edited phrases as idempotent persisted candidat
   expect(overridePattern).toBeTruthy();
   const firstSave = await savePhraseEditorInApp(page);
   expect(firstSave.valid).toBe(true);
-  expect(firstSave.branchId).toBe("editor-lantern");
+  expect(firstSave.branchId).toBe("editor-song-untitled-1");
   expect(firstSave.candidate).toBeTruthy();
   expect(firstSave.savedCount).toBe(initialVisibleIds.has(firstSave.candidate!.id)
     ? initialVisibleCount
@@ -2412,7 +2441,7 @@ test("anchor phrase editor saves edited phrases as idempotent persisted candidat
   expect(savedMatches).toHaveLength(1);
   const saved = savedMatches[0];
   expect(saved.id).toBe(firstSave.candidate?.id);
-  expect(saved.branchId).toBe("editor-lantern");
+  expect(saved.branchId).toBe("editor-song-untitled-1");
   expect(saved.kind).toBe("phrase");
   expect(saved.generation).toBe(0);
   expect(saved.fitness).toBeGreaterThan(0);
@@ -2438,7 +2467,7 @@ test("anchor phrase editor saves edited phrases as idempotent persisted candidat
     eliteLimit: 2,
     branchId: firstSave.branchId,
   });
-  expect(evolution.branchId).toBe("editor-lantern");
+  expect(evolution.branchId).toBe("editor-song-untitled-1");
   expect(evolution.summaries).toHaveLength(2);
   expect(evolution.finalElite.length).toBeGreaterThan(0);
   expect(evolution.finalElite.every((candidate) => candidate.fitness > 0)).toBe(true);
@@ -2462,7 +2491,7 @@ test("anchor phrase editor authors a fresh idea from the minimal template", asyn
   });
   const initialCandidates = await listCandidatesInApp(page, {
     kind: "phrase",
-    branchId: "editor-lantern",
+    branchId: "editor-song-untitled-1",
     limit: 500,
   });
   const initialIds = new Set(initialCandidates.map((candidate) => candidate.id));
@@ -2510,7 +2539,7 @@ test("anchor phrase editor authors a fresh idea from the minimal template", asyn
   expect(overrideAfterEdit).toBeTruthy();
   const save = await savePhraseEditorInApp(page);
   expect(save.valid).toBe(true);
-  expect(save.branchId).toBe("editor-lantern");
+  expect(save.branchId).toBe("editor-song-untitled-1");
   expect(save.candidate).toBeTruthy();
   expect(initialIds.has(save.candidate!.id)).toBe(false);
   expect((save.candidate!.genome as { format?: string }).format).toBe("anchor-phrase/v1");
@@ -2541,7 +2570,7 @@ test("anchor phrase editor catalogs saved ideas and loads selected native candid
   await expect(page.getByTestId("anchor-phrase-editor-catalog")).toBeVisible();
   await expect(page.getByTestId("anchor-phrase-editor-catalog-list")).toBeHidden();
   let catalog = await getPhraseEditorCatalog(page);
-  expect(catalog.branchId).toBe("editor-lantern");
+  expect(catalog.branchId).toBe("editor-song-untitled-1");
   expect(catalog.entries[0]).toMatchObject({
     id: "generated",
     source: "generated",
@@ -2706,7 +2735,7 @@ test("anchor phrase editor shows evolution sparkline and candidate status tally"
     const appWindow = window as unknown as { song?: { setId(songId: string): string } };
     appWindow.song?.setId("lantern");
   });
-  const branchId = "editor-lantern";
+  const branchId = "editor-song-untitled-1";
   const seed = 73_000 + (Date.now() % 10_000);
   const evolution = await runEvolutionInApp(page, {
     seed,
@@ -2790,7 +2819,7 @@ test("written-to-evolving dial orchestrates prosody and evolving performance", a
     evolvingPerformanceStatus: "idle",
     auditionEnabled: false,
   });
-  expect(initial.evolvingOptions.branchId).toBe("dial-lantern");
+  expect(initial.evolvingOptions.branchId).toBe("dial-song-untitled-1");
   expect(await getActiveProsodyPattern(page)).toBeUndefined();
 
   await setWrittenEvolvingDial(page, 0.5);
@@ -2815,7 +2844,7 @@ test("written-to-evolving dial orchestrates prosody and evolving performance", a
   expect(evolving.regime).toBe("evolving");
   expect(evolving.prosodyEnabled).toBe(true);
   expect(evolving.evolvingOptions).toMatchObject({
-    branchId: "dial-lantern",
+    branchId: "dial-song-untitled-1",
     generations: 50,
     batch: 2,
     count: 5,
@@ -2965,19 +2994,39 @@ test("timing feel control can square playback to the grid", async ({ page }) => 
   await expect(button).toHaveText("Start");
 });
 
-test("song material control switches deterministic loops", async ({ page }) => {
+test("song library creates, renames, and switches deterministic starter material", async ({ page }) => {
   test.setTimeout(30_000);
   await page.goto("/");
   await openInspectDrawer(page);
 
-  await expect(page.getByTestId("song-current")).toHaveText("Lantern");
-  await expect(page.getByTestId("song-lantern")).toBeChecked();
+  await expect(page.getByTestId("song-current")).toHaveText("Untitled song 1");
+  await expect(page.getByTestId("song-library-title-input")).toHaveValue("Untitled song 1");
+  await expect(page.getByTestId("song-library-count")).toHaveText("1 / 1");
   expect((await getTransportState(page)).songId).toBe("lantern");
 
-  await page.getByTestId("song-switchback-option").click();
-  await expect(page.getByTestId("song-current")).toHaveText("Switchback");
-  await expect(page.getByTestId("song-switchback")).toBeChecked();
+  await page.getByTestId("song-library-new").click();
+  await expect(page.getByTestId("song-current")).toHaveText("Untitled song 2");
+  await expect(page.getByTestId("song-library-count")).toHaveText("2 / 2");
   expect((await getTransportState(page)).songId).toBe("switchback");
+
+  await page.getByTestId("song-library-title-input").fill("Basement take");
+  await page.getByTestId("song-library-title-input").press("Enter");
+  await expect(page.getByTestId("song-current")).toHaveText("Basement take");
+  const libraryState = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      phraseEditor?: { getState(): { saveBranchId: string } };
+      songLibrary?: { getState(): { active: { id: string; title: string; baseSongId: string } } };
+    };
+    return {
+      library: appWindow.songLibrary?.getState(),
+      editor: appWindow.phraseEditor?.getState(),
+    };
+  });
+  expect(libraryState.library?.active).toMatchObject({
+    title: "Basement take",
+    baseSongId: "switchback",
+  });
+  expect(libraryState.editor?.saveBranchId).toBe(`editor-${libraryState.library?.active.id}`);
 
   const button = page.getByTestId("transport-toggle");
   await button.click();
@@ -2987,15 +3036,19 @@ test("song material control switches deterministic loops", async ({ page }) => {
     return frame.recentEvents.some((event) => event.tags.includes("song:switchback"));
   }).toBe(true);
 
-  await page.getByTestId("song-glass-option").click();
-  await expect(page.getByTestId("song-current")).toHaveText("Glass");
-  await expect(page.getByTestId("song-glass")).toBeChecked();
+  await page.getByTestId("song-library-new").click();
+  await expect(page.getByTestId("song-current")).toHaveText("Untitled song 3");
+  await expect(page.getByTestId("song-library-count")).toHaveText("3 / 3");
   expect((await getTransportState(page)).songId).toBe("glass");
   await expect.poll(async () => {
     const frame = await getListeningFrame(page);
     return frame.recentEvents.length > 0 &&
       frame.recentEvents.every((event) => event.tags.includes("song:glass"));
   }).toBe(true);
+
+  await page.getByTestId("song-library-previous").click();
+  await expect(page.getByTestId("song-current")).toHaveText("Basement take");
+  expect((await getTransportState(page)).songId).toBe("switchback");
 
   await button.click();
   await expect(button).toHaveText("Start");
@@ -6205,17 +6258,17 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   );
   await expect(button).toHaveText("Start");
   await expect(status).toContainText(
-    "mode rehearsal | song Lantern | section verse 1, bar 1/8 | stopped | 90 BPM | bar 1 | beat 0.0 | lookahead stopped 0.0/8 | pending slots 0",
+    "mode rehearsal | song Untitled song 1 | section verse 1, bar 1/8 | stopped | 90 BPM | bar 1 | beat 0.0 | lookahead stopped 0.0/8 | pending slots 0",
   );
   await expect(page.getByTestId("session-mode-current")).toHaveText("Rehearsal");
   await expect(page.getByTestId("session-mode-rehearsal")).toBeChecked();
-  await expect(page.getByTestId("song-current")).toHaveText("Lantern");
-  await expect(page.getByTestId("song-lantern")).toBeChecked();
+  await expect(page.getByTestId("song-current")).toHaveText("Untitled song 1");
+  await expect(page.getByTestId("song-library-title-input")).toHaveValue("Untitled song 1");
   await expect(page.getByTestId("song-harmony-current")).toContainText("Gather");
   await expect(page.getByTestId("song-harmony-current")).toContainText("C-G");
   await expect(page.getByTestId("timing-feel-current")).toHaveText("Feel");
   await expect(page.getByTestId("timing-feel-feel")).toBeChecked();
-  await expect(page.getByTestId("song-sketch-title")).toHaveText("Lantern working sketch (draft)");
+  await expect(page.getByTestId("song-sketch-title")).toHaveText("Untitled song 1 working sketch (draft)");
   await expect(page.getByTestId("song-sketch-proposer")).toHaveText("melody -> pulse, bass, melody");
   await expect(page.getByTestId("song-sketch-sections")).toContainText("Gather 0-8: I(C)-V(G)");
   await expect(page.getByTestId("song-sketch-assignments")).toContainText("bass support");
@@ -6229,7 +6282,7 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   await expect(page.getByTestId("melody-consensus-status")).toContainText("deterministic-scorer");
   await expect(page.getByTestId("melody-score-perspectives")).toContainText("melody");
   const songSketch = await getSongSketch(page);
-  expect(songSketch.id).toBe("sketch-lantern-c-mixolydian");
+  expect(songSketch.id).toBe("sketch-song-untitled-1");
   expect(songSketch.status).toBe("draft");
   expect(songSketch.sourceSongId).toBe("lantern");
   expect(songSketch.proposerPlayerId).toBe("melody");
@@ -6265,7 +6318,10 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
     return appWindow.song?.getSketch().sections[0].chordPlan[0] ?? "missing";
   });
   expect(clonedChord).toBe("I");
-  await page.getByTestId("song-glass-option").click();
+  await page.evaluate(() => {
+    const appWindow = window as unknown as { song?: { setId(songId: string): string } };
+    appWindow.song?.setId("glass");
+  });
   const glassSketch = await getSongSketch(page);
   expect(glassSketch.sourceSongId).toBe("glass");
   expect(glassSketch.sections[0].chordPlan).not.toEqual(songSketch.sections[0].chordPlan);
@@ -6278,8 +6334,11 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   expect(glassProposal.sourceSongId).toBe("glass");
   expect(glassProposal.kind).toBe("preserve_space");
   expect(glassProposal.responses).toHaveLength(3);
-  await page.getByTestId("song-lantern-option").click();
-  await expect(page.getByTestId("song-current")).toHaveText("Lantern");
+  await page.evaluate(() => {
+    const appWindow = window as unknown as { song?: { setId(songId: string): string } };
+    appWindow.song?.setId("lantern");
+  });
+  await expect(page.getByTestId("song-current")).toHaveText("Untitled song 1");
   expect(await getSessionMode(page)).toBe("rehearsal");
   expect((await getTransportState(page)).sessionMode).toBe("rehearsal");
   expect((await getTransportState(page)).songId).toBe("lantern");
@@ -6293,13 +6352,13 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   await page.getByTestId("session-mode-break-option").click();
   await expect(page.getByTestId("session-mode-current")).toHaveText("Break");
   await expect(page.getByTestId("session-mode-break")).toBeChecked();
-  await expect(status).toContainText("mode break | song Lantern | section verse 1, bar 1/8 | stopped");
+  await expect(status).toContainText("mode break | song Untitled song 1 | section verse 1, bar 1/8 | stopped");
   expect(await getSessionMode(page)).toBe("break");
   expect((await getTransportState(page)).sessionMode).toBe("break");
   await expect.poll(async () => (await getTransportState(page)).lookahead.pendingSlotCount).toBe(0);
   await page.getByTestId("session-mode-performance-option").click();
   await expect(page.getByTestId("session-mode-current")).toHaveText("Performance");
-  await expect(status).toContainText("mode performance | song Lantern | section verse 1, bar 1/8 | stopped");
+  await expect(status).toContainText("mode performance | song Untitled song 1 | section verse 1, bar 1/8 | stopped");
   expect(await getSessionMode(page)).toBe("performance");
   expect(await page.evaluate(() => {
     const appWindow = window as unknown as {
@@ -6776,7 +6835,7 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   await setSessionMode(page, "break");
   await expect(page.getByTestId("session-mode-current")).toHaveText("Break");
   await expect(page.getByTestId("session-mode-break")).toBeChecked();
-  await expect(status).toContainText("mode break | song Lantern | section verse");
+  await expect(status).toContainText("mode break | song Untitled song 1 | section verse");
   const breakStartCount = await getRecordedEventCount(page);
   expect(breakStartCount).toBeGreaterThan(0);
   const breakStartBeat = await getLatestRecordedBeat(page);
@@ -6794,7 +6853,7 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
 
   await setSessionMode(page, "rehearsal");
   await expect(page.getByTestId("session-mode-current")).toHaveText("Rehearsal");
-  await expect(status).toContainText("mode rehearsal | song Lantern | section verse");
+  await expect(status).toContainText("mode rehearsal | song Untitled song 1 | section verse");
   await expect
     .poll(async () => (await getTransportState(page)).lookahead.pendingSlotCount)
     .toBeGreaterThan(0);
@@ -6804,12 +6863,12 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
     .toBeGreaterThan(drainedBeat);
 
   await setSessionMode(page, "performance");
-  await expect(status).toContainText("mode performance | song Lantern | section verse");
+  await expect(status).toContainText("mode performance | song Untitled song 1 | section verse");
   await expect
     .poll(async () => (await getTransportState(page)).lookahead.pendingSlotCount)
     .toBeGreaterThan(0);
   await setSessionMode(page, "solo-practice");
-  await expect(status).toContainText("mode solo practice | song Lantern | section verse");
+  await expect(status).toContainText("mode solo practice | song Untitled song 1 | section verse");
   await expect.poll(async () => (await getTransportState(page)).lookahead.health).toBe("healthy");
   await setSessionMode(page, "rehearsal");
 
@@ -6852,7 +6911,7 @@ test("Grow exposes session modes, starts three players, hears events, and cleans
   }
 
   await expect(status).toContainText(
-    "mode rehearsal | song Lantern | section verse 1, bar 1/8 | stopped | 90 BPM | bar 1 | beat 0.0 | lookahead stopped 0.0/8 | pending slots 0",
+    "mode rehearsal | song Untitled song 1 | section verse 1, bar 1/8 | stopped | 90 BPM | bar 1 | beat 0.0 | lookahead stopped 0.0/8 | pending slots 0",
   );
   await expect.poll(async () => (await getTransportState(page)).status).toBe("stopped");
   expect(consoleErrors).toEqual([]);
