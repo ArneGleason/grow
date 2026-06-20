@@ -244,6 +244,7 @@ let ollamaRequestInFlight = false;
 let songLibraryState: SongLibraryState = loadSongLibraryState();
 let songId: SongId = getActiveSongLibraryEntry().baseSongId;
 let songStarterOpen = false;
+let songStarterGeneration: SongStarterGeneration | undefined;
 let timingFeelMode: TimingFeelMode = "feel";
 let melodyDevelopmentMode: MelodyDevelopmentMode = "repaired";
 let formVariantId: FormVariantId = DEFAULT_FORM_VARIANT_ID;
@@ -507,6 +508,14 @@ const HELP_TOPICS = {
 } as const;
 
 type HelpTopicId = keyof typeof HELP_TOPICS;
+interface SongStarterGeneration {
+  prompt: string;
+  interpretation: SongGoalInterpretation;
+  baseSongId: SongId;
+  materialSeed: number;
+  structureSummary: string;
+  playerPlans: readonly SongLibraryPlayerPlan[];
+}
 const DEFAULT_INSPECTOR_WIDTH = 320;
 const MIN_INSPECTOR_WIDTH = 280;
 const MAX_INSPECTOR_WIDTH = 560;
@@ -600,6 +609,7 @@ function getDefaultSongStarterPlayerBrief(player: Player): string {
 
 function openSongStarterComposer(): void {
   songStarterOpen = true;
+  songStarterGeneration = undefined;
   songStarterOverlay.hidden = false;
   songStarterPrompt.value = "";
   songStarterTonicSelect.value = "";
@@ -631,7 +641,9 @@ function renderSongStarterPreview(): void {
   const draft = readSongStarterDraft();
   if (!draft.prompt.trim()) {
     songStarterPreview.textContent = "Describe the song to derive the starter setup and player briefs.";
+    songStarterGenerate.disabled = true;
     songStarterCreate.disabled = true;
+    renderSongStarterGeneratedSeed(undefined);
     return;
   }
   const interpretation = createSongStarterInterpretation(draft);
@@ -646,10 +658,46 @@ function renderSongStarterPreview(): void {
     getFormVariant(goal.formPreference).label,
     `players: ${playerSummary}`,
   ].join(" | ");
-  songStarterCreate.disabled = !interpretation.validation.valid || enabledPlayers.length === 0;
+  const validStarter = interpretation.validation.valid && enabledPlayers.length > 0;
+  songStarterGenerate.disabled = !validStarter;
+  songStarterCreate.disabled = !validStarter || !songStarterGeneration;
+  renderSongStarterGeneratedSeed(songStarterGeneration);
 }
 
 function createSongFromStarterComposer(): SongLibrarySnapshot | undefined {
+  const generated = songStarterGeneration ?? generateSongStarterSeed();
+  if (!generated) return undefined;
+  const { interpretation } = generated;
+  const starter: SongLibraryStarter = {
+    source: interpretation.source,
+    sourcePrompt: generated.prompt,
+    baseSongId: generated.baseSongId,
+    materialSeed: generated.materialSeed,
+    structureSummary: generated.structureSummary,
+    goal: cloneSongGoal(interpretation.goal),
+    playerPlans: generated.playerPlans.map((plan) => ({ ...plan })),
+  };
+  const snapshot = createLibrarySong(
+    createSongStarterTitle(interpretation.goal.sourceIdea, songLibraryState.songs.length),
+    generated.baseSongId,
+    starter,
+    "song-starter",
+  );
+  songGoalInterpretation = interpretation;
+  songGoalIdeaInput.value = interpretation.goal.sourceIdea;
+  applySongGoalSetup(interpretation);
+  closeSongStarterComposer(false);
+  songLibraryTitleInput.focus();
+  songLibraryTitleInput.select();
+  return snapshot;
+}
+
+function handleSongStarterDraftChanged(): void {
+  songStarterGeneration = undefined;
+  renderSongStarterPreview();
+}
+
+function generateSongStarterSeed(): SongStarterGeneration | undefined {
   const draft = readSongStarterDraft();
   if (!draft.prompt.trim()) {
     renderSongStarterPreview();
@@ -665,25 +713,47 @@ function createSongFromStarterComposer(): SongLibrarySnapshot | undefined {
     renderSongStarterPreview();
     return undefined;
   }
-  const starter: SongLibraryStarter = {
-    source: interpretation.source,
-    sourcePrompt: draft.prompt,
-    goal: cloneSongGoal(interpretation.goal),
-    playerPlans: draft.playerPlans.map((plan) => ({ ...plan })),
+  const baseSongId = chooseStarterMaterialForPrompt(draft.prompt, interpretation.goal);
+  const materialSeed = hashStarterSeed([
+    draft.prompt,
+    interpretation.goal.id,
+    baseSongId,
+    draft.playerPlans.map((plan) => `${plan.playerId}:${plan.enabled}:${plan.brief}`).join("|"),
+  ].join("||"));
+  const structureSummary = createSongStarterStructureSummary(interpretation.goal, baseSongId);
+  const playerPlans = createGeneratedSongStarterPlayerPlans(draft, interpretation.goal, baseSongId);
+  for (const plan of playerPlans) {
+    getSongStarterPlayerCheckbox(plan.playerId).checked = plan.enabled;
+    getSongStarterPlayerBriefInput(plan.playerId).value = plan.brief;
+  }
+  songStarterGeneration = {
+    prompt: draft.prompt,
+    interpretation,
+    baseSongId,
+    materialSeed,
+    structureSummary,
+    playerPlans,
   };
-  const snapshot = createLibrarySong(
-    createSongStarterTitle(interpretation.goal.sourceIdea, songLibraryState.songs.length),
-    undefined,
-    starter,
-    "song-starter",
-  );
-  songGoalInterpretation = interpretation;
-  songGoalIdeaInput.value = interpretation.goal.sourceIdea;
-  applySongGoalSetup(interpretation);
-  closeSongStarterComposer(false);
-  songLibraryTitleInput.focus();
-  songLibraryTitleInput.select();
-  return snapshot;
+  renderSongStarterPreview();
+  return songStarterGeneration;
+}
+
+function renderSongStarterGeneratedSeed(generated: SongStarterGeneration | undefined): void {
+  songStarterGenerated.hidden = !generated;
+  songStarterGeneratedPlayers.replaceChildren();
+  if (!generated) return;
+  const { goal } = generated.interpretation;
+  songStarterGeneratedSetup.textContent = `${goal.tonic} ${modeDisplayName(goal.mode) ?? goal.mode}, ${goal.tempoBpm} BPM, ${getFormVariant(goal.formPreference).label}`;
+  songStarterGeneratedMaterial.textContent = `${getSongLabel(generated.baseSongId)} template, seed ${generated.materialSeed}`;
+  songStarterGeneratedStructure.textContent = generated.structureSummary;
+  const items = generated.playerPlans.map((plan) => {
+    const item = document.createElement("li");
+    item.dataset.playerId = plan.playerId;
+    item.dataset.enabled = String(plan.enabled);
+    item.textContent = `${plan.enabled ? "On" : "Off"} · ${plan.playerId}: ${plan.brief}`;
+    return item;
+  });
+  songStarterGeneratedPlayers.replaceChildren(...items);
 }
 
 function readSongStarterDraft(): {
@@ -750,6 +820,84 @@ function readSongStarterTempo(): number | undefined {
   if (!songStarterTempoInput.value.trim()) return undefined;
   const tempo = Number(songStarterTempoInput.value);
   return Number.isFinite(tempo) ? tempo : undefined;
+}
+
+function createGeneratedSongStarterPlayerPlans(
+  draft: ReturnType<typeof readSongStarterDraft>,
+  goal: SongGoal,
+  baseSongId: SongId,
+): readonly SongLibraryPlayerPlan[] {
+  return PLAYER_REGISTRY.map((player) => {
+    const existing = draft.playerPlans.find((plan) => plan.playerId === player.id);
+    const enabled = existing?.enabled ?? (player.role === "melody" || player.role === "pulse" || player.role === "bass");
+    const existingBrief = existing?.brief ?? "";
+    const defaultBrief = getDefaultSongStarterPlayerBrief(player);
+    const generatedBrief = createGeneratedPlayerBrief(player, goal, baseSongId);
+    const hasCustomBrief = existingBrief.trim().length > 0 && existingBrief !== defaultBrief;
+    return {
+      playerId: player.id,
+      role: player.role,
+      enabled,
+      brief: hasCustomBrief
+        ? `${generatedBrief} Direction: ${existingBrief}`.slice(0, 180)
+        : generatedBrief,
+    };
+  });
+}
+
+function createGeneratedPlayerBrief(player: Player, goal: SongGoal, baseSongId: SongId): string {
+  const energyWord = goal.energy >= 0.68 ? "drive" : goal.energy <= 0.4 ? "hold space" : "move steadily";
+  const surpriseWord = goal.surpriseTarget >= 0.62
+    ? "welcome angular turns"
+    : goal.surpriseTarget <= 0.34
+      ? "keep the shape plain"
+      : "add small variation";
+  const formLabel = getFormVariant(goal.formPreference).label.toLowerCase();
+  const template = getSongLabel(baseSongId).toLowerCase();
+  switch (player.role) {
+    case "pulse":
+      return `${goal.tempoBpm} BPM ${energyWord}; mark the ${formLabel} without crowding the ${template} feel.`;
+    case "bass":
+      return `${goal.tonic} ${goal.mode} roots; ${goal.influenceHints.includes("dub-space") ? "leave dub-sized gaps" : "ground section changes"} and answer the chorus.`;
+    case "melody":
+      return `${surpriseWord}; make a ${modeDisplayName(goal.mode) ?? goal.mode} hook that names the song and resolves home.`;
+    case "texture":
+      return `Color ${goal.brightness >= 0.6 ? "bright edges" : "shadowed edges"} around the band; stay behind the melody.`;
+    case "effects":
+      return "Mark transitions and final returns; keep gestures sparse and reversible.";
+    default:
+      return getDefaultSongStarterPlayerBrief(player);
+  }
+}
+
+function chooseStarterMaterialForPrompt(prompt: string, goal: SongGoal): SongId {
+  const text = prompt.toLowerCase();
+  if (/\b(machine|industrial|basement|switchback|restless|urgent|drive|factory|gear)\b/.test(text)) {
+    return "switchback";
+  }
+  if (/\b(glass|spark|shimmer|bright|clear|phrygian|scorch)\b/.test(text)) return "glass";
+  if (/\b(lantern|paper|folk|warm|gentle|quiet|hushed|ionian|sunshine)\b/.test(text)) return "lantern";
+  if (goal.mode === "phrygian" || goal.mode === "aeolian" || goal.brightness < 0.36) return "glass";
+  if (goal.mode === "dorian" || goal.surpriseTarget > 0.62 || goal.energy > 0.68) return "switchback";
+  return "lantern";
+}
+
+function createSongStarterStructureSummary(goal: SongGoal, baseSongId: SongId): string {
+  const variant = getFormVariant(goal.formPreference);
+  const emphasis = Object.entries(goal.sectionEmphasis)
+    .map(([section, value]) => `${section} ${Number(value).toFixed(2)}`)
+    .join(", ");
+  return `${variant.label} over ${getSongLabel(baseSongId)} material; ${emphasis || "balanced section emphasis"}.`;
+}
+
+function hashStarterSeed(value: string): number {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  const seed = hash >>> 0;
+  return seed === 0 ? 1 : seed;
 }
 
 function createSongStarterTitle(prompt: string, count: number): string {
@@ -970,8 +1118,29 @@ ${songStarterFormOptions}
 ${songStarterPlayerRows}
         </fieldset>
         <output class="song-starter__preview" data-testid="song-starter-preview" aria-live="polite"></output>
+        <section
+          class="song-starter__generated"
+          data-testid="song-starter-generated"
+          aria-label="Generated starter seed"
+          hidden
+        >
+          <div>
+            <span>Setup</span>
+            <strong data-testid="song-starter-generated-setup"></strong>
+          </div>
+          <div>
+            <span>Material</span>
+            <strong data-testid="song-starter-generated-material"></strong>
+          </div>
+          <div>
+            <span>Structure</span>
+            <strong data-testid="song-starter-generated-structure"></strong>
+          </div>
+          <ul data-testid="song-starter-generated-players"></ul>
+        </section>
         <footer class="song-starter__footer">
           <button class="mini-button" data-testid="song-starter-cancel" type="button">Cancel</button>
+          <button class="mini-button" data-testid="song-starter-generate" type="button">Generate starter</button>
           <button class="transport-button" data-testid="song-starter-create" type="button">Create starter</button>
         </footer>
       </article>
@@ -1633,6 +1802,12 @@ const songStarterTempoInput = requireElement<HTMLInputElement>("[data-testid='so
 const songStarterFormSelect = requireElement<HTMLSelectElement>("[data-testid='song-starter-form']");
 const songStarterPlayers = requireElement<HTMLElement>("[data-testid='song-starter-players']");
 const songStarterPreview = requireElement<HTMLOutputElement>("[data-testid='song-starter-preview']");
+const songStarterGenerated = requireElement<HTMLElement>("[data-testid='song-starter-generated']");
+const songStarterGeneratedSetup = requireElement<HTMLElement>("[data-testid='song-starter-generated-setup']");
+const songStarterGeneratedMaterial = requireElement<HTMLElement>("[data-testid='song-starter-generated-material']");
+const songStarterGeneratedStructure = requireElement<HTMLElement>("[data-testid='song-starter-generated-structure']");
+const songStarterGeneratedPlayers = requireElement<HTMLElement>("[data-testid='song-starter-generated-players']");
+const songStarterGenerate = requireElement<HTMLButtonElement>("[data-testid='song-starter-generate']");
 const songStarterCreate = requireElement<HTMLButtonElement>("[data-testid='song-starter-create']");
 const songStarterCancel = requireElement<HTMLButtonElement>("[data-testid='song-starter-cancel']");
 const songStarterClose = requireElement<HTMLButtonElement>("[data-testid='song-starter-close']");
@@ -4827,7 +5002,10 @@ async function runEvolvingPerformanceStep(
 
 function prosodySeedForSong(nextSongId: string): number {
   let hash = 2166136261;
-  const key = `prosody:${nextSongId}`;
+  const starterSeed = songLibraryState.songs.find((song) => song.id === nextSongId)?.starter?.materialSeed;
+  const key = starterSeed
+    ? `prosody:${nextSongId}:${starterSeed}`
+    : `prosody:${nextSongId}`;
   for (let index = 0; index < key.length; index += 1) {
     hash ^= key.charCodeAt(index);
     hash = Math.imul(hash, 16777619);
@@ -5178,8 +5356,9 @@ function formatSongLibraryStarterSummary(starter: SongLibraryStarter): string {
     `${starter.goal.tonic} ${starter.goal.mode}`,
     `${starter.goal.tempoBpm} BPM`,
     getFormVariant(starter.goal.formPreference).label,
+    starter.materialSeed ? `seed ${starter.materialSeed}` : undefined,
     enabledPlayers.length > 0 ? enabledPlayers.join(", ") : "no active players",
-  ].join(" · ");
+  ].filter((part): part is string => Boolean(part)).join(" · ");
 }
 
 function formatSongSection(section: GrowTransportState["songForm"]): string {
@@ -6496,13 +6675,16 @@ songLibraryTitleInput.addEventListener("keydown", (event) => {
   songLibraryTitleInput.blur();
 });
 
-songStarterPrompt.addEventListener("input", renderSongStarterPreview);
-songStarterTonicSelect.addEventListener("change", renderSongStarterPreview);
-songStarterModeSelect.addEventListener("change", renderSongStarterPreview);
-songStarterTempoInput.addEventListener("input", renderSongStarterPreview);
-songStarterFormSelect.addEventListener("change", renderSongStarterPreview);
-songStarterPlayers.addEventListener("input", renderSongStarterPreview);
-songStarterPlayers.addEventListener("change", renderSongStarterPreview);
+songStarterPrompt.addEventListener("input", handleSongStarterDraftChanged);
+songStarterTonicSelect.addEventListener("change", handleSongStarterDraftChanged);
+songStarterModeSelect.addEventListener("change", handleSongStarterDraftChanged);
+songStarterTempoInput.addEventListener("input", handleSongStarterDraftChanged);
+songStarterFormSelect.addEventListener("change", handleSongStarterDraftChanged);
+songStarterPlayers.addEventListener("input", handleSongStarterDraftChanged);
+songStarterPlayers.addEventListener("change", handleSongStarterDraftChanged);
+songStarterGenerate.addEventListener("click", () => {
+  generateSongStarterSeed();
+});
 songStarterBackdrop.addEventListener("click", () => closeSongStarterComposer());
 songStarterCancel.addEventListener("click", () => closeSongStarterComposer());
 songStarterClose.addEventListener("click", () => closeSongStarterComposer());

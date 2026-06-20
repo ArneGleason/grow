@@ -3018,6 +3018,14 @@ test("song library creates, renames, and switches deterministic starter material
   await page.getByTestId("song-starter-player-bass-brief").fill("Walk the room in low, patient shadows.");
   await expect(page.getByTestId("song-starter-preview")).toContainText("G Smoke");
   await expect(page.getByTestId("song-starter-preview")).toContainText("75 BPM");
+  await expect(page.getByTestId("song-starter-create")).toBeDisabled();
+  await page.getByTestId("song-starter-generate").click();
+  await expect(page.getByTestId("song-starter-generated")).toBeVisible();
+  await expect(page.getByTestId("song-starter-generated-setup")).toContainText("G Smoke");
+  await expect(page.getByTestId("song-starter-generated-material")).toContainText("Switchback");
+  await expect(page.getByTestId("song-starter-generated-structure")).toContainText("Wide Return");
+  await expect(page.getByTestId("song-starter-generated-players")).toContainText("bass:");
+  await expect(page.getByTestId("song-starter-player-bass-brief")).toHaveValue(/Direction: Walk the room/);
   await page.getByTestId("song-starter-create").click();
   await expect(page.getByTestId("song-starter-overlay")).toBeHidden();
   await expect(page.getByTestId("song-current")).toHaveText("Slow G Dorian Wide");
@@ -3040,6 +3048,9 @@ test("song library creates, renames, and switches deterministic starter material
             baseSongId: string;
             starter?: {
               sourcePrompt: string;
+              baseSongId?: string;
+              materialSeed?: number;
+              structureSummary?: string;
               goal: { tonic: string; mode: string; tempoBpm: number; formPreference: string };
               playerPlans: Array<{ playerId: string; enabled: boolean; brief: string }>;
             };
@@ -3062,12 +3073,21 @@ test("song library creates, renames, and switches deterministic starter material
     tempoBpm: 75,
     formPreference: "wide-return",
   });
+  expect(libraryState.library?.active.starter?.baseSongId).toBe("switchback");
+  expect(libraryState.library?.active.starter?.materialSeed).toEqual(expect.any(Number));
+  expect(libraryState.library?.active.starter?.structureSummary).toContain("Wide Return");
   expect(libraryState.library?.active.starter?.sourcePrompt).toContain("basement machinery");
   expect(libraryState.library?.active.starter?.playerPlans.find((plan) => plan.playerId === "bass")).toMatchObject({
     enabled: true,
-    brief: "Walk the room in low, patient shadows.",
+    brief: expect.stringContaining("Walk the room in low, patient shadows."),
   });
   expect(libraryState.editor?.saveBranchId).toBe(`editor-${libraryState.library?.active.id}`);
+  const firstGeneratedPhrase = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      anchorPhrase?: { fromProsody(): unknown };
+    };
+    return JSON.stringify(appWindow.anchorPhrase?.fromProsody());
+  });
 
   const button = page.getByTestId("transport-toggle");
   await button.click();
@@ -3082,11 +3102,20 @@ test("song library creates, renames, and switches deterministic starter material
   await page.getByTestId("song-starter-prompt").fill("bright phrygian glass pulse with a classic bridge");
   await page.getByTestId("song-starter-mode").selectOption("phrygian");
   await page.getByTestId("song-starter-form").selectOption("classic-arc");
+  await page.getByTestId("song-starter-generate").click();
+  await expect(page.getByTestId("song-starter-generated-material")).toContainText("Glass");
   await page.getByTestId("song-starter-create").click();
   await expect(page.getByTestId("song-starter-overlay")).toBeHidden();
   await expect(page.getByTestId("song-current")).toHaveText("Bright Phrygian Glass Pulse");
   await expect(page.getByTestId("song-library-count")).toHaveText("3 / 3");
   expect((await getTransportState(page)).songId).toBe("glass");
+  const secondGeneratedPhrase = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      anchorPhrase?: { fromProsody(): unknown };
+    };
+    return JSON.stringify(appWindow.anchorPhrase?.fromProsody());
+  });
+  expect(secondGeneratedPhrase).not.toBe(firstGeneratedPhrase);
   await expect.poll(async () => {
     const frame = await getListeningFrame(page);
     return frame.recentEvents.length > 0 &&

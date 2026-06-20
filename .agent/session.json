@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Add prompt-based song starter composer to the song library slice",
-  "status": "song-library-starter-ready-for-review",
-  "updatedAt": "2026-06-20T15:59:12Z",
+  "lastTask": "Make song starter generation visible and prompt-seeded",
+  "status": "song-library-visible-generation-ready-for-review",
+  "updatedAt": "2026-06-20T16:33:22Z",
   "lastHandoff": "",
   "branch": "codex/byte-song-library-a",
   "commit": "HEAD on codex/byte-song-library-a",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Song Library slice is implemented on codex/byte-song-library-a with a prompt-based starter composer. New song now opens a modal that collects an overall song direction, optional tonic/mode/tempo/form overrides, selectable player plans, and per-player briefs. The prompt is interpreted through the existing deterministic SongGoal vocabulary/validator, the validated setup is applied through applySongGoalSetup(), and starter metadata is stored on the song library entry. The old Lantern/Switchback/Glass materials remain hidden starter templates underneath for compatibility and in-scale playback, and each library song has isolated editor/evolving branches. Player plan checkboxes are metadata-only in this slice; actual transport roster inclusion/exclusion is a future scheduling byte. Validation: npm run build, npm run smoke (78/78), npm run db:smoke, git diff --check all green; npm audit still reports the known Vite/esbuild advisories."
+    "summary": "Song Library slice is implemented on codex/byte-song-library-a with visible prompt-based generation. New song opens a modal that collects an overall song direction, optional tonic/mode/tempo/form overrides, selectable player plans, and per-player briefs. Generate starter is required before Create starter and shows the concrete seed: validated setup, chosen hidden starter template, structure summary, material seed, and generated player briefs. The prompt is interpreted through the existing deterministic SongGoal vocabulary/validator, the validated setup is applied through applySongGoalSetup(), and starter metadata is stored on the song library entry. prosodySeedForSong() now incorporates the stored materialSeed so different prompt-generated songs seed different generated phrase/evolution material. The old Lantern/Switchback/Glass materials remain hidden starter templates underneath for compatibility and in-scale playback, and each library song has isolated editor/evolving branches. Player plan checkboxes are metadata-only in this slice; actual transport roster inclusion/exclusion is a future scheduling byte. Validation: npm run build, npm run smoke (78/78), npm run db:smoke, git diff --check all green; npm audit still reports the known Vite/esbuild advisories."
   }
 }

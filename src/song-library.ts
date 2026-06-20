@@ -32,6 +32,9 @@ export interface SongLibraryPlayerPlan {
 export interface SongLibraryStarter {
   source: "deterministic-keywords" | "model";
   sourcePrompt: string;
+  baseSongId?: SongId;
+  materialSeed?: number;
+  structureSummary?: string;
   goal: SongGoal;
   playerPlans: readonly SongLibraryPlayerPlan[];
 }
@@ -226,6 +229,9 @@ export function cloneSongLibraryStarter(starter: SongLibraryStarter | undefined)
   return {
     source: starter.source,
     sourcePrompt: starter.sourcePrompt,
+    baseSongId: starter.baseSongId,
+    materialSeed: starter.materialSeed,
+    structureSummary: starter.structureSummary,
     goal: {
       ...starter.goal,
       dispositionBias: { ...starter.goal.dispositionBias },
@@ -249,9 +255,19 @@ function readSongLibraryStarter(candidate: unknown): SongLibraryStarter | undefi
   return {
     source,
     sourcePrompt,
+    baseSongId: raw.baseSongId && isSongId(raw.baseSongId) ? raw.baseSongId : undefined,
+    materialSeed: readStarterSeed(raw.materialSeed),
+    structureSummary: typeof raw.structureSummary === "string"
+      ? raw.structureSummary.replace(/\s+/g, " ").trim().slice(0, 240)
+      : undefined,
     goal: validation.goal,
     playerPlans,
   };
+}
+
+function readStarterSeed(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
+  return Math.max(1, Math.trunc(value)) >>> 0;
 }
 
 function readSongLibraryPlayerPlan(candidate: unknown): SongLibraryPlayerPlan | undefined {
