@@ -787,6 +787,19 @@ type PhraseEditorCatalogSmokeState = {
   total: number;
 };
 
+type PhraseEditorEvolutionSmokeState = {
+  branchId: string;
+  points: {
+    bestFitness: number;
+    count: number;
+    generation: number;
+    meanFitness: number;
+  }[];
+  statusCounts: Record<StoredCandidate["status"], number>;
+  total: number;
+  topFitness?: number;
+};
+
 async function getPhraseEditorCatalog(page: Page): Promise<PhraseEditorCatalogSmokeState> {
   const result = await page.evaluate(() => {
     const appWindow = window as unknown as {
@@ -798,6 +811,62 @@ async function getPhraseEditorCatalog(page: Page): Promise<PhraseEditorCatalogSm
     throw new Error("window.phraseEditor.getCatalog() was not available");
   }
   return result;
+}
+
+async function getPhraseEditorEvolution(page: Page): Promise<PhraseEditorEvolutionSmokeState> {
+  const result = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      phraseEditor?: { getEvolution(): PhraseEditorEvolutionSmokeState };
+    };
+    return appWindow.phraseEditor?.getEvolution();
+  });
+  if (!result) {
+    throw new Error("window.phraseEditor.getEvolution() was not available");
+  }
+  return result;
+}
+
+function summarizeCandidateEvolutionForTest(
+  candidates: readonly StoredCandidate[],
+  branchId = "editor-lantern",
+): PhraseEditorEvolutionSmokeState {
+  const statusCounts: Record<StoredCandidate["status"], number> = {
+    alive: 0,
+    elite: 0,
+    purged: 0,
+    reserved: 0,
+  };
+  const buckets = new Map<number, number[]>();
+  for (const candidate of candidates) {
+    statusCounts[candidate.status] += 1;
+    const generation = Math.max(0, Math.trunc(candidate.generation));
+    const fitness = Number(Math.min(Math.max(candidate.fitness, 0), 1).toFixed(6));
+    const bucket = buckets.get(generation) ?? [];
+    bucket.push(fitness);
+    buckets.set(generation, bucket);
+  }
+  const points = [...buckets.entries()]
+    .sort(([left], [right]) => left - right)
+    .map(([generation, fitnesses]) => {
+      const bestFitness = Number(Math.max(...fitnesses).toFixed(6));
+      const meanFitness = Number((fitnesses.reduce((sum, fitness) => sum + fitness, 0) / fitnesses.length).toFixed(6));
+      return {
+        bestFitness,
+        count: fitnesses.length,
+        generation,
+        meanFitness,
+      };
+    });
+  const topFitness = points.length > 0
+    ? Number(Math.max(...points.map((point) => point.bestFitness)).toFixed(6))
+    : undefined;
+  return {
+    branchId,
+    points,
+    statusCounts,
+    total: candidates.length,
+    ...(topFitness === undefined ? {} : { topFitness }),
+  };
 }
 
 async function selectPhraseEditorIdea(page: Page, index: number): Promise<PhraseEditorCatalogSmokeState> {
@@ -837,6 +906,15 @@ async function refreshPhraseEditorCatalog(page: Page): Promise<PhraseEditorCatal
     throw new Error("window.phraseEditor.refreshCatalog() was not available");
   }
   return result;
+}
+
+async function openPhraseEditorEvolutionPanel(page: Page): Promise<void> {
+  const toggle = page.getByTestId("anchor-phrase-editor-evolution-toggle");
+  if (await toggle.getAttribute("aria-expanded") !== "true") {
+    await toggle.click();
+  }
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByTestId("anchor-phrase-editor-evolution-panel")).toBeVisible();
 }
 
 async function previewSelectedPhraseEditorIdea(page: Page): Promise<{
@@ -2601,6 +2679,93 @@ test("anchor phrase editor catalogs saved ideas and loads selected native candid
   expect(editState.editMode).toBe(true);
   expect(editState.workingPhrase).toEqual(selected.selectedPhrase);
   expect(await getActiveProsodyPattern(page)).toEqual(await getPhraseEditorOverridePattern(page));
+});
+
+test("anchor phrase editor shows evolution sparkline and candidate status tally", async ({ page }) => {
+  test.setTimeout(55_000);
+  await page.goto("/");
+
+  await page.evaluate(() => {
+    const appWindow = window as unknown as { song?: { setId(songId: string): string } };
+    appWindow.song?.setId("switchback");
+  });
+  await openMelodyPhraseEditor(page);
+  await refreshPhraseEditorCatalog(page);
+  await expect(page.getByTestId("anchor-phrase-editor-evolution-panel")).toBeHidden();
+  await openPhraseEditorEvolutionPanel(page);
+  const sparse = await getPhraseEditorEvolution(page);
+  if (sparse.points.length <= 1) {
+    await expect(page.getByTestId("anchor-phrase-editor-evolution-note")).toContainText("No evolution yet");
+  } else {
+    await expect(page.getByTestId("anchor-phrase-editor-evolution-note")).toContainText("Best fitness");
+  }
+  await expect(page.getByTestId("anchor-phrase-editor-evolution-chart")).toBeVisible();
+  await page.getByTestId("anchor-phrase-editor-close").click();
+
+  await page.evaluate(() => {
+    const appWindow = window as unknown as { song?: { setId(songId: string): string } };
+    appWindow.song?.setId("lantern");
+  });
+  const branchId = "editor-lantern";
+  const seed = 73_000 + (Date.now() % 10_000);
+  const evolution = await runEvolutionInApp(page, {
+    seed,
+    kind: "phrase",
+    generations: 4,
+    count: 5,
+    eliteLimit: 2,
+    branchId,
+  });
+  expect(evolution.branchId).toBe(branchId);
+  expect(evolution.summaries).toHaveLength(4);
+
+  await openMelodyPhraseEditor(page);
+  await refreshPhraseEditorCatalog(page);
+  await openPhraseEditorEvolutionPanel(page);
+
+  const candidates = await listCandidatesInApp(page, {
+    kind: "phrase",
+    branchId,
+    limit: 500,
+  });
+  const expected = summarizeCandidateEvolutionForTest(candidates, branchId);
+  const summary = await getPhraseEditorEvolution(page);
+  expect(summary).toEqual(expected);
+  expect(summary.points.length).toBeGreaterThanOrEqual(2);
+  expect(summary.statusCounts.purged).toBeGreaterThan(0);
+  await expect(page.getByTestId("anchor-phrase-editor-evolution-summary")).toContainText(
+    `${summary.points.length} generations`,
+  );
+  await expect(page.getByTestId("anchor-phrase-editor-evolution-summary")).toContainText(
+    `top ${summary.topFitness?.toFixed(3)}`,
+  );
+
+  const pointLocators = page.getByTestId("anchor-phrase-editor-evolution-point");
+  await expect(pointLocators).toHaveCount(summary.points.length);
+  for (const [index, point] of summary.points.entries()) {
+    const locator = pointLocators.nth(index);
+    await expect(locator).toHaveAttribute("data-generation", String(point.generation));
+    await expect(locator).toHaveAttribute("data-best-fitness", point.bestFitness.toFixed(6));
+    await expect(locator).toHaveAttribute("data-mean-fitness", point.meanFitness.toFixed(6));
+    await expect(locator).toHaveAttribute("data-count", String(point.count));
+  }
+
+  for (const [status, count] of Object.entries(summary.statusCounts)) {
+    await expect(page.locator(`[data-testid="anchor-phrase-editor-evolution-status"][data-status="${status}"]`))
+      .toHaveAttribute("data-count", String(count));
+  }
+  await expect(page.getByTestId("anchor-phrase-editor-evolution-tally")).toContainText(
+    `elite ${summary.statusCounts.elite}`,
+  );
+  await expect(page.getByTestId("anchor-phrase-editor-evolution-tally")).toContainText(
+    `purged ${summary.statusCounts.purged}`,
+  );
+
+  const panelMetrics = await page.getByTestId("anchor-phrase-editor-evolution-panel").evaluate((node) => ({
+    clientWidth: node.clientWidth,
+    scrollWidth: node.scrollWidth,
+  }));
+  expect(panelMetrics.scrollWidth).toBeLessThanOrEqual(panelMetrics.clientWidth + 1);
 });
 
 test("written-to-evolving dial orchestrates prosody and evolving performance", async ({ page }) => {

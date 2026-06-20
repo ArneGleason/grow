@@ -758,6 +758,108 @@ button {
   white-space: nowrap;
 }
 
+.phrase-editor__evolution {
+  min-width: 0;
+}
+
+.phrase-editor__evolution-summary,
+.phrase-editor__evolution-note {
+  min-width: 0;
+  color: #aeb7a5;
+  font-size: 0.74rem;
+  line-height: 1.35;
+}
+
+.phrase-editor__evolution-chart {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid rgba(174, 183, 165, 0.16);
+  border-radius: 8px;
+  background: rgba(8, 12, 10, 0.58);
+}
+
+.phrase-editor-evolution-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  min-height: 86px;
+}
+
+.phrase-editor-evolution-svg__surface {
+  fill: rgba(8, 12, 10, 0.78);
+}
+
+.phrase-editor-evolution-svg__axis {
+  stroke: rgba(174, 183, 165, 0.22);
+  stroke-width: 1;
+}
+
+.phrase-editor-evolution-svg__axis-label,
+.phrase-editor-evolution-svg__empty {
+  fill: #aeb7a5;
+  font-size: 8px;
+  text-anchor: end;
+}
+
+.phrase-editor-evolution-svg__empty {
+  text-anchor: middle;
+}
+
+.phrase-editor-evolution-svg__mean {
+  fill: none;
+  stroke: rgba(127, 119, 221, 0.52);
+  stroke-dasharray: 3 4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+.phrase-editor-evolution-svg__best {
+  fill: none;
+  stroke: #f6cc6b;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 3;
+}
+
+.phrase-editor-evolution-svg circle {
+  fill: #d9f7a7;
+  stroke: #0f140f;
+  stroke-width: 1.4;
+}
+
+.phrase-editor__evolution-tally {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.phrase-editor__evolution-pill {
+  min-width: 0;
+  border: 1px solid rgba(174, 183, 165, 0.18);
+  border-radius: 7px;
+  padding: 4px 6px;
+  background: rgba(238, 243, 229, 0.05);
+  color: #d7dfcf;
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.phrase-editor__evolution-pill--elite {
+  border-color: rgba(246, 204, 107, 0.42);
+}
+
+.phrase-editor__evolution-pill--reserved {
+  border-color: rgba(127, 119, 221, 0.4);
+}
+
+.phrase-editor__evolution-pill--purged {
+  color: #aeb7a5;
+}
+
 .phrase-editor__dynamics {
   display: grid;
   gap: 4px;

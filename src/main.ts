@@ -238,10 +238,12 @@ let anchorPhraseEditorSaveInFlight = false;
 let anchorPhraseEditorSavedCount: number | undefined;
 let anchorPhraseEditorLastSavedCandidateId: string | undefined;
 let anchorPhraseCatalogCandidates: StoredCandidate[] = [];
+let anchorPhraseEvolutionCandidates: StoredCandidate[] = [];
 let anchorPhraseCatalogSelectedId = "generated";
 let anchorPhraseDraftActive = false;
 let anchorPhraseCatalogLoading = false;
 let anchorPhraseCatalogListOpen = false;
+let anchorPhraseEvolutionPanelOpen = false;
 let anchorPhraseAnchorPanelOpen = false;
 let anchorPhraseConnectorPanelOpen = false;
 let anchorPhraseConnectorMoreOpen = false;
@@ -736,6 +738,41 @@ ${timingFeelControls}
               Saved ideas: 0
             </span>
           </div>
+          <section class="phrase-editor__panel phrase-editor__panel--evolution" aria-label="Phrase evolution summary">
+            <button
+              class="phrase-editor__panel-toggle"
+              data-testid="anchor-phrase-editor-evolution-toggle"
+              type="button"
+              aria-expanded="false"
+            >
+              <span>Evolution</span>
+              <span class="phrase-editor__panel-cue" aria-hidden="true">Read-only</span>
+            </button>
+            <div
+              class="phrase-editor__panel-body phrase-editor__evolution"
+              data-testid="anchor-phrase-editor-evolution-panel"
+              hidden
+            >
+              <span
+                class="phrase-editor__evolution-summary"
+                data-testid="anchor-phrase-editor-evolution-summary"
+              >No saved ideas yet</span>
+              <div
+                class="phrase-editor__evolution-chart"
+                data-testid="anchor-phrase-editor-evolution-chart"
+                aria-label="Best fitness by generation"
+              ></div>
+              <div
+                class="phrase-editor__evolution-tally"
+                data-testid="anchor-phrase-editor-evolution-tally"
+                aria-label="Candidate status tally"
+              ></div>
+              <span
+                class="phrase-editor__evolution-note"
+                data-testid="anchor-phrase-editor-evolution-note"
+              >No evolution yet; run the line to evolve.</span>
+            </div>
+          </section>
           <section class="phrase-editor__panel phrase-editor__panel--anchor" aria-label="Anchor editing controls">
             <button
               class="phrase-editor__panel-toggle"
@@ -1222,6 +1259,24 @@ const anchorPhraseEditorEditToggle = requireElement<HTMLButtonElement>(
 const anchorPhraseEditorRevert = requireElement<HTMLButtonElement>("[data-testid='anchor-phrase-editor-revert']");
 const anchorPhraseEditorSave = requireElement<HTMLButtonElement>("[data-testid='anchor-phrase-editor-save']");
 const anchorPhraseEditorSaveStatus = requireElement<HTMLElement>("[data-testid='anchor-phrase-editor-save-status']");
+const anchorPhraseEditorEvolutionToggle = requireElement<HTMLButtonElement>(
+  "[data-testid='anchor-phrase-editor-evolution-toggle']",
+);
+const anchorPhraseEditorEvolutionPanel = requireElement<HTMLElement>(
+  "[data-testid='anchor-phrase-editor-evolution-panel']",
+);
+const anchorPhraseEditorEvolutionSummary = requireElement<HTMLElement>(
+  "[data-testid='anchor-phrase-editor-evolution-summary']",
+);
+const anchorPhraseEditorEvolutionChart = requireElement<HTMLElement>(
+  "[data-testid='anchor-phrase-editor-evolution-chart']",
+);
+const anchorPhraseEditorEvolutionTally = requireElement<HTMLElement>(
+  "[data-testid='anchor-phrase-editor-evolution-tally']",
+);
+const anchorPhraseEditorEvolutionNote = requireElement<HTMLElement>(
+  "[data-testid='anchor-phrase-editor-evolution-note']",
+);
 const anchorPhraseEditorAddAnchor = requireElement<HTMLButtonElement>("[data-testid='anchor-phrase-editor-add-anchor']");
 const anchorPhraseEditorRemoveAnchor = requireElement<HTMLButtonElement>("[data-testid='anchor-phrase-editor-remove-anchor']");
 const anchorPhraseEditorSplitSegment = requireElement<HTMLButtonElement>("[data-testid='anchor-phrase-editor-split-segment']");
@@ -1906,10 +1961,12 @@ function resetAnchorPhraseEditorSaveState(): void {
   anchorPhraseEditorSavedCount = undefined;
   anchorPhraseEditorLastSavedCandidateId = undefined;
   anchorPhraseCatalogCandidates = [];
+  anchorPhraseEvolutionCandidates = [];
   anchorPhraseCatalogSelectedId = "generated";
   anchorPhraseDraftActive = false;
   anchorPhraseCatalogLoading = false;
   anchorPhraseCatalogListOpen = false;
+  anchorPhraseEvolutionPanelOpen = false;
 }
 
 async function refreshAnchorPhraseEditorSavedCount(
@@ -1933,6 +1990,7 @@ async function refreshAnchorPhraseCatalog(
       branchId,
       limit: 500,
     });
+    anchorPhraseEvolutionCandidates = [...candidates];
     anchorPhraseCatalogCandidates = candidates
       .filter((candidate) => candidate.status !== "purged")
       .sort(compareAnchorPhraseCatalogCandidates);
@@ -2065,6 +2123,63 @@ function getAnchorPhraseCatalogState(): AnchorPhraseCatalogState {
     selectedPhrase: cloneAnchorPhrase(selected.phrase),
     total: entries.length,
   };
+}
+
+const ANCHOR_PHRASE_EVOLUTION_STATUSES: readonly StoredCandidate["status"][] = [
+  "elite",
+  "alive",
+  "reserved",
+  "purged",
+];
+
+function getAnchorPhraseEvolutionSummary(
+  candidates: readonly StoredCandidate[] = anchorPhraseEvolutionCandidates,
+): AnchorPhraseEvolutionSummary {
+  const statusCounts: Record<StoredCandidate["status"], number> = {
+    alive: 0,
+    elite: 0,
+    purged: 0,
+    reserved: 0,
+  };
+  const generationFitnesses = new Map<number, number[]>();
+
+  for (const candidate of candidates) {
+    statusCounts[candidate.status] += 1;
+    if (!Number.isFinite(candidate.generation) || !Number.isFinite(candidate.fitness)) continue;
+    const generation = Math.max(0, Math.trunc(candidate.generation));
+    const fitness = clamp(candidate.fitness, 0, 1);
+    const bucket = generationFitnesses.get(generation) ?? [];
+    bucket.push(fitness);
+    generationFitnesses.set(generation, bucket);
+  }
+
+  const points = Array.from(generationFitnesses.entries())
+    .sort(([left], [right]) => left - right)
+    .map(([generation, fitnesses]) => {
+      const bestFitness = Math.max(...fitnesses);
+      const meanFitness = fitnesses.reduce((sum, fitness) => sum + fitness, 0) / fitnesses.length;
+      return {
+        bestFitness: roundFitness(bestFitness),
+        count: fitnesses.length,
+        generation,
+        meanFitness: roundFitness(meanFitness),
+      };
+    });
+  const topFitness = points.length > 0
+    ? roundFitness(Math.max(...points.map((point) => point.bestFitness)))
+    : undefined;
+
+  return {
+    branchId: getAnchorPhraseEditorBranchId(),
+    points,
+    statusCounts,
+    total: candidates.length,
+    ...(topFitness === undefined ? {} : { topFitness }),
+  };
+}
+
+function roundFitness(value: number): number {
+  return Number(value.toFixed(6));
 }
 
 function summarizeAnchorPhraseCatalogEntry(entry: AnchorPhraseCatalogEntry): AnchorPhraseCatalogEntrySummary {
@@ -2351,6 +2466,7 @@ function renderAnchorPhraseEditor(): void {
   anchorPhraseEditorSaveStatus.textContent = formatAnchorPhraseEditorSaveStatus();
   anchorPhraseEditorStatus.textContent = canEdit ? anchorPhraseEditorMessage : "Anchor editing pauses while the line is evolving.";
   renderAnchorPhraseCatalogControls();
+  renderAnchorPhraseEvolution();
   renderAnchorPhraseEditorSelection(phrase);
   renderAnchorPhraseEditorDisclosures();
   const renderKey = [
@@ -2410,8 +2526,16 @@ function renderAnchorPhraseEditorSelection(phrase: AnchorPhrase): void {
 }
 
 function renderAnchorPhraseEditorDisclosures(): void {
+  const evolutionSummary = getAnchorPhraseEvolutionSummary();
+  const evolutionOpen = anchorPhraseEvolutionPanelOpen;
   const anchorOpen = anchorPhraseAnchorPanelOpen && isAnchorPhraseEditMode;
   const connectorOpen = anchorPhraseConnectorPanelOpen && isAnchorPhraseEditMode;
+  anchorPhraseEditorEvolutionPanel.hidden = !evolutionOpen;
+  anchorPhraseEditorEvolutionToggle.setAttribute("aria-expanded", String(evolutionOpen));
+  anchorPhraseEditorEvolutionToggle.querySelector(".phrase-editor__panel-cue")!.textContent =
+    evolutionSummary.points.length > 0
+      ? `${evolutionSummary.points.length} gen${evolutionSummary.points.length === 1 ? "" : "s"}`
+      : "Read-only";
   anchorPhraseEditorAnchorPanel.hidden = !anchorOpen;
   anchorPhraseEditorAnchorPanelToggle.setAttribute("aria-expanded", String(anchorOpen));
   anchorPhraseEditorAnchorPanelToggle.querySelector(".phrase-editor__panel-cue")!.textContent = selectedAnchorRef
@@ -2473,6 +2597,118 @@ function renderAnchorPhraseCatalogControls(): void {
       <small>${entry.tag}</small>
     </button>
   `).join("");
+}
+
+function renderAnchorPhraseEvolution(): void {
+  const summary = getAnchorPhraseEvolutionSummary();
+  anchorPhraseEditorEvolutionSummary.textContent = formatAnchorPhraseEvolutionSummary(summary);
+  anchorPhraseEditorEvolutionChart.innerHTML = renderAnchorPhraseEvolutionChart(summary);
+  anchorPhraseEditorEvolutionTally.innerHTML = renderAnchorPhraseEvolutionTally(summary);
+  anchorPhraseEditorEvolutionNote.textContent = formatAnchorPhraseEvolutionNote(summary);
+}
+
+function formatAnchorPhraseEvolutionSummary(summary: AnchorPhraseEvolutionSummary): string {
+  if (summary.total === 0) {
+    return `${summary.branchId} · no saved ideas yet`;
+  }
+  const top = summary.topFitness === undefined ? "..." : summary.topFitness.toFixed(3);
+  return `${summary.branchId} · ${summary.total} candidates · ${summary.points.length} generations · top ${top}`;
+}
+
+function formatAnchorPhraseEvolutionNote(summary: AnchorPhraseEvolutionSummary): string {
+  if (summary.points.length <= 1) {
+    return "No evolution yet; run the line to evolve.";
+  }
+  const first = summary.points[0]!;
+  const last = summary.points[summary.points.length - 1]!;
+  const gain = last.bestFitness - first.bestFitness;
+  return `Best fitness ${first.bestFitness.toFixed(3)} -> ${last.bestFitness.toFixed(3)} across generations ${
+    first.generation
+  }-${last.generation}; gain ${gain >= 0 ? "+" : ""}${gain.toFixed(3)}.`;
+}
+
+function renderAnchorPhraseEvolutionTally(summary: AnchorPhraseEvolutionSummary): string {
+  return ANCHOR_PHRASE_EVOLUTION_STATUSES.map((status) => `
+    <span
+      class="phrase-editor__evolution-pill phrase-editor__evolution-pill--${status}"
+      data-testid="anchor-phrase-editor-evolution-status"
+      data-status="${status}"
+      data-count="${summary.statusCounts[status]}"
+    >${status} ${summary.statusCounts[status]}</span>
+  `).join("");
+}
+
+function renderAnchorPhraseEvolutionChart(summary: AnchorPhraseEvolutionSummary): string {
+  const width = 240;
+  const height = 76;
+  const padding = { top: 10, right: 12, bottom: 18, left: 28 };
+  const plotWidth = width - padding.left - padding.right;
+  const plotHeight = height - padding.top - padding.bottom;
+  const points = summary.points;
+  const xForPoint = (point: AnchorPhraseEvolutionPoint): number => {
+    if (points.length <= 1) return padding.left + plotWidth / 2;
+    const minGeneration = points[0]!.generation;
+    const maxGeneration = points[points.length - 1]!.generation;
+    const span = Math.max(1, maxGeneration - minGeneration);
+    return padding.left + ((point.generation - minGeneration) / span) * plotWidth;
+  };
+  const yForFitness = (fitness: number): number =>
+    padding.top + (1 - clamp(fitness, 0, 1)) * plotHeight;
+  const bestPath = points.length > 0
+    ? points.map((point, index) =>
+      `${index === 0 ? "M" : "L"} ${roundSvg(xForPoint(point))} ${roundSvg(yForFitness(point.bestFitness))}`
+    ).join(" ")
+    : "";
+  const meanPath = points.length > 1
+    ? points.map((point, index) =>
+      `${index === 0 ? "M" : "L"} ${roundSvg(xForPoint(point))} ${roundSvg(yForFitness(point.meanFitness))}`
+    ).join(" ")
+    : "";
+  const circles = points.map((point) => `
+    <circle
+      data-testid="anchor-phrase-editor-evolution-point"
+      data-generation="${point.generation}"
+      data-best-fitness="${point.bestFitness.toFixed(6)}"
+      data-mean-fitness="${point.meanFitness.toFixed(6)}"
+      data-count="${point.count}"
+      cx="${roundSvg(xForPoint(point))}"
+      cy="${roundSvg(yForFitness(point.bestFitness))}"
+      r="3.8"
+    >
+      <title>generation ${point.generation}: best ${point.bestFitness.toFixed(3)}, mean ${
+        point.meanFitness.toFixed(3)
+      }, ${point.count} candidates</title>
+    </circle>
+  `).join("");
+  const emptyLabel = points.length === 0
+    ? `<text class="phrase-editor-evolution-svg__empty" x="${width / 2}" y="${height / 2}">no candidate data</text>`
+    : "";
+
+  return `
+    <svg
+      class="phrase-editor-evolution-svg"
+      data-testid="anchor-phrase-editor-evolution-svg"
+      data-generations="${points.length}"
+      data-total-candidates="${summary.total}"
+      viewBox="0 0 ${width} ${height}"
+      role="img"
+      aria-label="Best phrase fitness by generation"
+    >
+      <rect class="phrase-editor-evolution-svg__surface" x="0" y="0" width="${width}" height="${height}" rx="8" />
+      <line class="phrase-editor-evolution-svg__axis" x1="${padding.left}" x2="${width - padding.right}" y1="${
+        height - padding.bottom
+      }" y2="${height - padding.bottom}" />
+      <line class="phrase-editor-evolution-svg__axis" x1="${padding.left}" x2="${padding.left}" y1="${padding.top}" y2="${
+        height - padding.bottom
+      }" />
+      <text class="phrase-editor-evolution-svg__axis-label" x="${padding.left - 6}" y="${padding.top + 4}">1.0</text>
+      <text class="phrase-editor-evolution-svg__axis-label" x="${padding.left - 6}" y="${height - padding.bottom + 4}">0</text>
+      ${meanPath ? `<path class="phrase-editor-evolution-svg__mean" data-testid="anchor-phrase-editor-evolution-mean-line" d="${meanPath}" />` : ""}
+      ${bestPath ? `<path class="phrase-editor-evolution-svg__best" data-testid="anchor-phrase-editor-evolution-best-line" d="${bestPath}" />` : ""}
+      ${circles}
+      ${emptyLabel}
+    </svg>
+  `;
 }
 
 function renderAnchorPhraseEditorConnectorControls(connector: Connector | undefined): void {
@@ -3827,6 +4063,21 @@ interface AnchorPhraseCatalogState {
   selectedPattern: PlayerPatternSource;
   selectedPhrase: AnchorPhrase;
   total: number;
+}
+
+interface AnchorPhraseEvolutionPoint {
+  bestFitness: number;
+  count: number;
+  generation: number;
+  meanFitness: number;
+}
+
+interface AnchorPhraseEvolutionSummary {
+  branchId: string;
+  points: readonly AnchorPhraseEvolutionPoint[];
+  statusCounts: Record<StoredCandidate["status"], number>;
+  total: number;
+  topFitness?: number;
 }
 
 interface AnchorPhraseEditorLayout {
@@ -5496,6 +5747,11 @@ anchorPhraseEditorCatalogListToggle.addEventListener("click", () => {
   renderAnchorPhraseEditor();
 });
 
+anchorPhraseEditorEvolutionToggle.addEventListener("click", () => {
+  anchorPhraseEvolutionPanelOpen = !anchorPhraseEvolutionPanelOpen;
+  renderAnchorPhraseEditor();
+});
+
 anchorPhraseEditorCatalogList.addEventListener("click", (event) => {
   const target = event.target instanceof Element
     ? event.target.closest<HTMLButtonElement>("[data-catalog-index]")
@@ -5914,6 +6170,7 @@ declare global {
       enterEditMode(): AnchorPhraseEditorState;
       exitEditMode(): AnchorPhraseEditorState;
       getCatalog(): AnchorPhraseCatalogState;
+      getEvolution(): AnchorPhraseEvolutionSummary;
       getOverridePattern(): PlayerPatternSource | undefined;
       getState(): AnchorPhraseEditorState;
       getWorkingPhrase(): AnchorPhrase | undefined;
@@ -6169,6 +6426,7 @@ window.phraseEditor = {
   enterEditMode: () => enterAnchorPhraseEditMode(),
   exitEditMode: () => exitAnchorPhraseEditMode("Edit mode exited; generated phrase restored."),
   getCatalog: () => getAnchorPhraseCatalogState(),
+  getEvolution: () => getAnchorPhraseEvolutionSummary(),
   getOverridePattern: () => getAnchorPhraseEditorOverridePattern(),
   getState: () => getAnchorPhraseEditorState(),
   getWorkingPhrase: () => workingAnchorPhrase ? cloneAnchorPhrase(workingAnchorPhrase) : undefined,
