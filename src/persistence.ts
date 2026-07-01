@@ -18,6 +18,8 @@ export type PersistenceRecordType =
   | "song.changed"
   | "song.goal_set"
   | "song.form_variant_changed"
+  | "song.interplay_feedback"
+  | "song.interplay_toggled"
   | "timing.feel_changed"
   | "song.melody_critic_selection"
   | "song.take_feedback"

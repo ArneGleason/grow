@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Byte E1 interplay MVP",
-  "status": "byte-e1-interplay-ready-for-review",
-  "updatedAt": "2026-07-01T21:27:22Z",
-  "lastHandoff": ".agent/handoffs/2026-07-01-codex-to-claude-byte-e1-interplay.md",
+  "lastTask": "Byte E1 interplay MVP plus listening-experiment UI",
+  "status": "byte-e1-interplay-ui-ready-for-review",
+  "updatedAt": "2026-07-01T21:55:00Z",
+  "lastHandoff": ".agent/handoffs/2026-07-01-codex-to-claude-byte-e1-interplay-ui-addendum.md",
   "branch": "codex/byte-e1-interplay",
   "commit": "HEAD on codex/byte-e1-interplay",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte E1 is implemented from origin/main b2daca6 in a clean temp worktree because the original Grow checkout had held dirty spike work. The byte adds pure motif memory/capture/vary helpers, a transport bassPhrasing hook parallel to melodyPhrasing, full-form generated bass answer patterns for starter/library songs, default-on generated/default-off canned control behavior, and window.interplay getState/setEnabled. Answer notes are tagged interplay:bass-answer and bypass only the old bass harmonic recolor that would erase their contours; no new scheduler/audio path, persistence/schema, scorer, model, or evolution path changed. Validation: build green; unit config 51/51; focused interplay smoke green; full serial smoke green twice at 79/79 on non-clean store; db:smoke green; diff-check green; npm audit unchanged with known esbuild/Vite advisories."
+    "summary": "Byte E1 is implemented from origin/main b2daca6 in a clean temp worktree because the original Grow checkout had held dirty spike work. The byte adds pure motif memory/capture/vary helpers, a transport bassPhrasing hook parallel to melodyPhrasing, full-form generated bass answer patterns for starter/library songs, default-on generated/default-off canned control behavior, and window.interplay getState/setEnabled. A follow-up Ear Check panel now surfaces a visible Bass answers melody switch, short A/B instructions, verdict buttons, and a current-answer readout while leaving the console lid available via getExperiment()/feedback(). Answer notes are tagged interplay:bass-answer and bypass only the old bass harmonic recolor that would erase their contours; no new scheduler/audio path, harmony, scorer, model, or evolution path changed. Validation: build green; unit config 51/51; focused interplay smoke green after the UI patch; full serial smoke was green twice at 79/79 before the UI patch; db:smoke green; diff-check green; npm audit unchanged with known esbuild/Vite advisories."
   }
 }

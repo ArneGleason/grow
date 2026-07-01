@@ -3256,6 +3256,10 @@ test("interplay bass answers the previous melody bar for generated songs", async
     enabled: false,
     answers: [],
   });
+  await expect(page.getByTestId("interplay-experiment")).toBeVisible();
+  await expect(page.getByTestId("interplay-instructions")).toContainText("Turn the switch off");
+  await expect(page.getByTestId("interplay-ui-toggle")).not.toBeChecked();
+  await expect(page.getByTestId("interplay-ui-status")).toContainText("control song");
 
   await page.getByTestId("song-library-new").click();
   await page.getByTestId("song-starter-prompt").fill(
@@ -3270,6 +3274,8 @@ test("interplay bass answers the previous melody bar for generated songs", async
   const starterDefaultState = await getInterplayStateForSmoke(page);
   expect(starterDefaultState.defaultEnabled).toBe(true);
   expect(starterDefaultState.enabled).toBe(true);
+  await expect(page.getByTestId("interplay-ui-toggle")).toBeChecked();
+  await expect(page.getByTestId("interplay-ui-status")).toContainText("Answers on");
 
   const button = page.getByTestId("transport-toggle");
   await button.click();
@@ -3300,6 +3306,7 @@ test("interplay bass answers the previous melody bar for generated songs", async
   expect(verseAnswer!.op).toBe(expectedOp);
   expect(verseAnswer!.chordRoot).toBe(expectedRoot);
   expect(verseAnswer!.resultingDegrees).toEqual([...expectedVariation.degrees]);
+  await expect(page.getByTestId("interplay-ui-answer")).toContainText("bass");
 
   await page.waitForFunction(() => {
     const appWindow = window as unknown as { transport?: { getState(): TransportState } };
@@ -3314,13 +3321,26 @@ test("interplay bass answers the previous melody bar for generated songs", async
   expect(chorusAnswer!.maxNotes).toBeGreaterThan(verseAnswer!.maxNotes);
   expect(chorusAnswer!.octave).toBeGreaterThan(verseAnswer!.octave);
 
-  const disabledState = await page.evaluate(() => {
-    const appWindow = window as unknown as {
-      interplay?: { setEnabled(enabled: boolean): { enabled: boolean; answers: unknown[] } };
-    };
-    return appWindow.interplay?.setEnabled(false);
+  await page.getByTestId("interplay-feedback-better").click();
+  await expect(page.getByTestId("interplay-ui-feedback")).toContainText("Better with answers");
+  await flushPersistence(page);
+  const persistenceState = await getPersistenceState(page);
+  const dump = await dumpPersistence(page, 200);
+  const interplayFeedback = dump.events.find((event) =>
+    event.sessionId === persistenceState.sessionId &&
+    event.type === "song.interplay_feedback" &&
+    event.payload.feedback === "better-on"
+  );
+  expect(interplayFeedback?.payload).toMatchObject({
+    enabled: true,
+    source: "interplay-experiment",
   });
+
+  await page.getByTestId("interplay-ui-toggle").uncheck();
+  await expect(page.getByTestId("interplay-ui-toggle")).not.toBeChecked();
+  const disabledState = await getInterplayStateForSmoke(page);
   expect(disabledState).toMatchObject({ enabled: false, answers: [] });
+  await expect(page.getByTestId("interplay-ui-status")).toContainText("Answers off");
 
   await button.click();
   await expect(button).toHaveText("Start");
@@ -3352,6 +3372,7 @@ test("interplay bass answers the previous melody bar for generated songs", async
   });
   expect(cannedAfterToggle?.defaultEnabled).toBe(false);
   expect(cannedAfterToggle?.enabled).toBe(false);
+  await expect(page.getByTestId("interplay-ui-toggle")).not.toBeChecked();
 });
 
 test("song form timeline develops an in-scale chorus melody", () => {

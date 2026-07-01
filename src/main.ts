@@ -333,6 +333,8 @@ let interplayEnabledOverride: boolean | undefined;
 let interplayMemory: MotifMemory = createMotifMemory();
 let interplayAnswerSummaries: InterplayAnswerSummary[] = [];
 let lastInterplayRefreshBar = -1;
+let interplayExperimentFeedbacks: InterplayExperimentFeedback[] = [];
+let interplayExperimentMessage = "No feedback yet.";
 let cachedSongSketchKey = "";
 let cachedSongSketchBase: SongSketch | undefined;
 let cachedMelodyRepairKey = "";
@@ -413,6 +415,32 @@ interface InterplayStateSnapshot {
   answers: readonly InterplayAnswerSummary[];
   lastAnswer?: InterplayAnswerSummary;
 }
+
+type InterplayExperimentFeedbackValue = "heard-answer" | "better-on" | "too-obvious" | "no-clear-difference";
+
+interface InterplayExperimentFeedback {
+  answerCount: number;
+  atBeat: number;
+  createdAt: string;
+  enabled: boolean;
+  label: string;
+  songLibraryId: string;
+  songTitle: string;
+  value: InterplayExperimentFeedbackValue;
+  lastAnswer?: InterplayAnswerSummary;
+}
+
+interface InterplayExperimentState extends InterplayStateSnapshot {
+  feedbacks: readonly InterplayExperimentFeedback[];
+  message: string;
+}
+
+const INTERPLAY_FEEDBACK_LABELS: Record<InterplayExperimentFeedbackValue, string> = {
+  "heard-answer": "I hear the answer",
+  "better-on": "Better with answers",
+  "too-obvious": "Too obvious",
+  "no-clear-difference": "No clear difference",
+};
 
 const TIMING_FEEL_OPTIONS: Array<{ id: TimingFeelMode; label: string }> = [
   { id: "grid", label: "Grid" },
@@ -866,10 +894,11 @@ function isInterplayEnabled(): boolean {
   return interplayEnabledOverride ?? getDefaultInterplayEnabled();
 }
 
-function setInterplayEnabled(enabled: boolean): InterplayStateSnapshot {
+function setInterplayEnabled(enabled: boolean, source = "interplay-api"): InterplayStateSnapshot {
   interplayEnabledOverride = Boolean(enabled);
   resetInterplayState();
   refreshLookaheadSchedule();
+  recordInterplayToggle(interplayEnabledOverride, source);
   renderWorld();
   return getInterplayState();
 }
@@ -894,6 +923,39 @@ function getInterplayState(): InterplayStateSnapshot {
   };
 }
 
+function getInterplayExperimentState(): InterplayExperimentState {
+  return {
+    ...getInterplayState(),
+    feedbacks: interplayExperimentFeedbacks.map(cloneInterplayExperimentFeedback),
+    message: interplayExperimentMessage,
+  };
+}
+
+function applyInterplayExperimentFeedback(value: string): InterplayExperimentState {
+  if (!isInterplayExperimentFeedbackValue(value)) return getInterplayExperimentState();
+  const state = getInterplayState();
+  const feedback: InterplayExperimentFeedback = {
+    answerCount: state.answers.length,
+    atBeat: getPersistenceBeat(),
+    createdAt: new Date().toISOString(),
+    enabled: state.enabled,
+    label: INTERPLAY_FEEDBACK_LABELS[value],
+    songLibraryId: getActiveSongLibraryId(),
+    songTitle: getActiveSongDisplayName(),
+    value,
+    ...(state.lastAnswer ? { lastAnswer: cloneInterplayAnswerSummary(state.lastAnswer) } : {}),
+  };
+  interplayExperimentFeedbacks = [...interplayExperimentFeedbacks.slice(-11), feedback];
+  interplayExperimentMessage = `${feedback.label} recorded for ${state.enabled ? "answers on" : "answers off"}.`;
+  recordInterplayExperimentFeedback(feedback);
+  renderWorld();
+  return getInterplayExperimentState();
+}
+
+function isInterplayExperimentFeedbackValue(value: string): value is InterplayExperimentFeedbackValue {
+  return value in INTERPLAY_FEEDBACK_LABELS;
+}
+
 function cloneInterplayAnswerSummary(answer: InterplayAnswerSummary): InterplayAnswerSummary {
   return {
     ...answer,
@@ -902,6 +964,13 @@ function cloneInterplayAnswerSummary(answer: InterplayAnswerSummary): InterplayA
     sourceDynamics: [...answer.sourceDynamics],
     resultingDegrees: [...answer.resultingDegrees],
     rhythm: answer.rhythm.map((step) => ({ ...step })),
+  };
+}
+
+function cloneInterplayExperimentFeedback(feedback: InterplayExperimentFeedback): InterplayExperimentFeedback {
+  return {
+    ...feedback,
+    ...(feedback.lastAnswer ? { lastAnswer: cloneInterplayAnswerSummary(feedback.lastAnswer) } : {}),
   };
 }
 
@@ -1396,6 +1465,43 @@ ${timingFeelControls}
         </fieldset>
       </div>
     </header>
+
+    <section
+      class="listening-experiment"
+      data-testid="interplay-experiment"
+      aria-labelledby="interplay-experiment-title"
+    >
+      <header class="listening-experiment__header">
+        <div class="listening-experiment__title">
+          <p>Ear check</p>
+          <h2 id="interplay-experiment-title">Does the bass answer the melody?</h2>
+        </div>
+        <label class="interplay-switch">
+          <input data-testid="interplay-ui-toggle" type="checkbox" />
+          <span>Bass answers melody</span>
+        </label>
+      </header>
+      <ol class="listening-experiment__steps" data-testid="interplay-instructions">
+        <li>Create a generated starter song, or turn this switch on for the current song.</li>
+        <li>Press Start and listen for the bass phrase after each melody bar.</li>
+        <li>Turn the switch off, replay the same passage, then log what changed.</li>
+      </ol>
+      <div
+        class="listening-experiment__feedback"
+        data-testid="interplay-feedback-controls"
+        aria-label="Interplay listening feedback"
+      >
+        <button class="mini-button" data-interplay-feedback="heard-answer" data-testid="interplay-feedback-heard" type="button">I hear it</button>
+        <button class="mini-button" data-interplay-feedback="better-on" data-testid="interplay-feedback-better" type="button">Better on</button>
+        <button class="mini-button" data-interplay-feedback="too-obvious" data-testid="interplay-feedback-obvious" type="button">Too obvious</button>
+        <button class="mini-button" data-interplay-feedback="no-clear-difference" data-testid="interplay-feedback-no-difference" type="button">No difference</button>
+      </div>
+      <div class="listening-experiment__readouts" aria-live="polite">
+        <output data-testid="interplay-ui-status">Answers off.</output>
+        <output data-testid="interplay-ui-answer">Start playback to hear the comparison.</output>
+        <output data-testid="interplay-ui-feedback">No feedback yet.</output>
+      </div>
+    </section>
 
     <section
       class="song-starter-overlay"
@@ -2133,6 +2239,11 @@ const controlTempoReadout = requireElement<HTMLElement>("[data-testid='control-t
 const controlKeyReadout = requireElement<HTMLElement>("[data-testid='control-key-readout']");
 const writtenEvolvingDialInput = requireElement<HTMLInputElement>("[data-testid='written-evolving-dial']");
 const writtenEvolvingRegimeReadout = requireElement<HTMLElement>("[data-testid='written-evolving-regime']");
+const interplayUiToggle = requireElement<HTMLInputElement>("[data-testid='interplay-ui-toggle']");
+const interplayUiStatus = requireElement<HTMLOutputElement>("[data-testid='interplay-ui-status']");
+const interplayUiAnswer = requireElement<HTMLOutputElement>("[data-testid='interplay-ui-answer']");
+const interplayUiFeedback = requireElement<HTMLOutputElement>("[data-testid='interplay-ui-feedback']");
+const interplayFeedbackControls = requireElement<HTMLElement>("[data-testid='interplay-feedback-controls']");
 const helpPanel = requireElement<HTMLElement>("[data-testid='inspector-help-panel']");
 const helpTitle = requireElement<HTMLElement>("[data-testid='inspector-help-title']");
 const helpBody = requireElement<HTMLElement>("[data-testid='inspector-help-body']");
@@ -5765,6 +5876,58 @@ function renderWrittenEvolvingControl(): void {
   writtenEvolvingRegimeReadout.textContent = writtenEvolvingRegime;
 }
 
+function renderInterplayExperiment(): void {
+  const state = getInterplayState();
+  interplayUiToggle.checked = state.enabled;
+  interplayUiToggle.dataset.defaultEnabled = String(state.defaultEnabled);
+  interplayUiToggle.dataset.override = state.override === undefined ? "default" : String(state.override);
+  interplayUiStatus.textContent = formatInterplayExperimentStatus(state);
+  interplayUiAnswer.textContent = formatInterplayAnswerForUi(state);
+  interplayUiFeedback.textContent = [
+    interplayExperimentMessage,
+    `${interplayExperimentFeedbacks.length} logged`,
+  ].join(" | ");
+  const latestValue = interplayExperimentFeedbacks.at(-1)?.value;
+  for (const button of interplayFeedbackControls.querySelectorAll<HTMLButtonElement>("[data-interplay-feedback]")) {
+    button.dataset.selected = String(button.dataset.interplayFeedback === latestValue);
+  }
+}
+
+function formatInterplayExperimentStatus(state: InterplayStateSnapshot): string {
+  if (state.enabled && state.answers.length > 0) {
+    return `Answers on | ${state.answers.length} planned | ${state.defaultEnabled ? "starter default" : "forced on"}`;
+  }
+  if (state.enabled) {
+    return `Answers on | press Start to schedule the answer path.`;
+  }
+  if (state.defaultEnabled) {
+    return `Answers off | A/B control override.`;
+  }
+  return `Answers off | control song.`;
+}
+
+function formatInterplayAnswerForUi(state: InterplayStateSnapshot): string {
+  const answer = state.lastAnswer;
+  if (!state.enabled) return "Switch on to audition bass answers.";
+  if (!answer) return "No answer heard yet; start playback and wait for bar 2.";
+  return [
+    `Bar ${answer.targetBar + 1}: bass ${formatInterplayOp(answer.op)} melody bar ${answer.sourceBar + 1}`,
+    `toward root ${answer.chordRoot}`,
+    `degrees ${answer.sourceDegrees.join("-")} -> ${answer.resultingDegrees.join("-")}`,
+  ].join(" | ");
+}
+
+function formatInterplayOp(op: MotifVariationOp): string {
+  switch (op) {
+    case "quote":
+      return "quotes";
+    case "invert":
+      return "inverts";
+    case "thin":
+      return "thins";
+  }
+}
+
 function renderStatus(state: GrowTransportState): void {
   button.textContent = state.status === "playing" ? "Stop" : "Start";
   status.value = `mode ${getSessionModeLabel(state.sessionMode).toLowerCase()} | song ${getActiveSongDisplayName()} | section ${formatSongSection(state.songForm).toLowerCase()} | ${state.status} | ${state.bpm} BPM | bar ${state.bar} | beat ${state.currentBeat.toFixed(1)} | lookahead ${state.lookahead.health} ${state.lookahead.leadBeats.toFixed(1)}/${state.lookahead.targetBeats.toFixed(0)} | pending slots ${state.lookahead.pendingSlotCount}`;
@@ -5772,6 +5935,7 @@ function renderStatus(state: GrowTransportState): void {
   controlTempoReadout.textContent = `${state.bpm} BPM`;
   renderTonalContextDisplay(controlKeyReadout, tonalContext);
   renderWrittenEvolvingControl();
+  renderInterplayExperiment();
 }
 
 function getCurrentListeningFrame(): ListeningFrame {
@@ -6679,6 +6843,52 @@ function recordTimingFeelChanged(fromFeel: TimingFeelMode, toFeel: TimingFeelMod
   });
 }
 
+function recordInterplayToggle(enabled: boolean, source: string): void {
+  const state = getInterplayState();
+  persistence.record({
+    type: "song.interplay_toggled",
+    actorId: "human",
+    sessionMode: world.getSessionMode(),
+    beat: getPersistenceBeat(),
+    payload: {
+      source,
+      enabled,
+      defaultEnabled: state.defaultEnabled,
+      override: state.override,
+      songId,
+      songLibraryId: getActiveSongLibraryId(),
+      songTitle: getActiveSongDisplayName(),
+      answerCount: state.answers.length,
+    },
+  });
+}
+
+function recordInterplayExperimentFeedback(feedback: InterplayExperimentFeedback): void {
+  persistence.record({
+    type: "song.interplay_feedback",
+    actorId: "human-producer",
+    sessionMode: world.getSessionMode(),
+    beat: feedback.atBeat,
+    payload: {
+      source: "interplay-experiment",
+      feedback: feedback.value,
+      label: feedback.label,
+      enabled: feedback.enabled,
+      songId,
+      songLibraryId: feedback.songLibraryId,
+      songTitle: feedback.songTitle,
+      answerCount: feedback.answerCount,
+      lastAnswer: feedback.lastAnswer ? {
+        sourceBar: feedback.lastAnswer.sourceBar,
+        targetBar: feedback.lastAnswer.targetBar,
+        op: feedback.lastAnswer.op,
+        chordRoot: feedback.lastAnswer.chordRoot,
+        resultingDegrees: [...feedback.lastAnswer.resultingDegrees],
+      } : undefined,
+    },
+  });
+}
+
 function recordFormVariantChanged(fromVariantId: FormVariantId, toVariantId: FormVariantId): void {
   persistence.record({
     type: "song.form_variant_changed",
@@ -7069,6 +7279,18 @@ writtenEvolvingDialInput.addEventListener("input", () => {
   applyWrittenEvolvingDialValue(Number(writtenEvolvingDialInput.value));
 });
 
+interplayUiToggle.addEventListener("change", () => {
+  setInterplayEnabled(interplayUiToggle.checked, "interplay-experiment-toggle");
+});
+
+interplayFeedbackControls.addEventListener("click", (event) => {
+  const target = event.target instanceof Element
+    ? event.target.closest<HTMLButtonElement>("[data-interplay-feedback]")
+    : null;
+  if (!target) return;
+  applyInterplayExperimentFeedback(target.dataset.interplayFeedback ?? "");
+});
+
 melodyDevelopmentControl.addEventListener("change", (event) => {
   const input = event.target;
   if (!(input instanceof HTMLInputElement) || input.name !== "melody-development") return;
@@ -7272,6 +7494,8 @@ declare global {
       setMode(mode: string): TimingFeelMode;
     };
     interplay?: {
+      feedback(value: string): InterplayExperimentState;
+      getExperiment(): InterplayExperimentState;
       getState(): InterplayStateSnapshot;
       setEnabled(enabled: boolean): InterplayStateSnapshot;
     };
@@ -7531,6 +7755,8 @@ window.timing = {
 };
 
 window.interplay = {
+  feedback: (value) => applyInterplayExperimentFeedback(value),
+  getExperiment: () => getInterplayExperimentState(),
   getState: () => getInterplayState(),
   setEnabled: (enabled) => setInterplayEnabled(enabled),
 };
