@@ -6,6 +6,7 @@ export interface PatternNoteSource {
   playerId: string;
   scaleDegree: number;
   octave: number;
+  chromaticOffset?: number;
   duration: ToneNS.Unit.Time;
   durationBeats: number;
   velocity: number;

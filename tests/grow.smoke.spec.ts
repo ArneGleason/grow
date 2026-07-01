@@ -1250,6 +1250,13 @@ type InterplayAnswerForSmoke = {
   tension: number;
   maxNotes: number;
   octave: number;
+  colors: readonly {
+    noteIndex: number;
+    colorRole: "anchor" | "chord-tone" | "passing" | "tension";
+    harmonicRole: "root" | "third" | "fifth" | "non-chord";
+    chromaticOffset: number;
+  }[];
+  chromaticNoteCount: number;
 };
 
 type InterplayStateForSmoke = {
@@ -1282,11 +1289,32 @@ async function getInterplayStateForSmoke(page: Page): Promise<InterplayStateForS
 }
 
 async function getInterplayHeardDegrees(page: Page, targetBar: number): Promise<number[]> {
+  return (await getInterplayHeardAnswerEvents(page, targetBar))
+    .map((event) => {
+      const degreeTag = event.tags.find((tag) => tag.startsWith("interplay:degree:"));
+      return Number(degreeTag?.split(":").at(-1));
+    })
+    .filter((degree) => Number.isInteger(degree));
+}
+
+type InterplayHeardAnswerEventForSmoke = {
+  absoluteBeat: number;
+  gridPitch?: string;
+  performedPitch?: string;
+  tags: string[];
+};
+
+async function getInterplayHeardAnswerEvents(
+  page: Page,
+  targetBar: number,
+): Promise<InterplayHeardAnswerEventForSmoke[]> {
   return page.evaluate((nextTargetBar) => {
     const appWindow = window as unknown as {
       listening?: {
         getEvents(): Array<{
           absoluteBeat: number;
+          gridPitch?: string;
+          performedPitch?: string;
           playerId: string;
           tags: string[];
         }>;
@@ -1299,12 +1327,17 @@ async function getInterplayHeardDegrees(page: Page, targetBar: number): Promise<
         event.tags.includes("interplay:target-bar:" + nextTargetBar)
       )
       .sort((left, right) => left.absoluteBeat - right.absoluteBeat)
-      .map((event) => {
-        const degreeTag = event.tags.find((tag) => tag.startsWith("interplay:degree:"));
-        return Number(degreeTag?.split(":").at(-1));
-      })
-      .filter((degree) => Number.isInteger(degree));
+      .map((event) => ({
+        absoluteBeat: event.absoluteBeat,
+        gridPitch: event.gridPitch,
+        performedPitch: event.performedPitch,
+        tags: event.tags,
+      }));
   }, targetBar);
+}
+
+function pitchClassFromPitch(pitch: string | undefined): string | undefined {
+  return pitch?.replace(/-?\d+$/, "");
 }
 
 async function getTimingDiagnostics(page: Page): Promise<readonly AudioFireTimingDiagnostic[]> {
@@ -3247,7 +3280,7 @@ test("song library creates, renames, and switches deterministic starter material
 });
 
 test("interplay bass answers the previous melody bar for generated songs", async ({ page }) => {
-  test.setTimeout(35_000);
+  test.setTimeout(50_000);
   await page.goto("/");
 
   const cannedState = await getInterplayStateForSmoke(page);
@@ -3266,6 +3299,7 @@ test("interplay bass answers the previous melody bar for generated songs", async
     "restless G dorian machine song with an early chorus and a bass that answers the hook",
   );
   await page.getByTestId("song-starter-mode").selectOption("dorian");
+  await page.getByTestId("song-starter-tempo").fill("150");
   await page.getByTestId("song-starter-form").selectOption("early-hook");
   await page.getByTestId("song-starter-generate").click();
   await page.getByTestId("song-starter-create").click();
@@ -3320,6 +3354,21 @@ test("interplay bass answers the previous melody bar for generated songs", async
   expect(chorusAnswer!.tension).toBeGreaterThan(verseAnswer!.tension);
   expect(chorusAnswer!.maxNotes).toBeGreaterThan(verseAnswer!.maxNotes);
   expect(chorusAnswer!.octave).toBeGreaterThan(verseAnswer!.octave);
+  expect(chorusAnswer!.chromaticNoteCount).toBeGreaterThan(0);
+  expect(chorusAnswer!.colors.some((color) => color.colorRole === "tension" && color.chromaticOffset !== 0))
+    .toBe(true);
+
+  await page.waitForFunction((targetBeat) => {
+    const appWindow = window as unknown as { transport?: { getState(): TransportState } };
+    return (appWindow.transport?.getState().currentBeat ?? 0) >= targetBeat;
+  }, chorusAnswer!.targetBar * 4 + 3.25, { timeout: 25_000 });
+  const heardChorusAnswerEvents = await getInterplayHeardAnswerEvents(page, chorusAnswer!.targetBar);
+  const tonalScale = (await getListeningFrame(page)).tonalContext.scale;
+  const heardChromaticEvent = heardChorusAnswerEvents.find((event) =>
+    event.tags.some((tag) => tag.startsWith("interplay-chromatic:")) &&
+    !tonalScale.includes(pitchClassFromPitch(event.gridPitch) ?? "")
+  );
+  expect(heardChromaticEvent?.performedPitch).toBe(heardChromaticEvent?.gridPitch);
 
   await page.getByTestId("interplay-feedback-better").click();
   await expect(page.getByTestId("interplay-ui-feedback")).toContainText("Better with answers");

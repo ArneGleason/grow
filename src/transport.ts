@@ -29,7 +29,7 @@ import {
   type SongSectionContext,
 } from "./song-form";
 import type { TasteNoteDecision, TasteNoteDecisionInput } from "./taste";
-import { DEFAULT_TONAL_CONTEXT, noteFromScaleDegree } from "./tonal-context";
+import { DEFAULT_TONAL_CONTEXT, noteFromScaleDegreeWithOffset } from "./tonal-context";
 
 export type TransportStatus = "stopped" | "playing";
 export type LookaheadHealth = "stopped" | "empty" | "thin" | "healthy";
@@ -222,7 +222,13 @@ function materializeNote(tonalContext: TonalContext, note: PatternNoteSource): S
     playerId: note.playerId,
     scaleDegree: note.scaleDegree,
     octave: note.octave,
-    pitch: noteFromScaleDegree(tonalContext, note.scaleDegree, note.octave),
+    chromaticOffset: note.chromaticOffset,
+    pitch: noteFromScaleDegreeWithOffset(
+      tonalContext,
+      note.scaleDegree,
+      note.octave,
+      note.chromaticOffset,
+    ),
     duration: note.duration,
     durationBeats: note.durationBeats,
     velocity: note.velocity,

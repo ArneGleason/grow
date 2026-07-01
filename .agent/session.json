@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Byte E1 interplay MVP plus listening-experiment UI",
-  "status": "byte-e1-interplay-ui-ready-for-review",
-  "updatedAt": "2026-07-01T21:55:00Z",
-  "lastHandoff": ".agent/handoffs/2026-07-01-codex-to-claude-byte-e1-interplay-ui-addendum.md",
-  "branch": "codex/byte-e1-interplay",
-  "commit": "HEAD on codex/byte-e1-interplay",
+  "lastTask": "Byte E2 tension/color over bass interplay",
+  "status": "byte-e2-tension-color-ready-for-review",
+  "updatedAt": "2026-07-01T23:20:00Z",
+  "lastHandoff": ".agent/handoffs/2026-07-01-codex-to-claude-byte-e2-tension-color.md",
+  "branch": "codex/byte-e2-tension-color",
+  "commit": "HEAD on codex/byte-e2-tension-color",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte E1 is implemented from origin/main b2daca6 in a clean temp worktree because the original Grow checkout had held dirty spike work. The byte adds pure motif memory/capture/vary helpers, a transport bassPhrasing hook parallel to melodyPhrasing, full-form generated bass answer patterns for starter/library songs, default-on generated/default-off canned control behavior, and window.interplay getState/setEnabled. A follow-up Ear Check panel now surfaces a visible Bass answers melody switch, short A/B instructions, verdict buttons, and a current-answer readout while leaving the console lid available via getExperiment()/feedback(). Answer notes are tagged interplay:bass-answer and bypass only the old bass harmonic recolor that would erase their contours; no new scheduler/audio path, harmony, scorer, model, or evolution path changed. Validation: build green; unit config 51/51; focused interplay smoke green after the UI patch; full serial smoke was green twice at 79/79 before the UI patch; db:smoke green; diff-check green; npm audit unchanged with known esbuild/Vite advisories."
+    "summary": "Byte E2 is implemented in the clean temp worktree on top of Byte E1 after Arne confirmed Bass answers melody ON is better. The byte adds pure harmonic answer coloring in src/harmonic-color.ts, optional PatternNoteSource.chromaticOffset materialization through noteFromScaleDegreeWithOffset(), and color/harmony tags plus read-only answer color summaries in window.interplay.getState(). High-tension chorus answers get one bounded deterministic outside-scale lean before resolving; low-tension verse answers stay diatonic and the integer motif variation relation is preserved. The Ear Check UI now lives as a stage overlay so the listening switch/feedback/instructions stay visible without shrinking the terrarium canvas. Validation: build green; unit:harmonic-color 4/4; unit:motif-memory 7/7; focused interplay smoke green; app-shell smoke green; full smoke 79/79; diff-check green. npm audit remains red on pre-existing esbuild/Vite advisories requiring a Vite patch/force fix outside this musical slice."
   }
 }

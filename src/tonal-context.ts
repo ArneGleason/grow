@@ -62,3 +62,29 @@ export function noteFromScaleDegree(
 
   return `${tonalContext.scale[scaleIndex]}${octave + octaveOffset}`;
 }
+
+export function noteFromScaleDegreeWithOffset(
+  tonalContext: TonalContext,
+  degree: number,
+  octave: number,
+  chromaticOffset = 0,
+): string {
+  const baseNote = noteFromScaleDegree(tonalContext, degree, octave);
+  const offset = Math.trunc(chromaticOffset);
+  if (offset === 0) return baseNote;
+
+  const match = /^([A-G]b?)(-?\d+)$/.exec(baseNote);
+  if (!match) return baseNote;
+
+  const pitchClass = match[1] ?? "";
+  const resolvedOctave = Number(match[2]);
+  const pitchClassIndex = FLAT_CHROMATIC_SCALE.indexOf(pitchClass as (typeof FLAT_CHROMATIC_SCALE)[number]);
+  if (pitchClassIndex < 0 || !Number.isFinite(resolvedOctave)) return baseNote;
+
+  const shifted = pitchClassIndex + offset;
+  const shiftedIndex = ((shifted % FLAT_CHROMATIC_SCALE.length) + FLAT_CHROMATIC_SCALE.length) %
+    FLAT_CHROMATIC_SCALE.length;
+  const octaveOffset = Math.floor(shifted / FLAT_CHROMATIC_SCALE.length);
+
+  return `${FLAT_CHROMATIC_SCALE[shiftedIndex]}${resolvedOctave + octaveOffset}`;
+}

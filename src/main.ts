@@ -119,6 +119,10 @@ import {
   type MotifVariation,
 } from "./motif-memory";
 import {
+  colorInterplayVariation,
+  type InterplayColorDecision,
+} from "./harmonic-color";
+import {
   createMelodyConsensusDecision,
   createMelodyRepairTake,
   getMelodyRepairCandidate,
@@ -404,6 +408,15 @@ interface InterplayAnswerSummary {
   tension: number;
   maxNotes: number;
   octave: number;
+  colors: readonly InterplayAnswerColorSummary[];
+  chromaticNoteCount: number;
+}
+
+interface InterplayAnswerColorSummary {
+  noteIndex: number;
+  colorRole: InterplayColorDecision["colorRole"];
+  harmonicRole: InterplayColorDecision["harmonicRole"];
+  chromaticOffset: number;
 }
 
 interface InterplayStateSnapshot {
@@ -733,7 +746,14 @@ function createInterplayBassPattern(input: BassPhrasingInput): {
       tension,
     });
     const octave = getInterplayBassOctave(tension);
+    const colors = colorInterplayVariation(variation, {
+      chordRoot,
+      mode: input.tonalContext.mode,
+      op,
+      tension,
+    });
     writeInterplayAnswer(events, targetBar, variation, {
+      colors,
       maxNotes,
       octave,
       subdivisionBeats,
@@ -753,6 +773,8 @@ function createInterplayBassPattern(input: BassPhrasingInput): {
       tension,
       maxNotes,
       octave,
+      colors: summarizeInterplayColors(colors),
+      chromaticNoteCount: colors.filter((color) => color.chromaticOffset !== 0).length,
     });
   }
 
@@ -822,6 +844,7 @@ function writeInterplayAnswer(
   targetBar: number,
   variation: MotifVariation,
   options: {
+    colors: readonly InterplayColorDecision[];
     maxNotes: number;
     octave: number;
     subdivisionBeats: number;
@@ -835,13 +858,16 @@ function writeInterplayAnswer(
     const slot = Math.round(absoluteBeat / options.subdivisionBeats);
     if (slot < 0 || slot >= events.length) continue;
     const degree = Math.trunc(variation.degrees[index] ?? variation.chordRoot);
+    const color = options.colors[index];
     const velocity = clampInterplayUnit(
-      0.32 + (variation.dynamics[index] ?? 0.4) * 0.28 + options.tension * 0.14,
+      (0.32 + (variation.dynamics[index] ?? 0.4) * 0.28 + options.tension * 0.14) *
+      (color?.velocityMultiplier ?? 1),
     );
     events[slot] = {
       playerId: "bass",
       scaleDegree: degree,
       octave: options.octave,
+      ...(color?.chromaticOffset ? { chromaticOffset: color.chromaticOffset } : {}),
       duration: rhythm.durationBeats >= 1 ? "4n" : "8n",
       durationBeats: rhythm.durationBeats,
       velocity,
@@ -852,9 +878,21 @@ function writeInterplayAnswer(
         `interplay:op:${variation.op}`,
         `interplay:root:${variation.chordRoot}`,
         `interplay:degree:${degree}`,
+        ...(color?.tags ?? []),
       ],
     };
   }
+}
+
+function summarizeInterplayColors(
+  colors: readonly InterplayColorDecision[],
+): readonly InterplayAnswerColorSummary[] {
+  return colors.map((color, noteIndex) => ({
+    noteIndex,
+    colorRole: color.colorRole,
+    harmonicRole: color.harmonicRole,
+    chromaticOffset: color.chromaticOffset,
+  }));
 }
 
 function getInterplayTensionAtBar(
@@ -964,6 +1002,7 @@ function cloneInterplayAnswerSummary(answer: InterplayAnswerSummary): InterplayA
     sourceDynamics: [...answer.sourceDynamics],
     resultingDegrees: [...answer.resultingDegrees],
     rhythm: answer.rhythm.map((step) => ({ ...step })),
+    colors: answer.colors.map((color) => ({ ...color })),
   };
 }
 
@@ -1467,43 +1506,6 @@ ${timingFeelControls}
     </header>
 
     <section
-      class="listening-experiment"
-      data-testid="interplay-experiment"
-      aria-labelledby="interplay-experiment-title"
-    >
-      <header class="listening-experiment__header">
-        <div class="listening-experiment__title">
-          <p>Ear check</p>
-          <h2 id="interplay-experiment-title">Does the bass answer the melody?</h2>
-        </div>
-        <label class="interplay-switch">
-          <input data-testid="interplay-ui-toggle" type="checkbox" />
-          <span>Bass answers melody</span>
-        </label>
-      </header>
-      <ol class="listening-experiment__steps" data-testid="interplay-instructions">
-        <li>Create a generated starter song, or turn this switch on for the current song.</li>
-        <li>Press Start and listen for the bass phrase after each melody bar.</li>
-        <li>Turn the switch off, replay the same passage, then log what changed.</li>
-      </ol>
-      <div
-        class="listening-experiment__feedback"
-        data-testid="interplay-feedback-controls"
-        aria-label="Interplay listening feedback"
-      >
-        <button class="mini-button" data-interplay-feedback="heard-answer" data-testid="interplay-feedback-heard" type="button">I hear it</button>
-        <button class="mini-button" data-interplay-feedback="better-on" data-testid="interplay-feedback-better" type="button">Better on</button>
-        <button class="mini-button" data-interplay-feedback="too-obvious" data-testid="interplay-feedback-obvious" type="button">Too obvious</button>
-        <button class="mini-button" data-interplay-feedback="no-clear-difference" data-testid="interplay-feedback-no-difference" type="button">No difference</button>
-      </div>
-      <div class="listening-experiment__readouts" aria-live="polite">
-        <output data-testid="interplay-ui-status">Answers off.</output>
-        <output data-testid="interplay-ui-answer">Start playback to hear the comparison.</output>
-        <output data-testid="interplay-ui-feedback">No feedback yet.</output>
-      </div>
-    </section>
-
-    <section
       class="song-starter-overlay"
       data-testid="song-starter-overlay"
       aria-label="New song starter"
@@ -1636,6 +1638,43 @@ ${songStarterPlayerRows}
     </section>
 
     <section class="stage" data-testid="stage" aria-label="Terrarium stage">
+      <section
+        class="listening-experiment"
+        data-testid="interplay-experiment"
+        aria-labelledby="interplay-experiment-title"
+      >
+        <header class="listening-experiment__header">
+          <div class="listening-experiment__title">
+            <p>Ear check</p>
+            <h2 id="interplay-experiment-title">Does the bass answer the melody?</h2>
+          </div>
+          <label class="interplay-switch">
+            <input data-testid="interplay-ui-toggle" type="checkbox" />
+            <span>Bass answers melody</span>
+          </label>
+        </header>
+        <ol class="listening-experiment__steps" data-testid="interplay-instructions">
+          <li>Use a starter song, or switch this song on.</li>
+          <li>Press Start and listen after each melody bar.</li>
+          <li>Turn the switch off, replay, then log the change.</li>
+        </ol>
+        <div
+          class="listening-experiment__feedback"
+          data-testid="interplay-feedback-controls"
+          aria-label="Interplay listening feedback"
+        >
+          <button class="mini-button" data-interplay-feedback="heard-answer" data-testid="interplay-feedback-heard" type="button">I hear it</button>
+          <button class="mini-button" data-interplay-feedback="better-on" data-testid="interplay-feedback-better" type="button">Better on</button>
+          <button class="mini-button" data-interplay-feedback="too-obvious" data-testid="interplay-feedback-obvious" type="button">Too obvious</button>
+          <button class="mini-button" data-interplay-feedback="no-clear-difference" data-testid="interplay-feedback-no-difference" type="button">No difference</button>
+        </div>
+        <div class="listening-experiment__readouts" aria-live="polite">
+          <output data-testid="interplay-ui-status">Answers off.</output>
+          <output data-testid="interplay-ui-answer">Start playback to hear the comparison.</output>
+          <output data-testid="interplay-ui-feedback">No feedback yet.</output>
+        </div>
+      </section>
+
       <div class="terrarium-panel">
         <div
           class="terrarium-canvas"
@@ -5910,9 +5949,13 @@ function formatInterplayAnswerForUi(state: InterplayStateSnapshot): string {
   const answer = state.lastAnswer;
   if (!state.enabled) return "Switch on to audition bass answers.";
   if (!answer) return "No answer heard yet; start playback and wait for bar 2.";
+  const colorSummary = answer.chromaticNoteCount > 0
+    ? `${answer.chromaticNoteCount} outside-color note${answer.chromaticNoteCount === 1 ? "" : "s"}`
+    : "diatonic answer";
   return [
     `Bar ${answer.targetBar + 1}: bass ${formatInterplayOp(answer.op)} melody bar ${answer.sourceBar + 1}`,
     `toward root ${answer.chordRoot}`,
+    colorSummary,
     `degrees ${answer.sourceDegrees.join("-")} -> ${answer.resultingDegrees.join("-")}`,
   ].join(" | ");
 }

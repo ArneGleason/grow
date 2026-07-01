@@ -17,6 +17,7 @@
     "unit:grow-language": "playwright test tests/grow-language.unit.spec.ts --config=playwright.unit.config.ts",
     "unit:melody-prosody": "playwright test tests/melody-prosody.unit.spec.ts --config=playwright.unit.config.ts",
     "unit:motif-memory": "playwright test tests/motif-memory.unit.spec.ts --config=playwright.unit.config.ts",
+    "unit:harmonic-color": "playwright test tests/harmonic-color.unit.spec.ts --config=playwright.unit.config.ts",
     "unit:phrase-candidate-genome": "playwright test tests/phrase-candidate-genome.unit.spec.ts --config=playwright.unit.config.ts",
     "db:init": "node scripts/grow-db.mjs init",
     "db:dump": "node scripts/grow-db.mjs dump",
