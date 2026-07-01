@@ -14,7 +14,7 @@
     "lead": {
       "agentTool": "Codex",
       "machineHandle": "macbook-pro-m5",
-      "localCheckout": "/Users/arnegleason/Documents/Grow"
+      "localCheckout": "/private/tmp/grow-e1-worktree"
     },
     "reviewer": {
       "agentTool": "Claude Code",
@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Make starter songs drive longer prompt-seeded active material",
-  "status": "song-library-active-material-ready-for-review",
-  "updatedAt": "2026-06-20T16:54:39Z",
-  "lastHandoff": "",
-  "branch": "codex/byte-song-library-a",
-  "commit": "HEAD on codex/byte-song-library-a",
+  "lastTask": "Byte E1 interplay MVP",
+  "status": "byte-e1-interplay-ready-for-review",
+  "updatedAt": "2026-07-01T21:27:22Z",
+  "lastHandoff": ".agent/handoffs/2026-07-01-codex-to-claude-byte-e1-interplay.md",
+  "branch": "codex/byte-e1-interplay",
+  "commit": "HEAD on codex/byte-e1-interplay",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Song Library slice is implemented on codex/byte-song-library-a and now addresses Arne's loop-fatigue feedback more directly. New song opens a starter modal with prompt, optional setup overrides, and player plans; Generate starter is required and visibly shows the validated setup, chosen hidden template, structure summary, material seed, and generated player briefs. Starter metadata persists on the library song. New src/song-starter-material.ts derives a deterministic 16-beat active SongMaterial phrase pack for pulse, bass, and written melody from the starter goal/materialSeed/player plans. Transport consumes this through TransportHandlers.songMaterial, and song sketch/form/melody scoring now inspect the same active material the listener hears. Default untitled songs still fall back to the old canned materials. Player plan checkboxes are still not a runtime roster system; they only influence/generated silence in the starter phrase pack for now. Validation: npm run build, focused song-library smoke, npm run smoke (78/78), npm run db:smoke, git diff --check all green; npm audit still reports the known Vite/esbuild advisories."
+    "summary": "Byte E1 is implemented from origin/main b2daca6 in a clean temp worktree because the original Grow checkout had held dirty spike work. The byte adds pure motif memory/capture/vary helpers, a transport bassPhrasing hook parallel to melodyPhrasing, full-form generated bass answer patterns for starter/library songs, default-on generated/default-off canned control behavior, and window.interplay getState/setEnabled. Answer notes are tagged interplay:bass-answer and bypass only the old bass harmonic recolor that would erase their contours; no new scheduler/audio path, persistence/schema, scorer, model, or evolution path changed. Validation: build green; unit config 51/51; focused interplay smoke green; full serial smoke green twice at 79/79 on non-clean store; db:smoke green; diff-check green; npm audit unchanged with known esbuild/Vite advisories."
   }
 }

@@ -104,6 +104,21 @@ import {
   type MusicalEventRecordSource,
 } from "./musical-event-record";
 import {
+  DEFAULT_INTERPLAY_SEED,
+  capture,
+  chooseVariationOp,
+  chordRootAtBar,
+  cloneMotifMemory,
+  createMotifMemory,
+  latest,
+  remember,
+  vary,
+  type Motif,
+  type MotifMemory,
+  type MotifVariationOp,
+  type MotifVariation,
+} from "./motif-memory";
+import {
   createMelodyConsensusDecision,
   createMelodyRepairTake,
   getMelodyRepairCandidate,
@@ -159,7 +174,13 @@ import {
 } from "./song-library";
 import { generateProsodicAnchorPhrase, generateProsodicMelody } from "./melody-prosody";
 import { scoreProsody } from "./prosody-scoring";
-import { sectionAtBeat, type ChorusDevelopment } from "./song-form";
+import {
+  arrangeSongFormPatternEvent,
+  sectionAtBeat,
+  type ChorusDevelopment,
+  type SongArrangement,
+  type SongSectionType,
+} from "./song-form";
 import {
   applySongSketchProposalText,
   createInspectOnlySongSketch,
@@ -219,6 +240,7 @@ import {
   startTransport,
   stopTransport,
   DEFAULT_TRANSPORT_BPM,
+  type BassPhrasingInput,
   type GrowLookaheadState,
   type GrowTransportState,
   type TimingFeelMode,
@@ -307,6 +329,10 @@ let writtenEvolvingRegime: WrittenEvolvingRegime = "written";
 let activeTempoBpm = DEFAULT_TRANSPORT_BPM;
 let songGoalInterpretation = interpretSongGoal("Build a balanced modal terrarium piece.");
 let appliedSongGoal: SongGoal | undefined;
+let interplayEnabledOverride: boolean | undefined;
+let interplayMemory: MotifMemory = createMotifMemory();
+let interplayAnswerSummaries: InterplayAnswerSummary[] = [];
+let lastInterplayRefreshBar = -1;
 let cachedSongSketchKey = "";
 let cachedSongSketchBase: SongSketch | undefined;
 let cachedMelodyRepairKey = "";
@@ -361,6 +387,31 @@ interface SlowThoughtPlayback {
   retargeted: boolean;
   registerShift?: number;
   summary: string;
+}
+
+interface InterplayAnswerSummary {
+  sourceBar: number;
+  targetBar: number;
+  op: MotifVariationOp;
+  chordRoot: number;
+  sourceDegrees: readonly number[];
+  sourceRhythm: readonly { startBeat: number; durationBeats: number }[];
+  sourceDynamics: readonly number[];
+  resultingDegrees: readonly number[];
+  rhythm: readonly { startBeat: number; durationBeats: number }[];
+  tension: number;
+  maxNotes: number;
+  octave: number;
+}
+
+interface InterplayStateSnapshot {
+  enabled: boolean;
+  defaultEnabled: boolean;
+  override?: boolean;
+  mode: string;
+  pool: readonly Motif[];
+  answers: readonly InterplayAnswerSummary[];
+  lastAnswer?: InterplayAnswerSummary;
 }
 
 const TIMING_FEEL_OPTIONS: Array<{ id: TimingFeelMode; label: string }> = [
@@ -602,6 +653,276 @@ function createCurrentSongMaterialCacheKey(
     starter.goal.formPreference,
     starter.playerPlans.map((plan) => `${plan.playerId}:${plan.enabled}:${plan.brief}`).join(","),
   ].join("|");
+}
+
+function getActiveBassPhrasing(input: BassPhrasingInput): PlayerPatternSource | undefined {
+  if (!isInterplayEnabled() || !input.melody) {
+    resetInterplayState();
+    return undefined;
+  }
+
+  const result = createInterplayBassPattern(input);
+  if (!result) {
+    resetInterplayState();
+    return undefined;
+  }
+
+  interplayMemory = result.memory;
+  interplayAnswerSummaries = [...result.answers];
+  return result.pattern;
+}
+
+function createInterplayBassPattern(input: BassPhrasingInput): {
+  answers: readonly InterplayAnswerSummary[];
+  memory: MotifMemory;
+  pattern: PlayerPatternSource;
+} | undefined {
+  if (!input.source.events.some((event) => event?.playerId === "bass")) return undefined;
+  const beatsPerBar = input.arrangement.beatsPerBar;
+  const totalBeats = Math.max(beatsPerBar, input.arrangement.totalBeats);
+  const totalBars = Math.max(1, Math.ceil(totalBeats / beatsPerBar));
+  const subdivisionBeats = 0.5;
+  const events = expandPatternToLength(input.source, totalBeats, subdivisionBeats);
+  const melody = createResolvedMelodyPattern(input, totalBeats);
+  let memory = createMotifMemory();
+  const answers: InterplayAnswerSummary[] = [];
+
+  for (let sourceBar = 0; sourceBar < totalBars; sourceBar += 1) {
+    const captured = capture(melody, sourceBar, { beatsPerBar });
+    memory = remember(memory, captured);
+    const sourceMotif = captured ?? latest(memory, "melody");
+    const targetBar = sourceBar + 1;
+    if (!sourceMotif || targetBar >= totalBars) continue;
+
+    const tension = getInterplayTensionAtBar(targetBar, input.arrangement);
+    const maxNotes = getInterplayMaxNotes(tension);
+    const op = chooseVariationOp(DEFAULT_INTERPLAY_SEED, sourceBar);
+    const chordRoot = chordRootAtBar(targetBar, input.tonalContext.mode);
+    const variation = vary(sourceMotif, op, {
+      chordRoot,
+      maxNotes,
+      subdivisionBeats,
+      tension,
+    });
+    const octave = getInterplayBassOctave(tension);
+    writeInterplayAnswer(events, targetBar, variation, {
+      maxNotes,
+      octave,
+      subdivisionBeats,
+      tension,
+      targetBar,
+    });
+    answers.push({
+      sourceBar: sourceMotif.barIndex,
+      targetBar,
+      op,
+      chordRoot,
+      sourceDegrees: [...sourceMotif.degrees],
+      sourceRhythm: sourceMotif.rhythm.map((step) => ({ ...step })),
+      sourceDynamics: [...sourceMotif.dynamics],
+      resultingDegrees: [...variation.degrees],
+      rhythm: variation.rhythm.map((step) => ({ ...step })),
+      tension,
+      maxNotes,
+      octave,
+    });
+  }
+
+  return {
+    answers,
+    memory,
+    pattern: {
+      subdivisionBeats,
+      events,
+    },
+  };
+}
+
+function createResolvedMelodyPattern(
+  input: BassPhrasingInput,
+  totalBeats: number,
+): PlayerPatternSource {
+  const melody = input.melody;
+  if (!melody || melody.events.length === 0 || melody.subdivisionBeats <= 0) {
+    return {
+      subdivisionBeats: 0.5,
+      events: [],
+    };
+  }
+  const totalSteps = Math.max(1, Math.ceil(totalBeats / melody.subdivisionBeats));
+  const events = Array.from({ length: totalSteps }, (_, step): PlayerPatternSource["events"][number] => {
+    const absoluteBeat = roundInterplayBeat(step * melody.subdivisionBeats);
+    const stepIndex = step % melody.events.length;
+    const sourceEvent = melody.events[stepIndex] ?? null;
+    const arrangedEvent = arrangeSongFormPatternEvent({
+      song: input.song,
+      pattern: melody,
+      sourceEvent,
+      stepIndex,
+      absoluteBeat,
+      tonalContext: input.tonalContext,
+      arrangement: input.arrangement,
+      chorusDevelopment: input.chorusDevelopment,
+    });
+    return arrangedEvent ? { ...arrangedEvent } : null;
+  });
+  return {
+    subdivisionBeats: melody.subdivisionBeats,
+    events,
+  };
+}
+
+function expandPatternToLength(
+  pattern: PlayerPatternSource,
+  totalBeats: number,
+  subdivisionBeats: number,
+): Array<PlayerPatternSource["events"][number]> {
+  const totalSteps = Math.max(1, Math.ceil(totalBeats / subdivisionBeats));
+  if (pattern.events.length === 0 || pattern.subdivisionBeats <= 0) {
+    return Array.from({ length: totalSteps }, () => null);
+  }
+  return Array.from({ length: totalSteps }, (_, step) => {
+    const sourceBeat = step * subdivisionBeats;
+    const sourceStep = Math.round(sourceBeat / pattern.subdivisionBeats) % pattern.events.length;
+    const event = pattern.events[sourceStep] ?? null;
+    return event ? { ...event, tags: event.tags ? [...event.tags] : undefined } : null;
+  });
+}
+
+function writeInterplayAnswer(
+  events: Array<PlayerPatternSource["events"][number]>,
+  targetBar: number,
+  variation: MotifVariation,
+  options: {
+    maxNotes: number;
+    octave: number;
+    subdivisionBeats: number;
+    targetBar: number;
+    tension: number;
+  },
+): void {
+  for (let index = 0; index < variation.degrees.length; index += 1) {
+    const rhythm = variation.rhythm[index] ?? { startBeat: index * options.subdivisionBeats, durationBeats: 0.5 };
+    const absoluteBeat = targetBar * 4 + rhythm.startBeat;
+    const slot = Math.round(absoluteBeat / options.subdivisionBeats);
+    if (slot < 0 || slot >= events.length) continue;
+    const degree = Math.trunc(variation.degrees[index] ?? variation.chordRoot);
+    const velocity = clampInterplayUnit(
+      0.32 + (variation.dynamics[index] ?? 0.4) * 0.28 + options.tension * 0.14,
+    );
+    events[slot] = {
+      playerId: "bass",
+      scaleDegree: degree,
+      octave: options.octave,
+      duration: rhythm.durationBeats >= 1 ? "4n" : "8n",
+      durationBeats: rhythm.durationBeats,
+      velocity,
+      tags: [
+        "interplay:bass-answer",
+        `interplay:source-bar:${variation.sourceBar}`,
+        `interplay:target-bar:${options.targetBar}`,
+        `interplay:op:${variation.op}`,
+        `interplay:root:${variation.chordRoot}`,
+        `interplay:degree:${degree}`,
+      ],
+    };
+  }
+}
+
+function getInterplayTensionAtBar(
+  barIndex: number,
+  arrangement: SongArrangement,
+): number {
+  const section = sectionAtBeat(barIndex * arrangement.beatsPerBar, arrangement);
+  return getInterplayTensionForSection(section.sectionType);
+}
+
+function getInterplayTensionForSection(sectionType: SongSectionType): number {
+  const baseBySection = {
+    verse: 0.3,
+    chorus: 0.74,
+    bridge: 0.5,
+  } as const satisfies Record<SongSectionType, number>;
+  const base = baseBySection[sectionType];
+  const emphasis = appliedSongGoal?.sectionEmphasis[sectionType];
+  return roundInterplayUnit(emphasis === undefined ? base : base * 0.65 + emphasis * 0.35);
+}
+
+function getInterplayMaxNotes(tension: number): number {
+  if (tension >= 0.62) return 4;
+  if (tension <= 0.42) return 2;
+  return 3;
+}
+
+function getInterplayBassOctave(tension: number): number {
+  return tension >= 0.62 ? 2 : 1;
+}
+
+function getDefaultInterplayEnabled(): boolean {
+  return Boolean(getActiveSongLibraryEntry().starter?.materialSeed);
+}
+
+function isInterplayEnabled(): boolean {
+  return interplayEnabledOverride ?? getDefaultInterplayEnabled();
+}
+
+function setInterplayEnabled(enabled: boolean): InterplayStateSnapshot {
+  interplayEnabledOverride = Boolean(enabled);
+  resetInterplayState();
+  refreshLookaheadSchedule();
+  renderWorld();
+  return getInterplayState();
+}
+
+function resetInterplayState(): void {
+  interplayMemory = createMotifMemory();
+  interplayAnswerSummaries = [];
+  lastInterplayRefreshBar = -1;
+}
+
+function getInterplayState(): InterplayStateSnapshot {
+  const memory = cloneMotifMemory(interplayMemory);
+  const answers = interplayAnswerSummaries.map(cloneInterplayAnswerSummary);
+  return {
+    enabled: isInterplayEnabled(),
+    defaultEnabled: getDefaultInterplayEnabled(),
+    override: interplayEnabledOverride,
+    mode: world.getTonalContext().mode,
+    pool: memory.pool,
+    answers,
+    lastAnswer: answers.at(-1),
+  };
+}
+
+function cloneInterplayAnswerSummary(answer: InterplayAnswerSummary): InterplayAnswerSummary {
+  return {
+    ...answer,
+    sourceDegrees: [...answer.sourceDegrees],
+    sourceRhythm: answer.sourceRhythm.map((step) => ({ ...step })),
+    sourceDynamics: [...answer.sourceDynamics],
+    resultingDegrees: [...answer.resultingDegrees],
+    rhythm: answer.rhythm.map((step) => ({ ...step })),
+  };
+}
+
+function maybeRefreshInterplayOnBar(state: GrowTransportState): void {
+  if (state.status !== "playing" || !isInterplayEnabled()) return;
+  const barIndex = Math.floor(state.currentBeat / 4);
+  if (barIndex === lastInterplayRefreshBar) return;
+  lastInterplayRefreshBar = barIndex;
+  refreshLookaheadSchedule();
+}
+
+function roundInterplayBeat(value: number): number {
+  return Math.round(value * 1_000) / 1_000;
+}
+
+function roundInterplayUnit(value: number): number {
+  return Math.round(clampInterplayUnit(value) * 1_000) / 1_000;
+}
+
+function clampInterplayUnit(value: number): number {
+  return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
 }
 
 function loadSongLibraryState(): SongLibraryState {
@@ -4020,6 +4341,7 @@ function applySongGoalSetup(
   resetMelodyCriticTest("Goal setup changed; melody critic reset");
   cancelSlowThinkingControllers("goal setup changed before the thought could land");
   clearSlowThoughtPlayback();
+  resetInterplayState();
   world.clearMusicalEvents();
   world.resetTasteEvaluations();
   refreshLookaheadSchedule();
@@ -4747,7 +5069,9 @@ function getActiveMelodyPhrasing(): PlayerPatternSource | undefined {
 function clonePlayerPatternSource(pattern: PlayerPatternSource): PlayerPatternSource {
   return {
     subdivisionBeats: pattern.subdivisionBeats,
-    events: pattern.events.map((event) => event ? { ...event } : null),
+    events: pattern.events.map((event) => event
+      ? { ...event, tags: event.tags ? [...event.tags] : undefined }
+      : null),
   };
 }
 
@@ -5126,6 +5450,7 @@ function setProsodyEnabled(enabled: boolean): boolean {
   cachedProsodyMelody = undefined;
   cancelSlowThinkingControllers("prosody mode changed before the thought could land");
   clearSlowThoughtPlayback();
+  resetInterplayState();
   refreshLookaheadSchedule();
   renderWorld();
   return prosodyEnabled;
@@ -5203,6 +5528,7 @@ function applyFormVariant(nextVariantId: FormVariantId): FormVariantId {
   formVariantId = nextVariantId;
   cancelSlowThinkingControllers("form variant changed before the thought could land");
   clearSlowThoughtPlayback();
+  resetInterplayState();
   refreshLookaheadSchedule();
   recordFormVariantChanged(previousVariantId, formVariantId);
   renderWorld();
@@ -6046,9 +6372,10 @@ function syncWorldFromTransport(state: GrowTransportState): void {
   previousTransportStatus = state.status;
 }
 
-function handleTransportState(): void {
+function handleTransportState(state: GrowTransportState = getState()): void {
   clearExpiredSlowThoughtPlayback();
   evaluateSlowThinkingControllers();
+  maybeRefreshInterplayOnBar(state);
   queueRender();
 }
 
@@ -6186,6 +6513,7 @@ function applySongContextChange(
   resetMelodyCriticTest("Song changed; melody critic reset");
   cancelSlowThinkingControllers("song changed before the thought could land");
   clearSlowThoughtPlayback();
+  resetInterplayState();
   world.clearMusicalEvents();
   world.resetTasteEvaluations();
   refreshLookaheadSchedule();
@@ -6407,6 +6735,7 @@ initTransport({
   timingFeelMode: () => timingFeelMode,
   chorusDevelopment: () => getCurrentChorusDevelopment(),
   melodyPhrasing: () => getActiveMelodyPhrasing(),
+  bassPhrasing: (input) => getActiveBassPhrasing(input),
   songMaterial: () => getCurrentSongMaterial(),
 }, {
   tonalContext: world.getTonalContext(),
@@ -6942,6 +7271,10 @@ declare global {
       getMode(): TimingFeelMode;
       setMode(mode: string): TimingFeelMode;
     };
+    interplay?: {
+      getState(): InterplayStateSnapshot;
+      setEnabled(enabled: boolean): InterplayStateSnapshot;
+    };
     melodyRepair?: {
       getMode(): MelodyDevelopmentMode;
       setMode(mode: string): MelodyDevelopmentMode;
@@ -7197,6 +7530,11 @@ window.timing = {
   },
 };
 
+window.interplay = {
+  getState: () => getInterplayState(),
+  setEnabled: (enabled) => setInterplayEnabled(enabled),
+};
+
 window.melodyRepair = {
   getMode: () => melodyDevelopmentMode,
   setMode: (mode) => {
@@ -7330,6 +7668,7 @@ if (import.meta.hot) {
     window.songGoal = undefined;
     window.prosody = undefined;
     window.timing = undefined;
+    window.interplay = undefined;
     window.melodyRepair = undefined;
     window.formScore = undefined;
     window.anchorPhrase = undefined;

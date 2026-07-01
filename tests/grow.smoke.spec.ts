@@ -95,6 +95,13 @@ import {
 import type { SongSketch, SongSketchProposal } from "../src/song-sketch";
 import type { PlayerThoughtSeed } from "../src/thought-seeds";
 import { createTonalContext, DEFAULT_TONAL_CONTEXT } from "../src/tonal-context";
+import {
+  DEFAULT_INTERPLAY_SEED,
+  chooseVariationOp,
+  chordRootAtBar,
+  vary,
+  type Motif,
+} from "../src/motif-memory";
 
 type TransportState = {
   status: "stopped" | "playing";
@@ -1229,6 +1236,75 @@ function cloneStoredCandidateForTest(candidate: StoredCandidate): StoredCandidat
 
 function cloneJsonForTest<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
+}
+
+type InterplayAnswerForSmoke = {
+  sourceBar: number;
+  targetBar: number;
+  op: "quote" | "invert" | "thin";
+  chordRoot: number;
+  sourceDegrees: readonly number[];
+  sourceRhythm: readonly { startBeat: number; durationBeats: number }[];
+  sourceDynamics: readonly number[];
+  resultingDegrees: readonly number[];
+  tension: number;
+  maxNotes: number;
+  octave: number;
+};
+
+type InterplayStateForSmoke = {
+  enabled: boolean;
+  defaultEnabled: boolean;
+  mode: string;
+  pool: readonly Motif[];
+  answers: readonly InterplayAnswerForSmoke[];
+  lastAnswer?: InterplayAnswerForSmoke;
+};
+
+async function getInterplayStateForSmoke(page: Page): Promise<InterplayStateForSmoke> {
+  await page.waitForFunction(() => {
+    const appWindow = window as unknown as {
+      interplay?: { getState(): unknown };
+    };
+    return Boolean(appWindow.interplay?.getState);
+  });
+  const state = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      interplay?: { getState(): InterplayStateForSmoke };
+    };
+    return appWindow.interplay?.getState();
+  });
+
+  if (!state) {
+    throw new Error("window.interplay.getState() was not available");
+  }
+  return state;
+}
+
+async function getInterplayHeardDegrees(page: Page, targetBar: number): Promise<number[]> {
+  return page.evaluate((nextTargetBar) => {
+    const appWindow = window as unknown as {
+      listening?: {
+        getEvents(): Array<{
+          absoluteBeat: number;
+          playerId: string;
+          tags: string[];
+        }>;
+      };
+    };
+    return (appWindow.listening?.getEvents() ?? [])
+      .filter((event) =>
+        event.playerId === "bass" &&
+        event.tags.includes("interplay:bass-answer") &&
+        event.tags.includes("interplay:target-bar:" + nextTargetBar)
+      )
+      .sort((left, right) => left.absoluteBeat - right.absoluteBeat)
+      .map((event) => {
+        const degreeTag = event.tags.find((tag) => tag.startsWith("interplay:degree:"));
+        return Number(degreeTag?.split(":").at(-1));
+      })
+      .filter((degree) => Number.isInteger(degree));
+  }, targetBar);
 }
 
 async function getTimingDiagnostics(page: Page): Promise<readonly AudioFireTimingDiagnostic[]> {
@@ -3168,6 +3244,114 @@ test("song library creates, renames, and switches deterministic starter material
 
   await button.click();
   await expect(button).toHaveText("Start");
+});
+
+test("interplay bass answers the previous melody bar for generated songs", async ({ page }) => {
+  test.setTimeout(35_000);
+  await page.goto("/");
+
+  const cannedState = await getInterplayStateForSmoke(page);
+  expect(cannedState).toMatchObject({
+    defaultEnabled: false,
+    enabled: false,
+    answers: [],
+  });
+
+  await page.getByTestId("song-library-new").click();
+  await page.getByTestId("song-starter-prompt").fill(
+    "restless G dorian machine song with an early chorus and a bass that answers the hook",
+  );
+  await page.getByTestId("song-starter-mode").selectOption("dorian");
+  await page.getByTestId("song-starter-form").selectOption("early-hook");
+  await page.getByTestId("song-starter-generate").click();
+  await page.getByTestId("song-starter-create").click();
+  await expect(page.getByTestId("song-starter-overlay")).toBeHidden();
+
+  const starterDefaultState = await getInterplayStateForSmoke(page);
+  expect(starterDefaultState.defaultEnabled).toBe(true);
+  expect(starterDefaultState.enabled).toBe(true);
+
+  const button = page.getByTestId("transport-toggle");
+  await button.click();
+  await expect(button).toHaveText("Stop");
+  await expect.poll(async () => (await getInterplayStateForSmoke(page)).answers.length, {
+    timeout: 8_000,
+  }).toBeGreaterThan(8);
+
+  const state = await getInterplayStateForSmoke(page);
+  const verseAnswer = state.answers.find((answer) => answer.sourceBar === 0 && answer.targetBar === 1);
+  expect(verseAnswer).toBeDefined();
+  const sourceMotif: Motif = {
+    id: "melody-bar-0",
+    playerId: "melody",
+    barIndex: verseAnswer!.sourceBar,
+    degrees: verseAnswer!.sourceDegrees,
+    rhythm: verseAnswer!.sourceRhythm,
+    dynamics: verseAnswer!.sourceDynamics,
+  };
+  const expectedOp = chooseVariationOp(DEFAULT_INTERPLAY_SEED, verseAnswer!.sourceBar);
+  const expectedRoot = chordRootAtBar(verseAnswer!.targetBar, state.mode);
+  const expectedVariation = vary(sourceMotif, expectedOp, {
+    chordRoot: expectedRoot,
+    maxNotes: verseAnswer!.maxNotes,
+    subdivisionBeats: 0.5,
+    tension: verseAnswer!.tension,
+  });
+  expect(verseAnswer!.op).toBe(expectedOp);
+  expect(verseAnswer!.chordRoot).toBe(expectedRoot);
+  expect(verseAnswer!.resultingDegrees).toEqual([...expectedVariation.degrees]);
+
+  await page.waitForFunction(() => {
+    const appWindow = window as unknown as { transport?: { getState(): TransportState } };
+    return (appWindow.transport?.getState().currentBeat ?? 0) >= 8.25;
+  }, null, { timeout: 12_000 });
+  const heardTargetDegrees = await getInterplayHeardDegrees(page, 1);
+  expect(heardTargetDegrees).toEqual(verseAnswer!.resultingDegrees);
+
+  const chorusAnswer = state.answers.find((answer) => answer.targetBar >= 9 && answer.targetBar < 16);
+  expect(chorusAnswer).toBeDefined();
+  expect(chorusAnswer!.tension).toBeGreaterThan(verseAnswer!.tension);
+  expect(chorusAnswer!.maxNotes).toBeGreaterThan(verseAnswer!.maxNotes);
+  expect(chorusAnswer!.octave).toBeGreaterThan(verseAnswer!.octave);
+
+  const disabledState = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      interplay?: { setEnabled(enabled: boolean): { enabled: boolean; answers: unknown[] } };
+    };
+    return appWindow.interplay?.setEnabled(false);
+  });
+  expect(disabledState).toMatchObject({ enabled: false, answers: [] });
+
+  await button.click();
+  await expect(button).toHaveText("Start");
+  await button.click();
+  await expect(button).toHaveText("Stop");
+  await page.waitForFunction(() => {
+    const appWindow = window as unknown as { transport?: { getState(): TransportState } };
+    return (appWindow.transport?.getState().currentBeat ?? 0) >= 8.25;
+  }, null, { timeout: 12_000 });
+  const disabledHasAnswerTags = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      listening?: { getEvents(): Array<{ tags: string[] }> };
+    };
+    return (appWindow.listening?.getEvents() ?? [])
+      .some((event) => event.tags.includes("interplay:bass-answer"));
+  });
+  expect(disabledHasAnswerTags).toBe(false);
+
+  await button.click();
+  await expect(button).toHaveText("Start");
+
+  const cannedAfterToggle = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      songLibrary?: { select(songLibraryId: string): unknown };
+      interplay?: { getState(): { defaultEnabled: boolean; enabled: boolean } };
+    };
+    appWindow.songLibrary?.select("song-untitled-1");
+    return appWindow.interplay?.getState();
+  });
+  expect(cannedAfterToggle?.defaultEnabled).toBe(false);
+  expect(cannedAfterToggle?.enabled).toBe(false);
 });
 
 test("song form timeline develops an in-scale chorus melody", () => {

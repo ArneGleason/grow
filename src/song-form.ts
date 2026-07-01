@@ -258,6 +258,7 @@ function createHarmonicAccompanimentEvent(
   song: SongMaterial,
 ): PatternNoteSource | null {
   if (!sourceEvent) return null;
+  if (sourceEvent.tags?.includes("interplay:bass-answer")) return { ...sourceEvent };
   const baseRoot = deriveSongRootDegrees(song)[0] ?? 0;
   const scaleDegree = playerId === "pulse"
     ? harmony.rootDegree

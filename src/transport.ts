@@ -89,7 +89,17 @@ export interface TransportHandlers {
   timingFeelMode?: () => TimingFeelMode;
   chorusDevelopment?: () => ChorusDevelopment | undefined;
   melodyPhrasing?: () => PlayerPatternSource | undefined;
+  bassPhrasing?: (input: BassPhrasingInput) => PlayerPatternSource | undefined;
   songMaterial?: () => SongMaterial;
+}
+
+export interface BassPhrasingInput {
+  song: SongMaterial;
+  source: PlayerPatternSource;
+  melody?: PlayerPatternSource;
+  arrangement: SongArrangement;
+  tonalContext: TonalContext;
+  chorusDevelopment?: ChorusDevelopment;
 }
 
 export interface TransportOptions {
@@ -170,9 +180,31 @@ const wallClockFallbackTimers = new Map<number, number>();
 function buildPlayerPatterns(songId: SongId): readonly PlayerPattern[] {
   const melodyPhrasing = handlers.melodyPhrasing?.();
   const song = getActiveSongMaterial(songId);
+  const melodyPattern = song.patterns.find((pattern) =>
+    pattern.events.some((note) => note?.playerId === "melody")
+  );
+  const activeMelodyPattern = melodyPhrasing ?? melodyPattern;
+  const arrangement = getActiveSongArrangement();
+  const tonalContext = getActiveTonalContext();
+  const chorusDevelopment = handlers.chorusDevelopment?.();
   return song.patterns.map((pattern) => {
     const isMelody = pattern.events.some((note) => note?.playerId === "melody");
-    const source = isMelody && melodyPhrasing ? melodyPhrasing : pattern;
+    const isBass = pattern.events.some((note) => note?.playerId === "bass");
+    const bassPhrasing = isBass
+      ? handlers.bassPhrasing?.({
+        song,
+        source: pattern,
+        melody: activeMelodyPattern,
+        arrangement,
+        tonalContext,
+        chorusDevelopment,
+      })
+      : undefined;
+    const source = isMelody && melodyPhrasing
+      ? melodyPhrasing
+      : isBass && bassPhrasing
+        ? bassPhrasing
+        : pattern;
     return {
       source,
       subdivisionBeats: source.subdivisionBeats,
@@ -194,6 +226,7 @@ function materializeNote(tonalContext: TonalContext, note: PatternNoteSource): S
     duration: note.duration,
     durationBeats: note.durationBeats,
     velocity: note.velocity,
+    tags: note.tags ? [...note.tags] : undefined,
   };
 }
 
@@ -289,6 +322,7 @@ function emitNoteEvent(
       "expression:velocity",
       "timing:offset-data",
       committed.timingFeelMode === "grid" ? "timing:grid" : "timing:audible-offset",
+      ...(note.tags ?? []),
       ...(committed.timingFeelMode === "wide" ? ["timing:wide-audition"] : []),
       ...(decision.tags ?? []),
     ],

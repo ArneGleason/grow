@@ -7,7 +7,7 @@ const PULSE_SUBDIVISION_BEATS = 1;
 const BASS_SUBDIVISION_BEATS = 0.5;
 const DEFAULT_ROOT_CYCLE = [0, 4, 6, 4] as const;
 
-const MODE_ROOT_CYCLES = {
+export const MODE_ROOT_CYCLES = {
   ionian: [0, 4, 5, 3],
   dorian: [0, 3, 4, 6],
   mixolydian: [0, 4, 6, 4],

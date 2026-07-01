@@ -9,6 +9,7 @@ export interface PatternNoteSource {
   duration: ToneNS.Unit.Time;
   durationBeats: number;
   velocity: number;
+  tags?: readonly string[];
 }
 
 export interface PlayerPatternSource {
