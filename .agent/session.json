@@ -23,13 +23,13 @@
     }
   },
   "lastTask": "Byte E2 tension/color over bass interplay",
-  "status": "byte-e2-tension-color-ready-for-review",
-  "updatedAt": "2026-07-01T23:20:00Z",
+  "status": "byte-e2-tension-color-ab-ready-for-review",
+  "updatedAt": "2026-07-02T00:20:00Z",
   "lastHandoff": ".agent/handoffs/2026-07-01-codex-to-claude-byte-e2-tension-color.md",
   "branch": "codex/byte-e2-tension-color",
   "commit": "HEAD on codex/byte-e2-tension-color",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte E2 is implemented in the clean temp worktree on top of Byte E1 after Arne confirmed Bass answers melody ON is better. The byte adds pure harmonic answer coloring in src/harmonic-color.ts, optional PatternNoteSource.chromaticOffset materialization through noteFromScaleDegreeWithOffset(), and color/harmony tags plus read-only answer color summaries in window.interplay.getState(). High-tension chorus answers get one bounded deterministic outside-scale lean before resolving; low-tension verse answers stay diatonic and the integer motif variation relation is preserved. The Ear Check UI now lives as a stage overlay so the listening switch/feedback/instructions stay visible without shrinking the terrarium canvas. Validation: build green; unit:harmonic-color 4/4; unit:motif-memory 7/7; focused interplay smoke green; app-shell smoke green; full smoke 79/79; diff-check green. npm audit remains red on pre-existing esbuild/Vite advisories requiring a Vite patch/force fix outside this musical slice."
+    "summary": "Byte E2 is implemented in the clean temp worktree on top of Byte E1 after Arne confirmed Bass answers melody ON is better. The byte adds pure harmonic answer coloring in src/harmonic-color.ts, optional PatternNoteSource.chromaticOffset materialization through noteFromScaleDegreeWithOffset(), and color/harmony tags plus read-only answer color summaries in window.interplay.getState(). High-tension chorus answers get one bounded deterministic outside-scale lean before resolving; low-tension verse answers stay diatonic and the integer motif variation relation is preserved. After Arne asked for a true A/B, the Ear Check overlay gained a separate Answer color switch plus window.interplay.setColorEnabled(); color-off keeps the same bass answer degrees while muting chromatic offsets and records song.interplay_color_toggled. Validation: build green; unit:harmonic-color 4/4; unit:motif-memory 7/7; focused interplay A/B smoke green; app-shell smoke green; full smoke 79/79; diff-check green. npm audit remains red on pre-existing esbuild/Vite advisories requiring a Vite patch/force fix outside this musical slice."
   }
 }

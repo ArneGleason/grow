@@ -26,6 +26,11 @@ What changed:
 - Moved the listening experiment UI into the stage as an overlay.
   - Same switch, feedback controls, instructions, and test ids.
   - Prevents the experiment strip from shrinking the terrarium canvas below the app-shell smoke threshold.
+- Added a follow-up `Answer color` A/B switch after Arne heard the new color but wanted to compare against the same answer without relying on memory.
+  - `Bass answers melody` still controls whether answers exist.
+  - `Answer color` controls only chromatic offsets on those same answer degrees.
+  - `window.interplay.setColorEnabled()` mirrors the visible switch.
+  - `song.interplay_color_toggled` records the experiment state without training or changing music.
 
 Validation:
 
@@ -33,6 +38,7 @@ Validation:
 - `npm run unit:harmonic-color` green, 4/4.
 - `npm run unit:motif-memory` green, 7/7.
 - Focused interplay smoke green; it waits for the chorus answer and asserts a rendered bass answer pitch outside the current mode scale.
+- Updated focused interplay smoke also replays the same chorus answer with color off and asserts the same answer degrees produce no chromatic tags and only in-scale answer pitches.
 - App-shell smoke green after the stage-overlay move.
 - Full `npm run smoke` green, 79/79.
 - `git diff --check` green.
@@ -41,5 +47,6 @@ Validation:
 Review focus:
 
 - Listen A/B with the switch. The expected audible change is not a new chord engine yet: the chorus bass answer should briefly lean blue/sour outside the mode and then settle, while the verse answer remains cleaner/diatonic.
+- Use the separate `Answer color` switch for the direct comparison Arne requested: answer on/color on vs answer on/color off.
 - Confirm `chromaticOffset` does not become a raw-pitch backdoor. Motif variation should still be provable from integer degrees, and transport should remain the sole pitch resolver.
 - Confirm E2 did not land chord voicings, vote training, surprisal/corpus ear, persistence of answers, pulse interplay, or evolution re-aim early.

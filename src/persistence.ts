@@ -19,6 +19,7 @@ export type PersistenceRecordType =
   | "song.goal_set"
   | "song.form_variant_changed"
   | "song.interplay_feedback"
+  | "song.interplay_color_toggled"
   | "song.interplay_toggled"
   | "timing.feel_changed"
   | "song.melody_critic_selection"

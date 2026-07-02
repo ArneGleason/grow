@@ -1262,6 +1262,8 @@ type InterplayAnswerForSmoke = {
 type InterplayStateForSmoke = {
   enabled: boolean;
   defaultEnabled: boolean;
+  colorEnabled: boolean;
+  colorDefaultEnabled: boolean;
   mode: string;
   pool: readonly Motif[];
   answers: readonly InterplayAnswerForSmoke[];
@@ -1307,8 +1309,9 @@ type InterplayHeardAnswerEventForSmoke = {
 async function getInterplayHeardAnswerEvents(
   page: Page,
   targetBar: number,
+  sinceEventCount = 0,
 ): Promise<InterplayHeardAnswerEventForSmoke[]> {
-  return page.evaluate((nextTargetBar) => {
+  return page.evaluate(({ nextTargetBar, afterEventCount }) => {
     const appWindow = window as unknown as {
       listening?: {
         getEvents(): Array<{
@@ -1320,7 +1323,9 @@ async function getInterplayHeardAnswerEvents(
         }>;
       };
     };
-    return (appWindow.listening?.getEvents() ?? [])
+    const events = appWindow.listening?.getEvents() ?? [];
+    const scopedEvents = events.length >= afterEventCount ? events.slice(afterEventCount) : events;
+    return scopedEvents
       .filter((event) =>
         event.playerId === "bass" &&
         event.tags.includes("interplay:bass-answer") &&
@@ -1333,11 +1338,20 @@ async function getInterplayHeardAnswerEvents(
         performedPitch: event.performedPitch,
         tags: event.tags,
       }));
-  }, targetBar);
+  }, { nextTargetBar: targetBar, afterEventCount: sinceEventCount });
 }
 
 function pitchClassFromPitch(pitch: string | undefined): string | undefined {
   return pitch?.replace(/-?\d+$/, "");
+}
+
+async function getListeningEventCountForSmoke(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    const appWindow = window as unknown as {
+      listening?: { getEvents(): Array<unknown> };
+    };
+    return appWindow.listening?.getEvents().length ?? 0;
+  });
 }
 
 async function getTimingDiagnostics(page: Page): Promise<readonly AudioFireTimingDiagnostic[]> {
@@ -3280,18 +3294,21 @@ test("song library creates, renames, and switches deterministic starter material
 });
 
 test("interplay bass answers the previous melody bar for generated songs", async ({ page }) => {
-  test.setTimeout(50_000);
+  test.setTimeout(75_000);
   await page.goto("/");
 
   const cannedState = await getInterplayStateForSmoke(page);
   expect(cannedState).toMatchObject({
     defaultEnabled: false,
     enabled: false,
+    colorDefaultEnabled: true,
+    colorEnabled: true,
     answers: [],
   });
   await expect(page.getByTestId("interplay-experiment")).toBeVisible();
   await expect(page.getByTestId("interplay-instructions")).toContainText("Turn the switch off");
   await expect(page.getByTestId("interplay-ui-toggle")).not.toBeChecked();
+  await expect(page.getByTestId("interplay-ui-color-toggle")).toBeChecked();
   await expect(page.getByTestId("interplay-ui-status")).toContainText("control song");
 
   await page.getByTestId("song-library-new").click();
@@ -3308,8 +3325,11 @@ test("interplay bass answers the previous melody bar for generated songs", async
   const starterDefaultState = await getInterplayStateForSmoke(page);
   expect(starterDefaultState.defaultEnabled).toBe(true);
   expect(starterDefaultState.enabled).toBe(true);
+  expect(starterDefaultState.colorEnabled).toBe(true);
   await expect(page.getByTestId("interplay-ui-toggle")).toBeChecked();
+  await expect(page.getByTestId("interplay-ui-color-toggle")).toBeChecked();
   await expect(page.getByTestId("interplay-ui-status")).toContainText("Answers on");
+  await expect(page.getByTestId("interplay-ui-status")).toContainText("color on");
 
   const button = page.getByTestId("transport-toggle");
   await button.click();
@@ -3370,6 +3390,40 @@ test("interplay bass answers the previous melody bar for generated songs", async
   );
   expect(heardChromaticEvent?.performedPitch).toBe(heardChromaticEvent?.gridPitch);
 
+  await page.getByTestId("interplay-ui-color-toggle").uncheck();
+  await expect(page.getByTestId("interplay-ui-color-toggle")).not.toBeChecked();
+  await expect(page.getByTestId("interplay-ui-status")).toContainText("color off");
+  const colorOffState = await getInterplayStateForSmoke(page);
+  const colorOffChorusAnswer = colorOffState.answers.find((answer) =>
+    answer.sourceBar === chorusAnswer!.sourceBar &&
+    answer.targetBar === chorusAnswer!.targetBar
+  );
+  expect(colorOffState.colorEnabled).toBe(false);
+  expect(colorOffChorusAnswer?.resultingDegrees).toEqual(chorusAnswer!.resultingDegrees);
+  expect(colorOffChorusAnswer?.chromaticNoteCount).toBe(0);
+  expect(colorOffChorusAnswer?.colors.every((color) => color.chromaticOffset === 0)).toBe(true);
+
+  await button.click();
+  await expect(button).toHaveText("Start");
+  const colorOffEventStart = await getListeningEventCountForSmoke(page);
+  await button.click();
+  await expect(button).toHaveText("Stop");
+  await page.waitForFunction((targetBeat) => {
+    const appWindow = window as unknown as { transport?: { getState(): TransportState } };
+    return (appWindow.transport?.getState().currentBeat ?? 0) >= targetBeat;
+  }, colorOffChorusAnswer!.targetBar * 4 + 3.25, { timeout: 25_000 });
+  const heardColorOffAnswerEvents = await getInterplayHeardAnswerEvents(
+    page,
+    colorOffChorusAnswer!.targetBar,
+    colorOffEventStart,
+  );
+  expect(heardColorOffAnswerEvents.map((event) =>
+    event.tags.some((tag) => tag.startsWith("interplay-chromatic:"))
+  )).not.toContain(true);
+  expect(heardColorOffAnswerEvents.every((event) =>
+    tonalScale.includes(pitchClassFromPitch(event.gridPitch) ?? "")
+  )).toBe(true);
+
   await page.getByTestId("interplay-feedback-better").click();
   await expect(page.getByTestId("interplay-ui-feedback")).toContainText("Better with answers");
   await flushPersistence(page);
@@ -3381,8 +3435,18 @@ test("interplay bass answers the previous melody bar for generated songs", async
     event.payload.feedback === "better-on"
   );
   expect(interplayFeedback?.payload).toMatchObject({
+    colorEnabled: false,
     enabled: true,
     source: "interplay-experiment",
+  });
+  const colorToggleEvent = dump.events.find((event) =>
+    event.sessionId === persistenceState.sessionId &&
+    event.type === "song.interplay_color_toggled"
+  );
+  expect(colorToggleEvent?.payload).toMatchObject({
+    answersEnabled: true,
+    enabled: false,
+    source: "interplay-color-experiment-toggle",
   });
 
   await page.getByTestId("interplay-ui-toggle").uncheck();

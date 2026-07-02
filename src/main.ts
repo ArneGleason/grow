@@ -334,6 +334,7 @@ let activeTempoBpm = DEFAULT_TRANSPORT_BPM;
 let songGoalInterpretation = interpretSongGoal("Build a balanced modal terrarium piece.");
 let appliedSongGoal: SongGoal | undefined;
 let interplayEnabledOverride: boolean | undefined;
+let interplayColorEnabledOverride: boolean | undefined;
 let interplayMemory: MotifMemory = createMotifMemory();
 let interplayAnswerSummaries: InterplayAnswerSummary[] = [];
 let lastInterplayRefreshBar = -1;
@@ -423,6 +424,9 @@ interface InterplayStateSnapshot {
   enabled: boolean;
   defaultEnabled: boolean;
   override?: boolean;
+  colorEnabled: boolean;
+  colorDefaultEnabled: boolean;
+  colorOverride?: boolean;
   mode: string;
   pool: readonly Motif[];
   answers: readonly InterplayAnswerSummary[];
@@ -436,6 +440,7 @@ interface InterplayExperimentFeedback {
   atBeat: number;
   createdAt: string;
   enabled: boolean;
+  colorEnabled: boolean;
   label: string;
   songLibraryId: string;
   songTitle: string;
@@ -752,8 +757,11 @@ function createInterplayBassPattern(input: BassPhrasingInput): {
       op,
       tension,
     });
+    const renderedColors = isInterplayColorEnabled()
+      ? colors
+      : colors.map(disableInterplayChromaticColor);
     writeInterplayAnswer(events, targetBar, variation, {
-      colors,
+      colors: renderedColors,
       maxNotes,
       octave,
       subdivisionBeats,
@@ -773,8 +781,8 @@ function createInterplayBassPattern(input: BassPhrasingInput): {
       tension,
       maxNotes,
       octave,
-      colors: summarizeInterplayColors(colors),
-      chromaticNoteCount: colors.filter((color) => color.chromaticOffset !== 0).length,
+      colors: summarizeInterplayColors(renderedColors),
+      chromaticNoteCount: renderedColors.filter((color) => color.chromaticOffset !== 0).length,
     });
   }
 
@@ -895,6 +903,21 @@ function summarizeInterplayColors(
   }));
 }
 
+function disableInterplayChromaticColor(color: InterplayColorDecision): InterplayColorDecision {
+  const colorRole = color.harmonicRole === "non-chord" ? "passing" : "chord-tone";
+  return {
+    ...color,
+    chromaticOffset: 0,
+    colorRole,
+    tags: [
+      `interplay-color:${colorRole}`,
+      `interplay-harmony:${color.harmonicRole}`,
+      ...(color.tags.includes("interplay-resolution:landing") ? ["interplay-resolution:landing"] : []),
+    ],
+    velocityMultiplier: 1,
+  };
+}
+
 function getInterplayTensionAtBar(
   barIndex: number,
   arrangement: SongArrangement,
@@ -932,11 +955,28 @@ function isInterplayEnabled(): boolean {
   return interplayEnabledOverride ?? getDefaultInterplayEnabled();
 }
 
+function getDefaultInterplayColorEnabled(): boolean {
+  return true;
+}
+
+function isInterplayColorEnabled(): boolean {
+  return interplayColorEnabledOverride ?? getDefaultInterplayColorEnabled();
+}
+
 function setInterplayEnabled(enabled: boolean, source = "interplay-api"): InterplayStateSnapshot {
   interplayEnabledOverride = Boolean(enabled);
   resetInterplayState();
   refreshLookaheadSchedule();
   recordInterplayToggle(interplayEnabledOverride, source);
+  renderWorld();
+  return getInterplayState();
+}
+
+function setInterplayColorEnabled(enabled: boolean, source = "interplay-api"): InterplayStateSnapshot {
+  interplayColorEnabledOverride = Boolean(enabled);
+  resetInterplayState();
+  refreshLookaheadSchedule();
+  recordInterplayColorToggle(interplayColorEnabledOverride, source);
   renderWorld();
   return getInterplayState();
 }
@@ -954,6 +994,9 @@ function getInterplayState(): InterplayStateSnapshot {
     enabled: isInterplayEnabled(),
     defaultEnabled: getDefaultInterplayEnabled(),
     override: interplayEnabledOverride,
+    colorEnabled: isInterplayColorEnabled(),
+    colorDefaultEnabled: getDefaultInterplayColorEnabled(),
+    colorOverride: interplayColorEnabledOverride,
     mode: world.getTonalContext().mode,
     pool: memory.pool,
     answers,
@@ -977,6 +1020,7 @@ function applyInterplayExperimentFeedback(value: string): InterplayExperimentSta
     atBeat: getPersistenceBeat(),
     createdAt: new Date().toISOString(),
     enabled: state.enabled,
+    colorEnabled: state.colorEnabled,
     label: INTERPLAY_FEEDBACK_LABELS[value],
     songLibraryId: getActiveSongLibraryId(),
     songTitle: getActiveSongDisplayName(),
@@ -1652,6 +1696,10 @@ ${songStarterPlayerRows}
             <input data-testid="interplay-ui-toggle" type="checkbox" />
             <span>Bass answers melody</span>
           </label>
+          <label class="interplay-switch interplay-switch--color">
+            <input data-testid="interplay-ui-color-toggle" type="checkbox" />
+            <span>Answer color</span>
+          </label>
         </header>
         <ol class="listening-experiment__steps" data-testid="interplay-instructions">
           <li>Use a starter song, or switch this song on.</li>
@@ -2279,6 +2327,7 @@ const controlKeyReadout = requireElement<HTMLElement>("[data-testid='control-key
 const writtenEvolvingDialInput = requireElement<HTMLInputElement>("[data-testid='written-evolving-dial']");
 const writtenEvolvingRegimeReadout = requireElement<HTMLElement>("[data-testid='written-evolving-regime']");
 const interplayUiToggle = requireElement<HTMLInputElement>("[data-testid='interplay-ui-toggle']");
+const interplayUiColorToggle = requireElement<HTMLInputElement>("[data-testid='interplay-ui-color-toggle']");
 const interplayUiStatus = requireElement<HTMLOutputElement>("[data-testid='interplay-ui-status']");
 const interplayUiAnswer = requireElement<HTMLOutputElement>("[data-testid='interplay-ui-answer']");
 const interplayUiFeedback = requireElement<HTMLOutputElement>("[data-testid='interplay-ui-feedback']");
@@ -5920,6 +5969,9 @@ function renderInterplayExperiment(): void {
   interplayUiToggle.checked = state.enabled;
   interplayUiToggle.dataset.defaultEnabled = String(state.defaultEnabled);
   interplayUiToggle.dataset.override = state.override === undefined ? "default" : String(state.override);
+  interplayUiColorToggle.checked = state.colorEnabled;
+  interplayUiColorToggle.dataset.defaultEnabled = String(state.colorDefaultEnabled);
+  interplayUiColorToggle.dataset.override = state.colorOverride === undefined ? "default" : String(state.colorOverride);
   interplayUiStatus.textContent = formatInterplayExperimentStatus(state);
   interplayUiAnswer.textContent = formatInterplayAnswerForUi(state);
   interplayUiFeedback.textContent = [
@@ -5933,16 +5985,17 @@ function renderInterplayExperiment(): void {
 }
 
 function formatInterplayExperimentStatus(state: InterplayStateSnapshot): string {
+  const colorStatus = state.colorEnabled ? "color on" : "color off";
   if (state.enabled && state.answers.length > 0) {
-    return `Answers on | ${state.answers.length} planned | ${state.defaultEnabled ? "starter default" : "forced on"}`;
+    return `Answers on | ${colorStatus} | ${state.answers.length} planned | ${state.defaultEnabled ? "starter default" : "forced on"}`;
   }
   if (state.enabled) {
-    return `Answers on | press Start to schedule the answer path.`;
+    return `Answers on | ${colorStatus} | press Start to schedule the answer path.`;
   }
   if (state.defaultEnabled) {
-    return `Answers off | A/B control override.`;
+    return `Answers off | ${colorStatus} ready | A/B control override.`;
   }
-  return `Answers off | control song.`;
+  return `Answers off | ${colorStatus} ready | control song.`;
 }
 
 function formatInterplayAnswerForUi(state: InterplayStateSnapshot): string {
@@ -5951,7 +6004,7 @@ function formatInterplayAnswerForUi(state: InterplayStateSnapshot): string {
   if (!answer) return "No answer heard yet; start playback and wait for bar 2.";
   const colorSummary = answer.chromaticNoteCount > 0
     ? `${answer.chromaticNoteCount} outside-color note${answer.chromaticNoteCount === 1 ? "" : "s"}`
-    : "diatonic answer";
+    : state.colorEnabled ? "diatonic answer" : "color off: diatonic answer";
   return [
     `Bar ${answer.targetBar + 1}: bass ${formatInterplayOp(answer.op)} melody bar ${answer.sourceBar + 1}`,
     `toward root ${answer.chordRoot}`,
@@ -6898,6 +6951,28 @@ function recordInterplayToggle(enabled: boolean, source: string): void {
       enabled,
       defaultEnabled: state.defaultEnabled,
       override: state.override,
+      colorEnabled: state.colorEnabled,
+      songId,
+      songLibraryId: getActiveSongLibraryId(),
+      songTitle: getActiveSongDisplayName(),
+      answerCount: state.answers.length,
+    },
+  });
+}
+
+function recordInterplayColorToggle(enabled: boolean, source: string): void {
+  const state = getInterplayState();
+  persistence.record({
+    type: "song.interplay_color_toggled",
+    actorId: "human",
+    sessionMode: world.getSessionMode(),
+    beat: getPersistenceBeat(),
+    payload: {
+      source,
+      enabled,
+      defaultEnabled: state.colorDefaultEnabled,
+      override: state.colorOverride,
+      answersEnabled: state.enabled,
       songId,
       songLibraryId: getActiveSongLibraryId(),
       songTitle: getActiveSongDisplayName(),
@@ -6917,6 +6992,7 @@ function recordInterplayExperimentFeedback(feedback: InterplayExperimentFeedback
       feedback: feedback.value,
       label: feedback.label,
       enabled: feedback.enabled,
+      colorEnabled: feedback.colorEnabled,
       songId,
       songLibraryId: feedback.songLibraryId,
       songTitle: feedback.songTitle,
@@ -7326,6 +7402,10 @@ interplayUiToggle.addEventListener("change", () => {
   setInterplayEnabled(interplayUiToggle.checked, "interplay-experiment-toggle");
 });
 
+interplayUiColorToggle.addEventListener("change", () => {
+  setInterplayColorEnabled(interplayUiColorToggle.checked, "interplay-color-experiment-toggle");
+});
+
 interplayFeedbackControls.addEventListener("click", (event) => {
   const target = event.target instanceof Element
     ? event.target.closest<HTMLButtonElement>("[data-interplay-feedback]")
@@ -7540,6 +7620,7 @@ declare global {
       feedback(value: string): InterplayExperimentState;
       getExperiment(): InterplayExperimentState;
       getState(): InterplayStateSnapshot;
+      setColorEnabled(enabled: boolean): InterplayStateSnapshot;
       setEnabled(enabled: boolean): InterplayStateSnapshot;
     };
     melodyRepair?: {
@@ -7801,6 +7882,7 @@ window.interplay = {
   feedback: (value) => applyInterplayExperimentFeedback(value),
   getExperiment: () => getInterplayExperimentState(),
   getState: () => getInterplayState(),
+  setColorEnabled: (enabled) => setInterplayColorEnabled(enabled),
   setEnabled: (enabled) => setInterplayEnabled(enabled),
 };
 
