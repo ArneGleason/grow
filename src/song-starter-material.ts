@@ -1,4 +1,5 @@
 import { generateProsodicMelody } from "./melody-prosody";
+import { chooseMelodyPlan, type MelodyPlan } from "./melody-plan";
 import type { PatternNoteSource, PlayerPatternSource, SongMaterial } from "./song-material";
 import type { SongLibraryStarter } from "./song-library";
 
@@ -86,6 +87,17 @@ export function createStarterMaterialProfile(
   };
 }
 
+export function createStarterMelodyPlan(
+  starter: SongLibraryStarter,
+  seed: number,
+  profile = createStarterMaterialProfile(starter, seed),
+): MelodyPlan {
+  return chooseMelodyPlan(seed ^ melodyStyleSeedSalt(profile.melodyStyle), starter.goal, {
+    styleHint: profile.melodyStyle,
+    totalBeats: STARTER_PATTERN_BEATS,
+  });
+}
+
 function createStarterPulsePattern(
   starter: SongLibraryStarter,
   roots: readonly number[],
@@ -162,10 +174,13 @@ function createStarterMelodyPattern(
       events: Array.from({ length: STARTER_PATTERN_BEATS / 0.25 }, () => null),
     };
   }
+  const plan = createStarterMelodyPlan(starter, seed, profile);
   const melody = generateProsodicMelody({
     seed: seed ^ melodyStyleSeedSalt(profile.melodyStyle),
-    baseOctave: starter.goal.energy > 0.7 || profile.melodyStyle === "spark" ? 5 : 4,
+    baseOctave: plan.registerBase,
     bars: STARTER_PATTERN_BEATS / 4,
+    goal: starter.goal,
+    plan,
   });
   const velocityScale = 0.88 + clamp01(starter.goal.energy) * 0.28;
   let noteOrdinal = 0;
@@ -183,6 +198,7 @@ function createStarterMelodyPattern(
       return transformStarterMelodyNote(event, {
         beat,
         noteOrdinal,
+        plan,
         profile,
         root,
         seed,
@@ -247,6 +263,7 @@ function starterBassDegreeAt(
 interface StarterMelodyTransformInput {
   beat: number;
   noteOrdinal: number;
+  plan: MelodyPlan;
   profile: StarterMaterialProfile;
   root: number;
   seed: number;
@@ -258,24 +275,20 @@ function transformStarterMelodyNote(
   input: StarterMelodyTransformInput,
 ): PatternNoteSource {
   const style = input.profile.melodyStyle;
-  const offset = starterMelodyDegreeOffset(style, input.noteOrdinal, input.beat, input.seed);
   const durationBeats = style === "spacious"
     ? round3(Math.min(2, event.durationBeats * 1.35))
     : event.durationBeats;
-  const octaveLift = style === "spark" && normalizeDegree(event.scaleDegree + offset) >= 4
-    ? 1
-    : style === "angular" && input.noteOrdinal % 5 === 0
-      ? 1
-      : 0;
-  const rootPull = style === "spacious" && input.noteOrdinal % 3 === 0 ? input.root - event.scaleDegree : 0;
   return {
     ...event,
-    scaleDegree: event.scaleDegree + offset + rootPull,
-    octave: event.octave + octaveLift,
     duration: durationForBeats(durationBeats),
     durationBeats,
     velocity: round3(Math.max(0.16, Math.min(0.68, event.velocity * input.velocityScale * starterMelodyVelocityMultiplier(style, input.noteOrdinal)))),
-    tags: [...(event.tags ?? []), `starter:melody:${style}`],
+    tags: [
+      ...(event.tags ?? []),
+      `starter:melody:${style}`,
+      `starter:plan:${input.plan.phraseStructure}`,
+      `starter:motif:${input.plan.motifScheme}`,
+    ],
   };
 }
 
@@ -313,24 +326,6 @@ function createStarterMelodyPickup(
     ]);
   }
   return null;
-}
-
-function starterMelodyDegreeOffset(
-  style: StarterMelodyStyle,
-  noteOrdinal: number,
-  beat: number,
-  seed: number,
-): number {
-  switch (style) {
-    case "spacious":
-      return Math.floor(beat / 8) === 0 ? 0 : -1;
-    case "arch":
-      return Math.floor(beat / 4) % 2 === 0 ? 0 : 1;
-    case "angular":
-      return [0, 3, -2, 4][(noteOrdinal + (seed % 3)) % 4] ?? 0;
-    case "spark":
-      return [0, 2, 4, 1][(noteOrdinal + Math.floor(beat)) % 4] ?? 0;
-  }
 }
 
 function starterMelodyVelocityMultiplier(style: StarterMelodyStyle, noteOrdinal: number): number {

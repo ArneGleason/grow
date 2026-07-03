@@ -15,6 +15,8 @@
     "unit:anchor-phrase-edit": "playwright test tests/anchor-phrase-edit.unit.spec.ts --config=playwright.unit.config.ts",
     "unit:anchor-phrase-render": "playwright test tests/anchor-phrase-render.unit.spec.ts --config=playwright.unit.config.ts",
     "unit:grow-language": "playwright test tests/grow-language.unit.spec.ts --config=playwright.unit.config.ts",
+    "unit:song-goal": "playwright test tests/song-goal.unit.spec.ts --config=playwright.unit.config.ts",
+    "unit:melody-plan": "playwright test tests/melody-plan.unit.spec.ts --config=playwright.unit.config.ts",
     "unit:melody-prosody": "playwright test tests/melody-prosody.unit.spec.ts --config=playwright.unit.config.ts",
     "unit:motif-memory": "playwright test tests/motif-memory.unit.spec.ts --config=playwright.unit.config.ts",
     "unit:harmonic-color": "playwright test tests/harmonic-color.unit.spec.ts --config=playwright.unit.config.ts",

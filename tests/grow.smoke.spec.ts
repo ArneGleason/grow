@@ -2092,12 +2092,19 @@ test("melody player opens a read-only anchor phrase editor overlay", async ({ pa
   await expect(page.getByTestId("player-action-menu")).toBeHidden();
 
   await openMelodyPhraseEditor(page);
+  const visibleMelodyPlan = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      melodyPlan?: { getState(): { plan: { phraseBeats: readonly number[] } } };
+    };
+    return appWindow.melodyPlan?.getState().plan;
+  });
+  const visibleSegmentCount = visibleMelodyPlan?.phraseBeats.length ?? 2;
   await expect(page.getByTestId("anchor-phrase-editor-tonal")).toHaveText("C Strut");
   await expect(page.getByTestId("anchor-phrase-editor-tonal")).toHaveAttribute("data-mode-classical", "mixolydian");
   await expect(page.getByTestId("anchor-phrase-editor-tonal")).toHaveAttribute("title", "Strut · Mixolydian · key of C");
   await expect(page.getByTestId("anchor-phrase-editor-song")).toContainText("Untitled song 1");
-  await expect(page.getByTestId("anchor-phrase-editor-summary")).toContainText("2 segments");
-  await expect(page.getByTestId("anchor-phrase-editor-summary")).toContainText("1 breath");
+  await expect(page.getByTestId("anchor-phrase-editor-summary")).toContainText(`${visibleSegmentCount} segments`);
+  await expect(page.getByTestId("anchor-phrase-editor-summary")).toContainText("16 beats");
   const editorBox = await page.getByTestId("anchor-phrase-editor").evaluate((node) => {
     const rect = node.getBoundingClientRect();
     return {
@@ -2121,7 +2128,7 @@ test("melody player opens a read-only anchor phrase editor overlay", async ({ pa
   await expect(page.getByTestId("anchor-phrase-editor-svg")).toBeVisible();
   expect(await page.getByTestId("anchor-phrase-editor-anchor").count()).toBeGreaterThan(4);
   expect(await page.getByTestId("anchor-phrase-editor-connector").count()).toBeGreaterThan(2);
-  await expect(page.getByTestId("anchor-phrase-editor-breath")).toHaveCount(1);
+  await expect(page.getByTestId("anchor-phrase-editor-breath")).toHaveCount(Math.max(0, visibleSegmentCount - 1));
 
   await page.evaluate(() => {
     const appWindow = window as unknown as { song?: { setId(songId: string): string } };
@@ -2162,9 +2169,15 @@ test("anchor phrase editor edits anchors into an audible reversible override", a
   await expect(page.getByTestId("anchor-phrase-editor-anchor-panel")).toBeHidden();
   await expect(page.getByTestId("anchor-phrase-editor-connector-tools")).toBeHidden();
   const enteredEditor = await getPhraseEditorState(page);
+  const activeMelodyPlan = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      melodyPlan?: { getState(): { plan: { phraseBeats: readonly number[] } } };
+    };
+    return appWindow.melodyPlan?.getState().plan;
+  });
   expect(enteredEditor.editMode).toBe(true);
   expect(enteredEditor.overrideActive).toBe(false);
-  expect(enteredEditor.workingPhrase?.segments.length).toBe(2);
+  expect(enteredEditor.workingPhrase?.segments.length).toBe(activeMelodyPlan?.phraseBeats.length ?? 2);
   expect(enteredEditor.selectedAnchor).toBeUndefined();
   expect(enteredEditor.selectedConnector).toBeUndefined();
 
@@ -2177,7 +2190,7 @@ test("anchor phrase editor edits anchors into an audible reversible override", a
           startBeat?: number;
         }): {
           changed: boolean;
-          phrase: { segments: { anchors: { degree: number; dynamics: number; startBeat: number }[] }[] };
+          phrase: { segments: { anchors: { degree: number; dynamics: number; octave: number; startBeat: number }[] }[] };
           valid: boolean;
         };
       };
@@ -2199,7 +2212,9 @@ test("anchor phrase editor edits anchors into an audible reversible override", a
   await expect(page.getByTestId("anchor-phrase-editor-status")).toContainText("Edit applied");
   await expect(page.getByTestId("anchor-phrase-editor-anchor-panel")).toBeVisible();
   await expect(page.getByTestId("anchor-phrase-editor-selected-anchor")).toContainText("degree 5");
-  await expect(page.getByTestId("anchor-phrase-editor-anchor").first()).toContainText("5.4");
+  await expect(page.getByTestId("anchor-phrase-editor-anchor").first()).toContainText(
+    `${editResult?.phrase.segments[0].anchors[0].degree}.${editResult?.phrase.segments[0].anchors[0].octave}`,
+  );
 
   const overridePattern = await getPhraseEditorOverridePattern(page);
   expect(overridePattern).toBeTruthy();
@@ -3341,6 +3356,140 @@ test("song library creates, renames, and switches deterministic starter material
   await expect(button).toHaveText("Start");
 });
 
+test("E4 starter generation spreads unpinned goals and melody plans", async ({ page }) => {
+  test.setTimeout(60_000);
+  await page.goto("/");
+
+  const prompts = [
+    "slow paper lantern by the river at midnight",
+    "urgent restless engine under streetlights",
+    "crystal roof patterns in quick rain",
+    "low basement gears with uneven steps",
+    "open horizon echo with long footsteps",
+  ];
+
+  const summaries = [];
+  for (const prompt of prompts) {
+    await page.getByTestId("song-library-new").click();
+    await page.getByTestId("song-starter-prompt").fill(prompt);
+    await page.getByTestId("song-starter-generate").click();
+    await expect(page.getByTestId("song-starter-generated")).toBeVisible();
+    await page.getByTestId("song-starter-create").click();
+    await expect(page.getByTestId("song-starter-overlay")).toBeHidden();
+    summaries.push(await page.evaluate(() => {
+      const appWindow = window as unknown as {
+        melodyPlan?: {
+          getState(): {
+            materialSeed?: number;
+            plan: {
+              phraseStructure: string;
+              motifScheme: string;
+              contours: readonly string[];
+              cadences: { final: string; internal: readonly number[] };
+            };
+          };
+        };
+        songLibrary?: {
+          getState(): {
+            active: {
+              id: string;
+              starter?: {
+                materialSeed?: number;
+                sourcePrompt: string;
+                goal: {
+                  formPreference: string;
+                  mode: string;
+                  tempoBpm: number;
+                  tonic: string;
+                };
+              };
+            };
+          };
+        };
+      };
+      const active = appWindow.songLibrary!.getState().active;
+      return {
+        id: active.id,
+        goal: active.starter!.goal,
+        materialSeed: active.starter!.materialSeed,
+        plan: appWindow.melodyPlan!.getState().plan,
+        sourcePrompt: active.starter!.sourcePrompt,
+      };
+    }));
+  }
+
+  const modes = new Set(summaries.map((summary) => summary.goal.mode));
+  const tempos = summaries.map((summary) => summary.goal.tempoBpm);
+  const phraseStructures = new Set(summaries.map((summary) => summary.plan.phraseStructure));
+  expect(modes.size).toBeGreaterThanOrEqual(4);
+  expect(Math.max(...tempos) - Math.min(...tempos)).toBeGreaterThanOrEqual(40);
+  expect(phraseStructures.size).toBeGreaterThanOrEqual(3);
+
+  const remembered = summaries[2];
+  const reselected = await page.evaluate((songId) => {
+    const appWindow = window as unknown as {
+      melodyPlan?: { getState(): { plan: unknown } };
+      songLibrary?: {
+        select(songLibraryId: string): unknown;
+        getState(): {
+          active: {
+            id: string;
+            starter?: {
+              materialSeed?: number;
+              goal: unknown;
+            };
+          };
+        };
+      };
+    };
+    appWindow.songLibrary!.select(songId);
+    const active = appWindow.songLibrary!.getState().active;
+    return {
+      goal: active.starter!.goal,
+      materialSeed: active.starter!.materialSeed,
+      plan: appWindow.melodyPlan!.getState().plan,
+    };
+  }, remembered.id);
+  expect(reselected.goal).toEqual(remembered.goal);
+  expect(reselected.materialSeed).toBe(remembered.materialSeed);
+  expect(reselected.plan).toEqual(remembered.plan);
+
+  await page.getByTestId("song-library-new").click();
+  await page.getByTestId("song-starter-prompt").fill(prompts[0]);
+  await page.getByTestId("song-starter-generate").click();
+  await page.getByTestId("song-starter-create").click();
+  await expect(page.getByTestId("song-starter-overlay")).toBeHidden();
+  const samePromptRedraw = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      melodyPlan?: { getState(): { plan: unknown } };
+      songLibrary?: {
+        getState(): {
+          active: {
+            starter?: {
+              materialSeed?: number;
+              sourcePrompt: string;
+              goal: unknown;
+            };
+          };
+        };
+      };
+    };
+    const active = appWindow.songLibrary!.getState().active;
+    return {
+      goal: active.starter!.goal,
+      materialSeed: active.starter!.materialSeed,
+      plan: appWindow.melodyPlan!.getState().plan,
+      sourcePrompt: active.starter!.sourcePrompt,
+    };
+  });
+  expect(samePromptRedraw.sourcePrompt).toBe(prompts[0]);
+  expect(samePromptRedraw.materialSeed).not.toBe(summaries[0].materialSeed);
+  expect(
+    JSON.stringify(samePromptRedraw.goal) !== JSON.stringify(summaries[0].goal) ||
+    JSON.stringify(samePromptRedraw.plan) !== JSON.stringify(summaries[0].plan),
+  ).toBe(true);
+});
+
 test("interplay bass answers the previous melody bar for generated songs", async ({ page }) => {
   test.setTimeout(75_000);
   await page.goto("/");
@@ -4251,9 +4400,10 @@ test("song goal interpreter produces bounded deterministic knobs", () => {
   expect(urgent.goal.influenceHints).toContain("restless-hook");
 
   expect(falsePositiveProbe.validation.valid).toBe(true);
-  expect(falsePositiveProbe.goal.tempoBpm).toBe(90);
-  expect(falsePositiveProbe.goal.energy).toBe(0.52);
-  expect(falsePositiveProbe.goal.formPreference).toBe("classic-arc");
+  expect(falsePositiveProbe.goal.tempoBpm).toBeGreaterThanOrEqual(60);
+  expect(falsePositiveProbe.goal.tempoBpm).toBeLessThanOrEqual(150);
+  expect(falsePositiveProbe.goal.energy).toBeGreaterThanOrEqual(0);
+  expect(falsePositiveProbe.goal.energy).toBeLessThanOrEqual(1);
   expect(falsePositiveProbe.matchedKeywords).not.toContain("air");
   expect(falsePositiveProbe.matchedKeywords).not.toContain("run");
 });
@@ -4318,7 +4468,12 @@ test("song goal inspector interprets prose without driving playback", async ({ p
   await openInspectDrawer(page);
   await flushPersistence(page);
   await expect(page.getByTestId("song-goal-status")).toContainText("deterministic | valid");
-  await expect(page.getByTestId("song-goal-setup")).toContainText("C mixolydian");
+  const initialGoalResult = await getSongGoalResult(page);
+  expect(initialGoalResult.validation.valid).toBe(true);
+  await expect(page.getByTestId("song-goal-setup")).toContainText(
+    `${initialGoalResult.goal.tonic} ${initialGoalResult.goal.mode}`,
+  );
+  await expect(page.getByTestId("song-goal-setup")).toContainText(`${initialGoalResult.goal.tempoBpm} BPM`);
 
   const beforeState = await getTransportState(page);
   await page.getByTestId("song-goal-idea-input").fill("slow bright spacious wide return with machine pulse in G dorian");
@@ -4372,8 +4527,8 @@ test("song goal setup applies tonal context tempo form and persists the structur
   await expect(page.getByTestId("song-goal-applied")).toContainText("G dorian");
   await expect(page.getByTestId("song-goal-applied")).toContainText("75 BPM");
   await expect(page.getByTestId("song-goal-applied")).toContainText("wide-return");
-  await expect(page.getByTestId("song-goal-applied")).toContainText("energy 0.44");
-  await expect(page.getByTestId("song-goal-applied")).toContainText("surprise 0.42");
+  await expect(page.getByTestId("song-goal-applied")).toContainText(/energy 0\.\d{2}/);
+  await expect(page.getByTestId("song-goal-applied")).toContainText(/surprise 0\.\d{2}/);
   await expect(page.getByTestId("song-goal-applied")).toContainText("chorus 0.72");
   await expect(page.getByTestId("song-goal-applied")).toContainText("bridge 0.72");
   await expect(page.getByTestId("song-goal-applied")).toContainText("melody -0.020");
@@ -4406,8 +4561,10 @@ test("song goal setup applies tonal context tempo form and persists the structur
   const melodyTasteProfile = tasteProfiles.find((profile) => profile.playerId === "melody");
   expect(pulseTasteProfile).toBeTruthy();
   expect(melodyTasteProfile).toBeTruthy();
+  expect(appliedGoal).toBeTruthy();
+  expect(pulseTasteProfile!.adjusted).toEqual(createGoalTasteProfile(pulseTasteProfile!.base, "pulse", appliedGoal!));
+  expect(melodyTasteProfile!.adjusted).toEqual(createGoalTasteProfile(melodyTasteProfile!.base, "melody", appliedGoal!));
   expect(pulseTasteProfile!.adjusted.densityTarget).toBeGreaterThan(pulseTasteProfile!.base.densityTarget);
-  expect(pulseTasteProfile!.adjusted.noveltyPreference).toBeGreaterThan(pulseTasteProfile!.base.noveltyPreference);
   expect(melodyTasteProfile!.adjusted.densityTarget).toBeLessThan(melodyTasteProfile!.base.densityTarget);
   const sketch = await getSongSketch(page);
   expect(sketch.tonalContext).toEqual({

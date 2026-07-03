@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Docs handoff: ask Claude for musical-direction architecture after E3b still sounds thin",
-  "status": "awaiting-claude-architect-direction",
-  "updatedAt": "2026-07-03T14:47:11Z",
-  "lastHandoff": ".agent/handoffs/2026-07-03-codex-to-claude-architect-musical-direction.md",
-  "branch": "codex/byte-e3b-starter-material-variety",
-  "commit": "HEAD on codex/byte-e3b-starter-material-variety after docs handoff commit",
+  "lastTask": "Byte E4 composition variety: seeded goal redraws and melody plans",
+  "status": "ready-for-claude-review",
+  "updatedAt": "2026-07-03T18:53:43Z",
+  "lastHandoff": ".agent/handoffs/2026-07-03-codex-to-claude-byte-e4-composition-variety.md",
+  "branch": "codex/byte-e4-composition-variety",
+  "commit": "branch HEAD after Codex E4 commit",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte E3b starter-material variety is implemented and committed, but Arne's latest listening read is that the material remains too thin/same-sounding for feedback to carry much signal. Docs now pause vote/training work and route an architect request to Claude: diagnose why generated songs still sound too similar, propose directions toward more musically interesting output, and include expressive instruments/player articulation as a first-class next direction. See docs/musical-direction-reset.md and .agent/handoffs/2026-07-03-codex-to-claude-architect-musical-direction.md."
+    "summary": "Byte E4 is implemented: unpinned SongGoal knobs redraw from seeded wide bands while explicit prompt/UI pins stay authoritative, and starter melody shape now comes from the new pure MelodyPlan module. E3b melody styles bias plan choice instead of applying a second post-plan degree offset. Validation is green except npm audit's known Vite/esbuild advisories: build green, E4 unit suites green, full smoke 80/80 three times including two passes on a non-clean store and one final current-tree pass."
   }
 }

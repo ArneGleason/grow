@@ -112,6 +112,10 @@ export interface SongGoalInterpretation {
   goal: SongGoal;
 }
 
+export interface SongGoalInterpretOptions {
+  materialSeed?: number;
+}
+
 export interface SongGoalVocabulary {
   tonics: readonly SongGoalTonic[];
   modes: readonly SongGoalMode[];
@@ -160,15 +164,20 @@ export const DEFAULT_SONG_GOAL: SongGoal = finalizeSongGoal({
 export function createDefaultSongGoal(sourceIdea = DEFAULT_SOURCE_IDEA): SongGoal {
   return finalizeSongGoal({
     ...cloneGoal(DEFAULT_SONG_GOAL),
+    id: undefined,
+    brief: undefined,
     sourceIdea: sanitizeText(sourceIdea, MAX_SOURCE_IDEA_LENGTH) || DEFAULT_SOURCE_IDEA,
   });
 }
 
-export function interpretSongGoal(sourceIdea: string): SongGoalInterpretation {
+export function interpretSongGoal(
+  sourceIdea: string,
+  options: SongGoalInterpretOptions = {},
+): SongGoalInterpretation {
   const text = sanitizeText(sourceIdea, MAX_SOURCE_IDEA_LENGTH) || DEFAULT_SOURCE_IDEA;
   const lowerText = text.toLowerCase();
   const matchedKeywords: string[] = [];
-  const draft = cloneGoal(DEFAULT_SONG_GOAL);
+  const draft = createSeededSongGoalDraft(text, options.materialSeed);
   draft.sourceIdea = text;
 
   const bpmMatch = lowerText.match(/\b(?:bpm|tempo)\s*(\d{2,3})\b/) ??
@@ -234,6 +243,9 @@ export function interpretSongGoal(sourceIdea: string): SongGoalInterpretation {
   if (hasAny(lowerText, ["wide return", "long return", "final chorus", "spacious return"], matchedKeywords)) {
     draft.formPreference = "wide-return";
     draft.sectionEmphasis.chorus = 0.72;
+  } else if (hasAny(lowerText, ["waltz", "three feel", "dance return"], matchedKeywords)) {
+    draft.formPreference = "wide-return";
+    draft.sectionEmphasis.bridge = 0.68;
   } else if (hasAny(lowerText, ["hook", "chorus", "early chorus", "get to the chorus"], matchedKeywords)) {
     draft.formPreference = "early-hook";
     draft.sectionEmphasis.chorus = 0.82;
@@ -383,6 +395,104 @@ function cloneGoal(goal: SongGoal): SongGoal {
     influenceHints: [...goal.influenceHints],
     sectionEmphasis: { ...goal.sectionEmphasis },
   };
+}
+
+function createSeededSongGoalDraft(sourceIdea: string, materialSeed = 0): SongGoal {
+  const seed = stableHashNumber(sourceIdea) ^ (materialSeed >>> 0);
+  const rng = mulberry32(seed || 1);
+  const lowerText = sourceIdea.toLowerCase();
+  const energyCue = cueLevel(lowerText, {
+    low: ["slow", "dream", "drift", "patient", "hushed", "calm", "quiet", "soft", "gentle", "spacious"],
+    high: ["fast", "urgent", "driving", "drive", "rush", "run", "energetic", "loud", "push", "restless"],
+  });
+  const brightnessCue = cueLevel(lowerText, {
+    low: ["dark", "shadow", "smoke", "warm", "minor", "sad"],
+    high: ["bright", "glass", "spark", "clear", "shimmer", "shine", "hopeful"],
+  });
+  const surpriseCue = cueLevel(lowerText, {
+    low: ["steady", "simple", "plain", "grounded", "minimal"],
+    high: ["restless", "weird", "surprising", "strange", "unstable", "angular"],
+  });
+  const energy = seededUnit(rng, energyCue);
+  const brightness = seededUnit(rng, brightnessCue);
+  const surpriseTarget = seededUnit(rng, surpriseCue);
+  const tempoTarget = 66 + energy * 84;
+  const tempoBpm = tempoTarget * 0.62 + (66 + rng() * 84) * 0.38;
+  const mode = brightnessCue === undefined
+    ? SONG_GOAL_MODES[(seed >>> 3) % SONG_GOAL_MODES.length]!
+    : pickWeighted(SONG_GOAL_MODES, rng, (candidate) => modeWeight(candidate, brightness));
+  const tonic = pickWeighted(SONG_GOAL_TONICS, rng, () => 1);
+  const formPreference = pickWeighted(FORM_VARIANTS.map((variant) => variant.id), rng, (candidate) =>
+    candidate === "early-hook" && energy > 0.64
+      ? 3
+      : candidate === "wide-return" && energy < 0.46
+        ? 3
+        : 1
+  );
+  const chorus = clampNumber(0.38 + energy * 0.48 + rng() * 0.18, 0, 1);
+  const bridge = clampNumber(0.25 + surpriseTarget * 0.42 + (1 - energy) * 0.18 + rng() * 0.18, 0, 1);
+  const verse = clampNumber(0.28 + (1 - energy) * 0.36 + rng() * 0.16, 0, 1);
+  return finalizeSongGoal({
+    ...cloneGoal(DEFAULT_SONG_GOAL),
+    id: undefined,
+    brief: undefined,
+    tonic,
+    mode,
+    tempoBpm,
+    energy,
+    surpriseTarget,
+    brightness,
+    formPreference,
+    influenceHints: [],
+    sectionEmphasis: {
+      verse,
+      chorus,
+      bridge,
+    },
+  });
+}
+
+function cueLevel(
+  text: string,
+  keywords: { high: readonly string[]; low: readonly string[] },
+): number | undefined {
+  if (keywords.high.some((keyword) => hasKeyword(text, keyword))) return 0.82;
+  if (keywords.low.some((keyword) => hasKeyword(text, keyword))) return 0.22;
+  return undefined;
+}
+
+function seededUnit(rng: () => number, cue: number | undefined): number {
+  const raw = 0.18 + rng() * 0.72;
+  return roundTo(cue === undefined ? raw : raw * 0.38 + cue * 0.62, 3);
+}
+
+function modeWeight(mode: SongGoalMode, brightness: number): number {
+  if (brightness >= 0.62) {
+    if (mode === "lydian" || mode === "ionian") return 3;
+    if (mode === "mixolydian") return 2;
+    return 1;
+  }
+  if (brightness <= 0.38) {
+    if (mode === "phrygian" || mode === "aeolian") return 3;
+    if (mode === "dorian") return 2;
+    return 1;
+  }
+  return mode === "mixolydian" || mode === "dorian" ? 2 : 1;
+}
+
+function pickWeighted<T extends string>(
+  values: readonly T[],
+  rng: () => number,
+  weightFor: (value: T) => number,
+): T {
+  const weights = values.map((value) => Math.max(0.001, weightFor(value)));
+  const total = weights.reduce((sum, weight) => sum + weight, 0);
+  let cursor = rng() * total;
+  for (let index = 0; index < values.length; index += 1) {
+    cursor -= weights[index] ?? 0;
+    if (cursor <= 0) return values[index]!;
+  }
+  return values[values.length - 1]!;
 }
 
 function hasAny(text: string, keywords: readonly string[], matchedKeywords: string[]): boolean {
@@ -691,12 +801,27 @@ function roundTo(value: number, places: number): number {
 }
 
 function stableHash(value: string): string {
+  return stableHashNumber(value).toString(36);
+}
+
+function stableHashNumber(value: string): number {
   let hash = 2166136261;
   for (let index = 0; index < value.length; index += 1) {
     hash ^= value.charCodeAt(index);
     hash = Math.imul(hash, 16777619);
   }
-  return (hash >>> 0).toString(36);
+  return hash >>> 0;
+}
+
+function mulberry32(seed: number): () => number {
+  let a = seed || 1;
+  return () => {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

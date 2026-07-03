@@ -157,7 +157,12 @@ import {
   type SongId,
   type SongMaterial,
 } from "./song-material";
-import { createSongStarterMaterial } from "./song-starter-material";
+import {
+  createSongStarterMaterial,
+  createStarterMaterialProfile,
+  createStarterMelodyPlan,
+  type StarterMaterialProfile,
+} from "./song-starter-material";
 import {
   SONG_LIBRARY_STORAGE_KEY,
   appendSongLibraryEntry,
@@ -177,6 +182,7 @@ import {
   type SongLibraryState,
 } from "./song-library";
 import { generateProsodicAnchorPhrase, generateProsodicMelody } from "./melody-prosody";
+import { chooseMelodyPlan, type MelodyPlan } from "./melody-plan";
 import { scoreProsody } from "./prosody-scoring";
 import {
   arrangeSongFormPatternEvent,
@@ -1361,7 +1367,8 @@ function renderSongStarterPreview(): void {
     renderSongStarterGeneratedSeed(undefined);
     return;
   }
-  const interpretation = createSongStarterInterpretation(draft);
+  const previewMaterialSeed = createSongStarterMaterialSeed(draft);
+  const interpretation = createSongStarterInterpretation(draft, previewMaterialSeed);
   const goal = interpretation.goal;
   const enabledPlayers = draft.playerPlans.filter((plan) => plan.enabled);
   const playerSummary = enabledPlayers.length > 0
@@ -1423,18 +1430,13 @@ function generateSongStarterSeed(): SongStarterGeneration | undefined {
     renderSongStarterPreview();
     return undefined;
   }
-  const interpretation = createSongStarterInterpretation(draft);
+  const materialSeed = createSongStarterMaterialSeed(draft);
+  const interpretation = createSongStarterInterpretation(draft, materialSeed);
   if (!interpretation.validation.valid) {
     renderSongStarterPreview();
     return undefined;
   }
   const baseSongId = chooseStarterMaterialForPrompt(draft.prompt, interpretation.goal);
-  const materialSeed = hashStarterSeed([
-    draft.prompt,
-    interpretation.goal.id,
-    baseSongId,
-    draft.playerPlans.map((plan) => `${plan.playerId}:${plan.enabled}:${plan.brief}`).join("|"),
-  ].join("||"));
   const structureSummary = createSongStarterStructureSummary(interpretation.goal, baseSongId);
   const playerPlans = createGeneratedSongStarterPlayerPlans(draft, interpretation.goal, baseSongId);
   for (const plan of playerPlans) {
@@ -1507,8 +1509,11 @@ function readSongStarterDraft(): {
   };
 }
 
-function createSongStarterInterpretation(draft: ReturnType<typeof readSongStarterDraft>): SongGoalInterpretation {
-  const base = interpretSongGoal(draft.prompt);
+function createSongStarterInterpretation(
+  draft: ReturnType<typeof readSongStarterDraft>,
+  materialSeed?: number,
+): SongGoalInterpretation {
+  const base = interpretSongGoal(draft.prompt, { materialSeed });
   const candidate: SongGoal = {
     ...base.goal,
     tonic: draft.tonic ?? base.goal.tonic,
@@ -1529,6 +1534,19 @@ function createSongStarterInterpretation(draft: ReturnType<typeof readSongStarte
     validation,
     goal: validation.goal,
   };
+}
+
+function createSongStarterMaterialSeed(draft: ReturnType<typeof readSongStarterDraft>): number {
+  return hashStarterSeed([
+    "e4",
+    songLibraryState.songs.length,
+    draft.prompt,
+    draft.tonic ?? "draw-tonic",
+    draft.mode ?? "draw-mode",
+    draft.tempoBpm ?? "draw-tempo",
+    draft.formPreference ?? "draw-form",
+    draft.playerPlans.map((plan) => `${plan.playerId}:${plan.enabled}:${plan.brief}`).join("|"),
+  ].join("||"));
 }
 
 function readSongStarterTempo(): number | undefined {
@@ -4299,10 +4317,16 @@ function getAnchorPhraseEditorPointerValue(
 }
 
 function createCurrentProsodyAnchorPhrase(options?: { seed?: number; baseOctave?: number; bars?: number }): AnchorPhrase {
+  const seed = options?.seed ?? prosodySeedForSong(getActiveSongLibraryId());
+  const plan = options?.seed === undefined
+    ? getCurrentMelodyPlan()
+    : chooseMelodyPlan(seed, appliedSongGoal ?? songGoalInterpretation.goal, { totalBeats: (options?.bars ?? 4) * 4 });
   return generateProsodicAnchorPhrase({
-    seed: options?.seed ?? prosodySeedForSong(getActiveSongLibraryId()),
-    baseOctave: options?.baseOctave ?? 4,
+    seed,
+    baseOctave: options?.baseOctave ?? plan.registerBase,
     bars: options?.bars ?? 4,
+    goal: appliedSongGoal ?? songGoalInterpretation.goal,
+    plan,
   });
 }
 
@@ -5510,10 +5534,13 @@ function getActiveMelodyPhrasing(): PlayerPatternSource | undefined {
   }
   if (!prosodyEnabled) return undefined;
   if (!cachedProsodyMelody) {
+    const plan = getCurrentMelodyPlan();
     cachedProsodyMelody = generateProsodicMelody({
       seed: prosodySeedForSong(getActiveSongLibraryId()),
-      baseOctave: 4,
+      baseOctave: plan.registerBase,
       bars: 4,
+      goal: appliedSongGoal ?? songGoalInterpretation.goal,
+      plan,
     });
   }
   return clonePlayerPatternSource(cachedProsodyMelody);
@@ -5823,6 +5850,55 @@ function prosodySeedForSong(nextSongId: string): number {
     hash = Math.imul(hash, 16777619);
   }
   return hash >>> 0;
+}
+
+function getCurrentMelodyPlan(): MelodyPlan {
+  const activeSong = getActiveSongLibraryEntry();
+  const starter = activeSong.starter;
+  if (starter && starter.materialSeed !== undefined) {
+    const profile = createStarterMaterialProfile(starter, starter.materialSeed);
+    return cloneMelodyPlan(createStarterMelodyPlan(starter, starter.materialSeed, profile));
+  }
+  return cloneMelodyPlan(chooseMelodyPlan(
+    prosodySeedForSong(activeSong.id),
+    appliedSongGoal ?? songGoalInterpretation.goal,
+    { totalBeats: 16 },
+  ));
+}
+
+function getMelodyPlanState(): {
+  materialSeed?: number;
+  plan: MelodyPlan;
+  profile?: StarterMaterialProfile;
+  songLibraryId: string;
+} {
+  const activeSong = getActiveSongLibraryEntry();
+  const starter = activeSong.starter;
+  if (starter && starter.materialSeed !== undefined) {
+    const profile = createStarterMaterialProfile(starter, starter.materialSeed);
+    return {
+      materialSeed: starter.materialSeed,
+      plan: cloneMelodyPlan(createStarterMelodyPlan(starter, starter.materialSeed, profile)),
+      profile: { ...profile },
+      songLibraryId: activeSong.id,
+    };
+  }
+  return {
+    plan: getCurrentMelodyPlan(),
+    songLibraryId: activeSong.id,
+  };
+}
+
+function cloneMelodyPlan(plan: MelodyPlan): MelodyPlan {
+  return {
+    ...plan,
+    phraseBeats: [...plan.phraseBeats],
+    contours: [...plan.contours],
+    cadences: {
+      internal: [...plan.cadences.internal],
+      final: plan.cadences.final,
+    },
+  };
 }
 
 function evolvingDialSeedForSong(nextSongId: string): number {
@@ -7934,6 +8010,14 @@ declare global {
       interpret(sourceIdea: string): SongGoalInterpretation;
       validate(candidate: unknown): SongGoalValidationResult;
     };
+    melodyPlan?: {
+      getState(): {
+        materialSeed?: number;
+        plan: MelodyPlan;
+        profile?: StarterMaterialProfile;
+        songLibraryId: string;
+      };
+    };
     prosody?: {
       auditionEliteCandidate(options?: CandidateMelodyAuditionOptions): Promise<CandidateMelodyAuditionState>;
       clearCandidateAudition(): CandidateMelodyAuditionState;
@@ -8189,6 +8273,10 @@ window.songGoal = {
   getVocabulary: () => SONG_GOAL_VOCABULARY,
   interpret: (sourceIdea) => applySongGoalIdea(sourceIdea),
   validate: (candidate) => validateSongGoal(candidate),
+};
+
+window.melodyPlan = {
+  getState: () => getMelodyPlanState(),
 };
 
 window.prosody = {

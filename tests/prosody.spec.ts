@@ -2,7 +2,20 @@ import { expect, test } from "@playwright/test";
 import { generateProsodicMelody } from "../src/melody-prosody";
 import { scoreProsody, extractNotes } from "../src/prosody-scoring";
 import { reFoot, shiftAnacrusis, alterCadence, varyContour } from "../src/prosody-development";
+import type { MelodyPlan } from "../src/melody-plan";
 import type { PlayerPatternSource } from "../src/song-material";
+
+const LIGHT_PICKUP_QA_PLAN: MelodyPlan = {
+  seed: 404,
+  phraseStructure: "2-even",
+  phraseBeats: [8, 8],
+  motifScheme: "through",
+  contours: ["climb", "descent"],
+  cadences: { internal: [5], final: "1" },
+  anacrusis: "light",
+  densityFamily: "flowing",
+  registerBase: 4,
+};
 
 test.describe("Track B1: Prosody Scoring Unit Tests", () => {
   test("scoreProsody calculates overall and subscores for a generated prosodic melody", () => {
@@ -58,8 +71,7 @@ test.describe("Track B1: Prosody Scoring Unit Tests", () => {
   });
 
   test("anacrusis subscore detects presence and absence of pickup notes", () => {
-    // Seed 4 produces pickups in both antecedent and consequent phrases
-    const phrase = generateProsodicMelody({ seed: 4, baseOctave: 4, bars: 4 });
+    const phrase = generateProsodicMelody({ seed: 4, baseOctave: 4, bars: 4, plan: LIGHT_PICKUP_QA_PLAN });
     const score = scoreProsody(phrase, [4, 4]);
     expect(score.subscores.anacrusis).toBe(1.0);
 
@@ -73,7 +85,7 @@ test.describe("Track B1: Prosody Scoring Unit Tests", () => {
   });
 
   test("questionAnswer subscore detects question (dominant) and answer (tonic) cadences", () => {
-    const phrase = generateProsodicMelody({ seed: 777, baseOctave: 4, bars: 4 });
+    const phrase = generateProsodicMelody({ seed: 777, baseOctave: 4, bars: 4, plan: LIGHT_PICKUP_QA_PLAN });
     const notes = extractNotes(phrase);
 
     const anteNotes = notes.filter((n) => n.startBeat < 8);
@@ -194,7 +206,7 @@ test.describe("Track B2: Prosody Development Operators Unit Tests", () => {
   });
 
   test("shiftAnacrusis adds, removes, lengthens, and shortens pickups correctly", () => {
-    const phrase = generateProsodicMelody({ seed: 4, baseOctave: 4, bars: 4 });
+    const phrase = generateProsodicMelody({ seed: 4, baseOctave: 4, bars: 4, plan: LIGHT_PICKUP_QA_PLAN });
     
     // 1. Remove pickup
     const removed = shiftAnacrusis(phrase, "remove");
