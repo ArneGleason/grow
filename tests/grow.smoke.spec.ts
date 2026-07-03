@@ -1272,6 +1272,15 @@ type InterplayStateForSmoke = {
 
 type InterplayExperimentForSmoke = InterplayStateForSmoke & {
   activeTakeId?: "a" | "b";
+  progress: {
+    phase: "choose-a" | "listen-a" | "listen-b" | "complete";
+    resultMessage: string;
+    steps: readonly {
+      id: "a" | "b" | "vote";
+      label: string;
+      state: "todo" | "current" | "done";
+    }[];
+  };
   takes: readonly {
     id: "a" | "b";
     label: string;
@@ -3353,6 +3362,10 @@ test("interplay bass answers the previous melody bar for generated songs", async
   await expect(page.getByTestId("interplay-ab-take-b")).toBeVisible();
   await expect(page.getByTestId("interplay-vote-a")).toBeVisible();
   await expect(page.getByTestId("interplay-vote-b")).toBeVisible();
+  await expect(page.getByTestId("interplay-ui-result")).toContainText("Choose A");
+  await expect(page.getByTestId("interplay-step-a")).toHaveAttribute("data-state", "current");
+  await expect(page.getByTestId("interplay-step-b")).toHaveAttribute("data-state", "todo");
+  await expect(page.getByTestId("interplay-step-vote")).toHaveAttribute("data-state", "todo");
 
   await page.getByTestId("song-library-new").click();
   await page.getByTestId("song-starter-prompt").fill(
@@ -3472,29 +3485,53 @@ test("interplay bass answers the previous melody bar for generated songs", async
   await page.getByTestId("interplay-ab-take-a").click();
   await expect(page.getByTestId("interplay-ui-color-toggle")).not.toBeChecked();
   await expect(page.getByTestId("interplay-ui-votes")).toContainText("Take A armed");
+  await expect(page.getByTestId("interplay-ui-result")).toContainText("A selected");
+  await expect(page.getByTestId("interplay-ui-result")).toHaveAttribute("data-phase", "listen-a");
+  await expect(page.getByTestId("interplay-step-a")).toHaveAttribute("data-state", "current");
+  await expect(page.getByTestId("interplay-ab-take-a")).toHaveAttribute("aria-pressed", "true");
   const armedAExperiment = await getInterplayExperimentForSmoke(page);
   expect(armedAExperiment).toMatchObject({
     activeTakeId: "a",
     enabled: true,
     colorEnabled: false,
+    progress: {
+      phase: "listen-a",
+    },
   });
   await page.getByTestId("interplay-ab-take-b").click();
   await expect(page.getByTestId("interplay-ui-color-toggle")).toBeChecked();
+  await expect(page.getByTestId("interplay-ui-result")).toContainText("B selected");
+  await expect(page.getByTestId("interplay-ui-result")).toHaveAttribute("data-phase", "listen-b");
+  await expect(page.getByTestId("interplay-step-a")).toHaveAttribute("data-state", "done");
+  await expect(page.getByTestId("interplay-step-b")).toHaveAttribute("data-state", "current");
+  await expect(page.getByTestId("interplay-ab-take-b")).toHaveAttribute("aria-pressed", "true");
   const armedBExperiment = await getInterplayExperimentForSmoke(page);
   expect(armedBExperiment).toMatchObject({
     activeTakeId: "b",
     enabled: true,
     colorEnabled: true,
+    progress: {
+      phase: "listen-b",
+    },
   });
-  await page.getByTestId("interplay-ab-take-a").click();
   await page.getByTestId("interplay-vote-a").click();
-  await expect(page.getByTestId("interplay-ui-votes")).toContainText("Prefer A");
+  await expect(page.getByTestId("interplay-ui-votes")).toContainText("Vote recorded: Prefer A");
+  await expect(page.getByTestId("interplay-ui-result")).toContainText("Vote recorded: Prefer A");
+  await expect(page.getByTestId("interplay-ui-result")).toHaveAttribute("data-phase", "complete");
+  await expect(page.getByTestId("interplay-step-a")).toHaveAttribute("data-state", "done");
+  await expect(page.getByTestId("interplay-step-b")).toHaveAttribute("data-state", "done");
+  await expect(page.getByTestId("interplay-step-vote")).toHaveAttribute("data-state", "done");
+  await expect(page.getByTestId("interplay-vote-a")).toHaveAttribute("aria-pressed", "true");
   const votedExperiment = await getInterplayExperimentForSmoke(page);
   expect(votedExperiment.votes.at(-1)).toMatchObject({
-    activeTakeId: "a",
+    activeTakeId: "b",
     selectedTakeId: "a",
     value: "prefer-a",
-    colorEnabled: false,
+    colorEnabled: true,
+  });
+  expect(votedExperiment.progress).toMatchObject({
+    phase: "complete",
+    resultMessage: "Vote recorded: Prefer A. A/B comparison complete.",
   });
 
   await page.getByTestId("interplay-diagnostics-toggle").click();
@@ -3509,7 +3546,7 @@ test("interplay bass answers the previous melody bar for generated songs", async
     event.payload.feedback === "better-on"
   );
   expect(interplayFeedback?.payload).toMatchObject({
-    colorEnabled: false,
+    colorEnabled: true,
     enabled: true,
     source: "interplay-experiment",
   });
@@ -3528,9 +3565,9 @@ test("interplay bass answers the previous melody bar for generated songs", async
     event.payload.vote === "prefer-a"
   );
   expect(interplayVote?.payload).toMatchObject({
-    activeTakeId: "a",
+    activeTakeId: "b",
     selectedTakeId: "a",
-    colorEnabled: false,
+    colorEnabled: true,
     enabled: true,
     source: "interplay-ab-experiment",
     takes: [

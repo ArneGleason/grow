@@ -341,6 +341,8 @@ let lastInterplayRefreshBar = -1;
 let interplayExperimentFeedbacks: InterplayExperimentFeedback[] = [];
 let interplayExperimentMessage = "No feedback yet.";
 let interplayExperimentActiveTakeId: InterplayExperimentTakeId | undefined;
+let interplayExperimentArmedTakeIds = new Set<InterplayExperimentTakeId>();
+let interplayExperimentCurrentVote: InterplayExperimentVote | undefined;
 let interplayExperimentVotes: InterplayExperimentVote[] = [];
 let interplayExperimentVoteMessage = "No A/B votes yet.";
 let cachedSongSketchKey = "";
@@ -439,6 +441,9 @@ interface InterplayStateSnapshot {
 type InterplayExperimentFeedbackValue = "heard-answer" | "better-on" | "too-obvious" | "no-clear-difference";
 type InterplayExperimentTakeId = "a" | "b";
 type InterplayExperimentVoteValue = "prefer-a" | "prefer-b" | "no-difference";
+type InterplayExperimentPhase = "choose-a" | "listen-a" | "listen-b" | "complete";
+type InterplayExperimentStepId = "a" | "b" | "vote";
+type InterplayExperimentStepState = "todo" | "current" | "done";
 
 interface InterplayExperimentTake {
   id: InterplayExperimentTakeId;
@@ -477,10 +482,23 @@ interface InterplayExperimentVote {
   lastAnswer?: InterplayAnswerSummary;
 }
 
+interface InterplayExperimentProgressStep {
+  id: InterplayExperimentStepId;
+  label: string;
+  state: InterplayExperimentStepState;
+}
+
+interface InterplayExperimentProgress {
+  phase: InterplayExperimentPhase;
+  resultMessage: string;
+  steps: readonly InterplayExperimentProgressStep[];
+}
+
 interface InterplayExperimentState extends InterplayStateSnapshot {
   activeTakeId?: InterplayExperimentTakeId;
   feedbacks: readonly InterplayExperimentFeedback[];
   message: string;
+  progress: InterplayExperimentProgress;
   takes: readonly InterplayExperimentTake[];
   voteMessage: string;
   votes: readonly InterplayExperimentVote[];
@@ -1040,6 +1058,11 @@ function setInterplayColorEnabled(enabled: boolean, source = "interplay-api"): I
 function applyInterplayExperimentTake(takeId: string): InterplayExperimentState {
   const take = getInterplayExperimentTake(takeId);
   if (!take) return getInterplayExperimentState();
+  if (interplayExperimentCurrentVote || take.id === "a" || !interplayExperimentActiveTakeId) {
+    interplayExperimentArmedTakeIds = new Set<InterplayExperimentTakeId>();
+  }
+  interplayExperimentCurrentVote = undefined;
+  interplayExperimentArmedTakeIds.add(take.id);
   interplayExperimentActiveTakeId = take.id;
   interplayEnabledOverride = take.enabled;
   interplayColorEnabledOverride = take.colorEnabled;
@@ -1079,6 +1102,7 @@ function getInterplayExperimentState(): InterplayExperimentState {
     activeTakeId: interplayExperimentActiveTakeId,
     feedbacks: interplayExperimentFeedbacks.map(cloneInterplayExperimentFeedback),
     message: interplayExperimentMessage,
+    progress: getInterplayExperimentProgress(),
     takes: INTERPLAY_EXPERIMENT_TAKES.map(cloneInterplayExperimentTake),
     voteMessage: interplayExperimentVoteMessage,
     votes: interplayExperimentVotes.map(cloneInterplayExperimentVote),
@@ -1132,10 +1156,67 @@ function applyInterplayExperimentVote(value: string): InterplayExperimentState {
   };
   interplayExperimentVotes = [...interplayExperimentVotes.slice(-23), vote];
   const takeSuffix = selectedTakeId ? ` (${selectedTakeId.toUpperCase()})` : "";
-  interplayExperimentVoteMessage = `${vote.label}${takeSuffix} recorded.`;
+  interplayExperimentCurrentVote = vote;
+  interplayExperimentVoteMessage = `Vote recorded: ${vote.label}${takeSuffix}. Comparison complete.`;
   recordInterplayExperimentVote(vote);
   renderWorld();
   return getInterplayExperimentState();
+}
+
+function getInterplayExperimentProgress(): InterplayExperimentProgress {
+  const hasA = interplayExperimentArmedTakeIds.has("a");
+  const hasB = interplayExperimentArmedTakeIds.has("b");
+  const currentVote = interplayExperimentCurrentVote;
+
+  if (currentVote) {
+    return {
+      phase: "complete",
+      resultMessage: `Vote recorded: ${currentVote.label}. A/B comparison complete.`,
+      steps: [
+        { id: "a", label: "A pass", state: "done" },
+        { id: "b", label: "B pass", state: "done" },
+        { id: "vote", label: "Vote", state: "done" },
+      ],
+    };
+  }
+
+  if (interplayExperimentActiveTakeId === "a") {
+    return {
+      phase: "listen-a",
+      resultMessage: "A selected: color off. Press Start, listen, then Stop and choose B.",
+      steps: [
+        { id: "a", label: "A pass", state: "current" },
+        { id: "b", label: "B pass", state: "todo" },
+        { id: "vote", label: "Vote", state: "todo" },
+      ],
+    };
+  }
+
+  if (interplayExperimentActiveTakeId === "b") {
+    return {
+      phase: "listen-b",
+      resultMessage: hasA
+        ? "B selected: color on. Press Start, listen, then vote."
+        : "B selected first: listen now, then compare against A before voting.",
+      steps: [
+        { id: "a", label: "A pass", state: hasA ? "done" : "todo" },
+        { id: "b", label: "B pass", state: "current" },
+        { id: "vote", label: "Vote", state: "todo" },
+      ],
+    };
+  }
+
+  return {
+    phase: "choose-a",
+    resultMessage: hasB
+      ? "Choose A to finish the pair, then vote."
+      : "Choose A to begin the color comparison.",
+    steps: [
+      { id: "a", label: "A pass", state: hasA ? "done" : "current" },
+      { id: "b", label: "B pass", state: hasB ? "done" : "todo" },
+      { id: "vote", label: "Vote", state: hasA && hasB ? "current" : "todo" },
+    ],
+  };
 }
 
 function getInterplayExperimentTake(takeId: string): InterplayExperimentTake | undefined {
@@ -1829,11 +1910,28 @@ ${songStarterPlayerRows}
             <span>Answer color</span>
           </label>
         </header>
-        <ol class="listening-experiment__steps" data-testid="interplay-instructions">
-          <li>Pick A, press Start, and listen after each melody bar.</li>
-          <li>Stop, pick B, and replay the same short passage.</li>
-          <li>Vote from the comparison you can actually hear.</li>
-        </ol>
+        <div class="listening-experiment__guide">
+          <ol class="listening-experiment__steps" data-testid="interplay-instructions">
+            <li>Pick A, press Start, and listen after each melody bar.</li>
+            <li>Stop, pick B, and replay the same short passage.</li>
+            <li>Vote from the comparison you can actually hear.</li>
+          </ol>
+          <div
+            class="listening-experiment__progress"
+            data-testid="interplay-progress"
+            aria-label="Interplay listening progress"
+          >
+            <span data-interplay-step="a" data-testid="interplay-step-a"><strong>1</strong> A pass</span>
+            <span data-interplay-step="b" data-testid="interplay-step-b"><strong>2</strong> B pass</span>
+            <span data-interplay-step="vote" data-testid="interplay-step-vote"><strong>3</strong> Vote</span>
+          </div>
+          <output
+            class="listening-experiment__result"
+            data-testid="interplay-ui-result"
+            role="status"
+            aria-live="assertive"
+          >Choose A to begin the color comparison.</output>
+        </div>
         <div class="listening-experiment__choices">
           <div
             class="listening-experiment__takes"
@@ -2483,6 +2581,8 @@ const interplayUiStatus = requireElement<HTMLOutputElement>("[data-testid='inter
 const interplayUiAnswer = requireElement<HTMLOutputElement>("[data-testid='interplay-ui-answer']");
 const interplayUiFeedback = requireElement<HTMLOutputElement>("[data-testid='interplay-ui-feedback']");
 const interplayUiVotes = requireElement<HTMLOutputElement>("[data-testid='interplay-ui-votes']");
+const interplayUiResult = requireElement<HTMLOutputElement>("[data-testid='interplay-ui-result']");
+const interplayProgressSteps = Array.from(document.querySelectorAll<HTMLElement>("[data-interplay-step]"));
 const interplayTakeControls = requireElement<HTMLElement>("[data-testid='interplay-take-controls']");
 const interplayVoteControls = requireElement<HTMLElement>("[data-testid='interplay-vote-controls']");
 const interplayFeedbackControls = requireElement<HTMLElement>("[data-testid='interplay-feedback-controls']");
@@ -6120,12 +6220,23 @@ function renderWrittenEvolvingControl(): void {
 
 function renderInterplayExperiment(): void {
   const state = getInterplayState();
+  const progress = getInterplayExperimentProgress();
   interplayUiToggle.checked = state.enabled;
   interplayUiToggle.dataset.defaultEnabled = String(state.defaultEnabled);
   interplayUiToggle.dataset.override = state.override === undefined ? "default" : String(state.override);
   interplayUiColorToggle.checked = state.colorEnabled;
   interplayUiColorToggle.dataset.defaultEnabled = String(state.colorDefaultEnabled);
   interplayUiColorToggle.dataset.override = state.colorOverride === undefined ? "default" : String(state.colorOverride);
+  interplayUiResult.textContent = progress.resultMessage;
+  interplayUiResult.dataset.phase = progress.phase;
+  for (const stepElement of interplayProgressSteps) {
+    const step = progress.steps.find((candidate) =>
+      candidate.id === stepElement.dataset.interplayStep
+    );
+    if (!step) continue;
+    stepElement.dataset.state = step.state;
+    stepElement.setAttribute("aria-current", step.state === "current" ? "step" : "false");
+  }
   interplayUiStatus.textContent = formatInterplayExperimentStatus(state);
   interplayUiAnswer.textContent = formatInterplayAnswerForUi(state);
   interplayUiFeedback.textContent = [
@@ -6137,15 +6248,21 @@ function renderInterplayExperiment(): void {
     `${interplayExperimentVotes.length} A/B vote${interplayExperimentVotes.length === 1 ? "" : "s"}`,
   ].join(" | ");
   for (const button of interplayTakeControls.querySelectorAll<HTMLButtonElement>("[data-interplay-take]")) {
-    button.dataset.selected = String(button.dataset.interplayTake === interplayExperimentActiveTakeId);
+    const isSelected = button.dataset.interplayTake === interplayExperimentActiveTakeId;
+    button.dataset.selected = String(isSelected);
+    button.setAttribute("aria-pressed", String(isSelected));
   }
   const latestVoteValue = interplayExperimentVotes.at(-1)?.value;
   for (const button of interplayVoteControls.querySelectorAll<HTMLButtonElement>("[data-interplay-vote]")) {
-    button.dataset.selected = String(button.dataset.interplayVote === latestVoteValue);
+    const isSelected = button.dataset.interplayVote === latestVoteValue;
+    button.dataset.selected = String(isSelected);
+    button.setAttribute("aria-pressed", String(isSelected));
   }
   const latestValue = interplayExperimentFeedbacks.at(-1)?.value;
   for (const button of interplayFeedbackControls.querySelectorAll<HTMLButtonElement>("[data-interplay-feedback]")) {
-    button.dataset.selected = String(button.dataset.interplayFeedback === latestValue);
+    const isSelected = button.dataset.interplayFeedback === latestValue;
+    button.dataset.selected = String(isSelected);
+    button.setAttribute("aria-pressed", String(isSelected));
   }
 }
 

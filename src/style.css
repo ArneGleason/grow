@@ -707,6 +707,12 @@ button {
   outline-offset: 2px;
 }
 
+.listening-experiment__guide {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
 .listening-experiment__steps {
   display: grid;
   gap: 2px;
@@ -715,6 +721,76 @@ button {
   color: #d7dfcf;
   font-size: 0.76rem;
   line-height: 1.18;
+}
+
+.listening-experiment__progress {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+  min-width: 0;
+}
+
+.listening-experiment__progress span {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid rgba(174, 183, 165, 0.22);
+  border-radius: 8px;
+  padding: 5px 6px;
+  background: rgba(238, 243, 229, 0.06);
+  color: #aeb7a5;
+  font-size: 0.7rem;
+  font-weight: 800;
+  line-height: 1.1;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.listening-experiment__progress strong {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  margin-right: 3px;
+  border-radius: 999px;
+  background: rgba(174, 183, 165, 0.18);
+  color: #eef3e5;
+  font-size: 0.66rem;
+}
+
+.listening-experiment__progress span[data-state="current"] {
+  border-color: rgba(246, 204, 107, 0.76);
+  background: rgba(246, 204, 107, 0.16);
+  color: #fff2c7;
+}
+
+.listening-experiment__progress span[data-state="done"] {
+  border-color: rgba(217, 247, 167, 0.7);
+  background: rgba(217, 247, 167, 0.18);
+  color: #eef3e5;
+}
+
+.listening-experiment__progress span[data-state="done"] strong {
+  background: #d9f7a7;
+  color: #101511;
+}
+
+.listening-experiment__result {
+  min-width: 0;
+  border: 1px solid rgba(246, 204, 107, 0.45);
+  border-radius: 8px;
+  padding: 8px 9px;
+  background: rgba(246, 204, 107, 0.13);
+  color: #fff2c7;
+  font-size: 0.8rem;
+  font-weight: 800;
+  line-height: 1.22;
+}
+
+.listening-experiment__result[data-phase="complete"] {
+  border-color: rgba(217, 247, 167, 0.82);
+  background: rgba(217, 247, 167, 0.2);
+  color: #eef3e5;
 }
 
 .listening-experiment__choices {
@@ -1980,6 +2056,10 @@ button {
   .listening-experiment__header {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .listening-experiment__progress {
+    grid-template-columns: 1fr;
   }
 
   .interplay-switch {
