@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Byte E2 tension/color over bass interplay",
-  "status": "byte-e2-tension-color-ab-ready-for-review",
-  "updatedAt": "2026-07-02T00:20:00Z",
-  "lastHandoff": ".agent/handoffs/2026-07-01-codex-to-claude-byte-e2-tension-color.md",
-  "branch": "codex/byte-e2-tension-color",
-  "commit": "HEAD on codex/byte-e2-tension-color",
+  "lastTask": "Byte E3a listening votes over E1/E2 interplay",
+  "status": "byte-e3a-listening-votes-ready-for-review",
+  "updatedAt": "2026-07-03T13:02:10Z",
+  "lastHandoff": ".agent/handoffs/2026-07-03-codex-to-claude-byte-e3a-listening-votes.md",
+  "branch": "codex/byte-e3a-listening-votes",
+  "commit": "HEAD on codex/byte-e3a-listening-votes",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte E2 is implemented in the clean temp worktree on top of Byte E1 after Arne confirmed Bass answers melody ON is better. The byte adds pure harmonic answer coloring in src/harmonic-color.ts, optional PatternNoteSource.chromaticOffset materialization through noteFromScaleDegreeWithOffset(), and color/harmony tags plus read-only answer color summaries in window.interplay.getState(). High-tension chorus answers get one bounded deterministic outside-scale lean before resolving; low-tension verse answers stay diatonic and the integer motif variation relation is preserved. After Arne asked for a true A/B, the Ear Check overlay gained a separate Answer color switch plus window.interplay.setColorEnabled(); color-off keeps the same bass answer degrees while muting chromatic offsets and records song.interplay_color_toggled. Validation: build green; unit:harmonic-color 4/4; unit:motif-memory 7/7; focused interplay A/B smoke green; app-shell smoke green; full smoke 79/79; diff-check green. npm audit remains red on pre-existing esbuild/Vite advisories requiring a Vite patch/force fix outside this musical slice."
+    "summary": "Byte E3a is implemented in the clean temp worktree on top of E2. The Ear Check overlay now supports a focused listening-vote experiment with deterministic A/B takes: A = bass answers melody with color off, B = bass answers melody with color on. Vote buttons persist song.interplay_vote records with song identity, active/selected take ids, take definitions, answer count, current enabled/color state, and last-answer summary. Older quick feedback controls remain under a Diagnostics lid. window.interplay now exposes applyTake(), vote(), and getExperiment() with takes/votes. This is UI/instrumentation only: no scheduler/audio/harmony/scorer/evolution/model path changed. Validation: build green; focused interplay smoke green 1/1; first full smoke showed unrelated transient failures that passed in focused rerun; confirmation full smoke green 79/79; diff-check green. npm audit remains red on pre-existing esbuild/Vite advisories."
   }
 }

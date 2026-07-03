@@ -717,6 +717,14 @@ button {
   line-height: 1.18;
 }
 
+.listening-experiment__choices {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.listening-experiment__takes,
+.listening-experiment__votes,
 .listening-experiment__feedback {
   display: flex;
   align-items: center;
@@ -725,16 +733,37 @@ button {
   flex-wrap: wrap;
 }
 
+.listening-experiment__takes .mini-button,
+.listening-experiment__votes .mini-button,
 .listening-experiment__feedback .mini-button {
   min-height: 28px;
   padding-inline: 7px;
   font-size: 0.74rem;
 }
 
+.listening-experiment__takes .mini-button[data-selected="true"],
+.listening-experiment__votes .mini-button[data-selected="true"],
 .listening-experiment__feedback .mini-button[data-selected="true"] {
   border-color: rgba(246, 204, 107, 0.72);
   background: rgba(246, 204, 107, 0.18);
   color: #fff2c7;
+}
+
+.listening-experiment__diagnostics {
+  color: #aeb7a5;
+  font-size: 0.74rem;
+}
+
+.listening-experiment__diagnostics summary {
+  width: fit-content;
+  margin-left: auto;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.listening-experiment__diagnostics[open] {
+  display: grid;
+  gap: 6px;
 }
 
 .listening-experiment__readouts {
@@ -756,6 +785,10 @@ button {
 
 .listening-experiment__readouts output:nth-child(2) {
   color: #d9f7a7;
+}
+
+.listening-experiment__readouts output:nth-child(4) {
+  color: #fff2c7;
 }
 
 .player-entry-strip {
@@ -1900,6 +1933,8 @@ button {
     grid-template-columns: 1fr;
   }
 
+  .listening-experiment__takes,
+  .listening-experiment__votes,
   .listening-experiment__feedback {
     justify-content: flex-start;
   }
@@ -1953,10 +1988,14 @@ button {
     white-space: normal;
   }
 
+  .listening-experiment__takes,
+  .listening-experiment__votes,
   .listening-experiment__feedback {
     justify-content: stretch;
   }
 
+  .listening-experiment__takes .mini-button,
+  .listening-experiment__votes .mini-button,
   .listening-experiment__feedback .mini-button {
     flex: 1 1 132px;
   }

@@ -1270,6 +1270,25 @@ type InterplayStateForSmoke = {
   lastAnswer?: InterplayAnswerForSmoke;
 };
 
+type InterplayExperimentForSmoke = InterplayStateForSmoke & {
+  activeTakeId?: "a" | "b";
+  takes: readonly {
+    id: "a" | "b";
+    label: string;
+    description: string;
+    enabled: boolean;
+    colorEnabled: boolean;
+  }[];
+  votes: readonly {
+    activeTakeId?: "a" | "b";
+    selectedTakeId?: "a" | "b";
+    value: "prefer-a" | "prefer-b" | "no-difference";
+    label: string;
+    colorEnabled: boolean;
+  }[];
+  voteMessage: string;
+};
+
 async function getInterplayStateForSmoke(page: Page): Promise<InterplayStateForSmoke> {
   await page.waitForFunction(() => {
     const appWindow = window as unknown as {
@@ -1286,6 +1305,26 @@ async function getInterplayStateForSmoke(page: Page): Promise<InterplayStateForS
 
   if (!state) {
     throw new Error("window.interplay.getState() was not available");
+  }
+  return state;
+}
+
+async function getInterplayExperimentForSmoke(page: Page): Promise<InterplayExperimentForSmoke> {
+  await page.waitForFunction(() => {
+    const appWindow = window as unknown as {
+      interplay?: { getExperiment(): unknown };
+    };
+    return Boolean(appWindow.interplay?.getExperiment);
+  });
+  const state = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      interplay?: { getExperiment(): InterplayExperimentForSmoke };
+    };
+    return appWindow.interplay?.getExperiment();
+  });
+
+  if (!state) {
+    throw new Error("window.interplay.getExperiment() was not available");
   }
   return state;
 }
@@ -3306,10 +3345,14 @@ test("interplay bass answers the previous melody bar for generated songs", async
     answers: [],
   });
   await expect(page.getByTestId("interplay-experiment")).toBeVisible();
-  await expect(page.getByTestId("interplay-instructions")).toContainText("Turn the switch off");
+  await expect(page.getByTestId("interplay-instructions")).toContainText("Pick A");
   await expect(page.getByTestId("interplay-ui-toggle")).not.toBeChecked();
   await expect(page.getByTestId("interplay-ui-color-toggle")).toBeChecked();
   await expect(page.getByTestId("interplay-ui-status")).toContainText("control song");
+  await expect(page.getByTestId("interplay-ab-take-a")).toBeVisible();
+  await expect(page.getByTestId("interplay-ab-take-b")).toBeVisible();
+  await expect(page.getByTestId("interplay-vote-a")).toBeVisible();
+  await expect(page.getByTestId("interplay-vote-b")).toBeVisible();
 
   await page.getByTestId("song-library-new").click();
   await page.getByTestId("song-starter-prompt").fill(
@@ -3424,6 +3467,37 @@ test("interplay bass answers the previous melody bar for generated songs", async
     tonalScale.includes(pitchClassFromPitch(event.gridPitch) ?? "")
   )).toBe(true);
 
+  await button.click();
+  await expect(button).toHaveText("Start");
+  await page.getByTestId("interplay-ab-take-a").click();
+  await expect(page.getByTestId("interplay-ui-color-toggle")).not.toBeChecked();
+  await expect(page.getByTestId("interplay-ui-votes")).toContainText("Take A armed");
+  const armedAExperiment = await getInterplayExperimentForSmoke(page);
+  expect(armedAExperiment).toMatchObject({
+    activeTakeId: "a",
+    enabled: true,
+    colorEnabled: false,
+  });
+  await page.getByTestId("interplay-ab-take-b").click();
+  await expect(page.getByTestId("interplay-ui-color-toggle")).toBeChecked();
+  const armedBExperiment = await getInterplayExperimentForSmoke(page);
+  expect(armedBExperiment).toMatchObject({
+    activeTakeId: "b",
+    enabled: true,
+    colorEnabled: true,
+  });
+  await page.getByTestId("interplay-ab-take-a").click();
+  await page.getByTestId("interplay-vote-a").click();
+  await expect(page.getByTestId("interplay-ui-votes")).toContainText("Prefer A");
+  const votedExperiment = await getInterplayExperimentForSmoke(page);
+  expect(votedExperiment.votes.at(-1)).toMatchObject({
+    activeTakeId: "a",
+    selectedTakeId: "a",
+    value: "prefer-a",
+    colorEnabled: false,
+  });
+
+  await page.getByTestId("interplay-diagnostics-toggle").click();
   await page.getByTestId("interplay-feedback-better").click();
   await expect(page.getByTestId("interplay-ui-feedback")).toContainText("Better with answers");
   await flushPersistence(page);
@@ -3448,6 +3522,32 @@ test("interplay bass answers the previous melody bar for generated songs", async
     enabled: false,
     source: "interplay-color-experiment-toggle",
   });
+  const interplayVote = dump.events.find((event) =>
+    event.sessionId === persistenceState.sessionId &&
+    event.type === "song.interplay_vote" &&
+    event.payload.vote === "prefer-a"
+  );
+  expect(interplayVote?.payload).toMatchObject({
+    activeTakeId: "a",
+    selectedTakeId: "a",
+    colorEnabled: false,
+    enabled: true,
+    source: "interplay-ab-experiment",
+    takes: [
+      {
+        id: "a",
+        description: "Bass answer, color off",
+        enabled: true,
+        colorEnabled: false,
+      },
+      {
+        id: "b",
+        description: "Bass answer, color on",
+        enabled: true,
+        colorEnabled: true,
+      },
+    ],
+  });
 
   await page.getByTestId("interplay-ui-toggle").uncheck();
   await expect(page.getByTestId("interplay-ui-toggle")).not.toBeChecked();
@@ -3455,8 +3555,6 @@ test("interplay bass answers the previous melody bar for generated songs", async
   expect(disabledState).toMatchObject({ enabled: false, answers: [] });
   await expect(page.getByTestId("interplay-ui-status")).toContainText("Answers off");
 
-  await button.click();
-  await expect(button).toHaveText("Start");
   await button.click();
   await expect(button).toHaveText("Stop");
   await page.waitForFunction(() => {

@@ -340,6 +340,9 @@ let interplayAnswerSummaries: InterplayAnswerSummary[] = [];
 let lastInterplayRefreshBar = -1;
 let interplayExperimentFeedbacks: InterplayExperimentFeedback[] = [];
 let interplayExperimentMessage = "No feedback yet.";
+let interplayExperimentActiveTakeId: InterplayExperimentTakeId | undefined;
+let interplayExperimentVotes: InterplayExperimentVote[] = [];
+let interplayExperimentVoteMessage = "No A/B votes yet.";
 let cachedSongSketchKey = "";
 let cachedSongSketchBase: SongSketch | undefined;
 let cachedMelodyRepairKey = "";
@@ -434,6 +437,16 @@ interface InterplayStateSnapshot {
 }
 
 type InterplayExperimentFeedbackValue = "heard-answer" | "better-on" | "too-obvious" | "no-clear-difference";
+type InterplayExperimentTakeId = "a" | "b";
+type InterplayExperimentVoteValue = "prefer-a" | "prefer-b" | "no-difference";
+
+interface InterplayExperimentTake {
+  id: InterplayExperimentTakeId;
+  label: string;
+  description: string;
+  enabled: boolean;
+  colorEnabled: boolean;
+}
 
 interface InterplayExperimentFeedback {
   answerCount: number;
@@ -448,9 +461,29 @@ interface InterplayExperimentFeedback {
   lastAnswer?: InterplayAnswerSummary;
 }
 
+interface InterplayExperimentVote {
+  activeTakeId?: InterplayExperimentTakeId;
+  answerCount: number;
+  atBeat: number;
+  createdAt: string;
+  enabled: boolean;
+  colorEnabled: boolean;
+  label: string;
+  selectedTakeId?: InterplayExperimentTakeId;
+  songLibraryId: string;
+  songTitle: string;
+  takes: readonly InterplayExperimentTake[];
+  value: InterplayExperimentVoteValue;
+  lastAnswer?: InterplayAnswerSummary;
+}
+
 interface InterplayExperimentState extends InterplayStateSnapshot {
+  activeTakeId?: InterplayExperimentTakeId;
   feedbacks: readonly InterplayExperimentFeedback[];
   message: string;
+  takes: readonly InterplayExperimentTake[];
+  voteMessage: string;
+  votes: readonly InterplayExperimentVote[];
 }
 
 const INTERPLAY_FEEDBACK_LABELS: Record<InterplayExperimentFeedbackValue, string> = {
@@ -458,6 +491,29 @@ const INTERPLAY_FEEDBACK_LABELS: Record<InterplayExperimentFeedbackValue, string
   "better-on": "Better with answers",
   "too-obvious": "Too obvious",
   "no-clear-difference": "No clear difference",
+};
+
+const INTERPLAY_EXPERIMENT_TAKES: readonly InterplayExperimentTake[] = [
+  {
+    id: "a",
+    label: "A",
+    description: "Bass answer, color off",
+    enabled: true,
+    colorEnabled: false,
+  },
+  {
+    id: "b",
+    label: "B",
+    description: "Bass answer, color on",
+    enabled: true,
+    colorEnabled: true,
+  },
+];
+
+const INTERPLAY_VOTE_LABELS: Record<InterplayExperimentVoteValue, string> = {
+  "prefer-a": "Prefer A",
+  "prefer-b": "Prefer B",
+  "no-difference": "No difference",
 };
 
 const TIMING_FEEL_OPTIONS: Array<{ id: TimingFeelMode; label: string }> = [
@@ -981,6 +1037,19 @@ function setInterplayColorEnabled(enabled: boolean, source = "interplay-api"): I
   return getInterplayState();
 }
 
+function applyInterplayExperimentTake(takeId: string): InterplayExperimentState {
+  const take = getInterplayExperimentTake(takeId);
+  if (!take) return getInterplayExperimentState();
+  interplayExperimentActiveTakeId = take.id;
+  interplayEnabledOverride = take.enabled;
+  interplayColorEnabledOverride = take.colorEnabled;
+  resetInterplayState();
+  refreshLookaheadSchedule();
+  interplayExperimentVoteMessage = `Take ${take.label} armed: ${take.description}.`;
+  renderWorld();
+  return getInterplayExperimentState();
+}
+
 function resetInterplayState(): void {
   interplayMemory = createMotifMemory();
   interplayAnswerSummaries = [];
@@ -1007,8 +1076,12 @@ function getInterplayState(): InterplayStateSnapshot {
 function getInterplayExperimentState(): InterplayExperimentState {
   return {
     ...getInterplayState(),
+    activeTakeId: interplayExperimentActiveTakeId,
     feedbacks: interplayExperimentFeedbacks.map(cloneInterplayExperimentFeedback),
     message: interplayExperimentMessage,
+    takes: INTERPLAY_EXPERIMENT_TAKES.map(cloneInterplayExperimentTake),
+    voteMessage: interplayExperimentVoteMessage,
+    votes: interplayExperimentVotes.map(cloneInterplayExperimentVote),
   };
 }
 
@@ -1038,6 +1111,49 @@ function isInterplayExperimentFeedbackValue(value: string): value is InterplayEx
   return value in INTERPLAY_FEEDBACK_LABELS;
 }
 
+function applyInterplayExperimentVote(value: string): InterplayExperimentState {
+  if (!isInterplayExperimentVoteValue(value)) return getInterplayExperimentState();
+  const state = getInterplayState();
+  const selectedTakeId = getInterplayExperimentVoteSelectedTakeId(value);
+  const vote: InterplayExperimentVote = {
+    ...(interplayExperimentActiveTakeId ? { activeTakeId: interplayExperimentActiveTakeId } : {}),
+    ...(selectedTakeId ? { selectedTakeId } : {}),
+    answerCount: state.answers.length,
+    atBeat: getPersistenceBeat(),
+    createdAt: new Date().toISOString(),
+    enabled: state.enabled,
+    colorEnabled: state.colorEnabled,
+    label: INTERPLAY_VOTE_LABELS[value],
+    songLibraryId: getActiveSongLibraryId(),
+    songTitle: getActiveSongDisplayName(),
+    takes: INTERPLAY_EXPERIMENT_TAKES.map(cloneInterplayExperimentTake),
+    value,
+    ...(state.lastAnswer ? { lastAnswer: cloneInterplayAnswerSummary(state.lastAnswer) } : {}),
+  };
+  interplayExperimentVotes = [...interplayExperimentVotes.slice(-23), vote];
+  const takeSuffix = selectedTakeId ? ` (${selectedTakeId.toUpperCase()})` : "";
+  interplayExperimentVoteMessage = `${vote.label}${takeSuffix} recorded.`;
+  recordInterplayExperimentVote(vote);
+  renderWorld();
+  return getInterplayExperimentState();
+}
+
+function getInterplayExperimentTake(takeId: string): InterplayExperimentTake | undefined {
+  return INTERPLAY_EXPERIMENT_TAKES.find((take) => take.id === takeId);
+}
+
+function isInterplayExperimentVoteValue(value: string): value is InterplayExperimentVoteValue {
+  return value in INTERPLAY_VOTE_LABELS;
+}
+
+function getInterplayExperimentVoteSelectedTakeId(
+  value: InterplayExperimentVoteValue,
+): InterplayExperimentTakeId | undefined {
+  if (value === "prefer-a") return "a";
+  if (value === "prefer-b") return "b";
+  return undefined;
+}
+
 function cloneInterplayAnswerSummary(answer: InterplayAnswerSummary): InterplayAnswerSummary {
   return {
     ...answer,
@@ -1054,6 +1170,18 @@ function cloneInterplayExperimentFeedback(feedback: InterplayExperimentFeedback)
   return {
     ...feedback,
     ...(feedback.lastAnswer ? { lastAnswer: cloneInterplayAnswerSummary(feedback.lastAnswer) } : {}),
+  };
+}
+
+function cloneInterplayExperimentTake(take: InterplayExperimentTake): InterplayExperimentTake {
+  return { ...take };
+}
+
+function cloneInterplayExperimentVote(vote: InterplayExperimentVote): InterplayExperimentVote {
+  return {
+    ...vote,
+    takes: vote.takes.map(cloneInterplayExperimentTake),
+    ...(vote.lastAnswer ? { lastAnswer: cloneInterplayAnswerSummary(vote.lastAnswer) } : {}),
   };
 }
 
@@ -1702,24 +1830,47 @@ ${songStarterPlayerRows}
           </label>
         </header>
         <ol class="listening-experiment__steps" data-testid="interplay-instructions">
-          <li>Use a starter song, or switch this song on.</li>
-          <li>Press Start and listen after each melody bar.</li>
-          <li>Turn the switch off, replay, then log the change.</li>
+          <li>Pick A, press Start, and listen after each melody bar.</li>
+          <li>Stop, pick B, and replay the same short passage.</li>
+          <li>Vote from the comparison you can actually hear.</li>
         </ol>
-        <div
-          class="listening-experiment__feedback"
-          data-testid="interplay-feedback-controls"
-          aria-label="Interplay listening feedback"
-        >
-          <button class="mini-button" data-interplay-feedback="heard-answer" data-testid="interplay-feedback-heard" type="button">I hear it</button>
-          <button class="mini-button" data-interplay-feedback="better-on" data-testid="interplay-feedback-better" type="button">Better on</button>
-          <button class="mini-button" data-interplay-feedback="too-obvious" data-testid="interplay-feedback-obvious" type="button">Too obvious</button>
-          <button class="mini-button" data-interplay-feedback="no-clear-difference" data-testid="interplay-feedback-no-difference" type="button">No difference</button>
+        <div class="listening-experiment__choices">
+          <div
+            class="listening-experiment__takes"
+            data-testid="interplay-take-controls"
+            aria-label="Interplay A/B takes"
+          >
+            <button class="mini-button" data-interplay-take="a" data-testid="interplay-ab-take-a" type="button">A color off</button>
+            <button class="mini-button" data-interplay-take="b" data-testid="interplay-ab-take-b" type="button">B color on</button>
+          </div>
+          <div
+            class="listening-experiment__votes"
+            data-testid="interplay-vote-controls"
+            aria-label="Interplay A/B vote"
+          >
+            <button class="mini-button" data-interplay-vote="prefer-a" data-testid="interplay-vote-a" type="button">Prefer A</button>
+            <button class="mini-button" data-interplay-vote="prefer-b" data-testid="interplay-vote-b" type="button">Prefer B</button>
+            <button class="mini-button" data-interplay-vote="no-difference" data-testid="interplay-vote-no-difference" type="button">No difference</button>
+          </div>
+          <details class="listening-experiment__diagnostics">
+            <summary data-testid="interplay-diagnostics-toggle">Diagnostics</summary>
+            <div
+              class="listening-experiment__feedback"
+              data-testid="interplay-feedback-controls"
+              aria-label="Interplay listening feedback"
+            >
+              <button class="mini-button" data-interplay-feedback="heard-answer" data-testid="interplay-feedback-heard" type="button">I hear it</button>
+              <button class="mini-button" data-interplay-feedback="better-on" data-testid="interplay-feedback-better" type="button">Better on</button>
+              <button class="mini-button" data-interplay-feedback="too-obvious" data-testid="interplay-feedback-obvious" type="button">Too obvious</button>
+              <button class="mini-button" data-interplay-feedback="no-clear-difference" data-testid="interplay-feedback-no-difference" type="button">No difference</button>
+            </div>
+          </details>
         </div>
         <div class="listening-experiment__readouts" aria-live="polite">
           <output data-testid="interplay-ui-status">Answers off.</output>
           <output data-testid="interplay-ui-answer">Start playback to hear the comparison.</output>
           <output data-testid="interplay-ui-feedback">No feedback yet.</output>
+          <output data-testid="interplay-ui-votes">No A/B votes yet.</output>
         </div>
       </section>
 
@@ -2331,6 +2482,9 @@ const interplayUiColorToggle = requireElement<HTMLInputElement>("[data-testid='i
 const interplayUiStatus = requireElement<HTMLOutputElement>("[data-testid='interplay-ui-status']");
 const interplayUiAnswer = requireElement<HTMLOutputElement>("[data-testid='interplay-ui-answer']");
 const interplayUiFeedback = requireElement<HTMLOutputElement>("[data-testid='interplay-ui-feedback']");
+const interplayUiVotes = requireElement<HTMLOutputElement>("[data-testid='interplay-ui-votes']");
+const interplayTakeControls = requireElement<HTMLElement>("[data-testid='interplay-take-controls']");
+const interplayVoteControls = requireElement<HTMLElement>("[data-testid='interplay-vote-controls']");
 const interplayFeedbackControls = requireElement<HTMLElement>("[data-testid='interplay-feedback-controls']");
 const helpPanel = requireElement<HTMLElement>("[data-testid='inspector-help-panel']");
 const helpTitle = requireElement<HTMLElement>("[data-testid='inspector-help-title']");
@@ -5978,6 +6132,17 @@ function renderInterplayExperiment(): void {
     interplayExperimentMessage,
     `${interplayExperimentFeedbacks.length} logged`,
   ].join(" | ");
+  interplayUiVotes.textContent = [
+    interplayExperimentVoteMessage,
+    `${interplayExperimentVotes.length} A/B vote${interplayExperimentVotes.length === 1 ? "" : "s"}`,
+  ].join(" | ");
+  for (const button of interplayTakeControls.querySelectorAll<HTMLButtonElement>("[data-interplay-take]")) {
+    button.dataset.selected = String(button.dataset.interplayTake === interplayExperimentActiveTakeId);
+  }
+  const latestVoteValue = interplayExperimentVotes.at(-1)?.value;
+  for (const button of interplayVoteControls.querySelectorAll<HTMLButtonElement>("[data-interplay-vote]")) {
+    button.dataset.selected = String(button.dataset.interplayVote === latestVoteValue);
+  }
   const latestValue = interplayExperimentFeedbacks.at(-1)?.value;
   for (const button of interplayFeedbackControls.querySelectorAll<HTMLButtonElement>("[data-interplay-feedback]")) {
     button.dataset.selected = String(button.dataset.interplayFeedback === latestValue);
@@ -7008,6 +7173,43 @@ function recordInterplayExperimentFeedback(feedback: InterplayExperimentFeedback
   });
 }
 
+function recordInterplayExperimentVote(vote: InterplayExperimentVote): void {
+  persistence.record({
+    type: "song.interplay_vote",
+    actorId: "human-producer",
+    sessionMode: world.getSessionMode(),
+    beat: vote.atBeat,
+    payload: {
+      source: "interplay-ab-experiment",
+      vote: vote.value,
+      label: vote.label,
+      activeTakeId: vote.activeTakeId,
+      selectedTakeId: vote.selectedTakeId,
+      enabled: vote.enabled,
+      colorEnabled: vote.colorEnabled,
+      songId,
+      songLibraryId: vote.songLibraryId,
+      songTitle: vote.songTitle,
+      answerCount: vote.answerCount,
+      takes: vote.takes.map((take) => ({
+        id: take.id,
+        label: take.label,
+        description: take.description,
+        enabled: take.enabled,
+        colorEnabled: take.colorEnabled,
+      })),
+      lastAnswer: vote.lastAnswer ? {
+        sourceBar: vote.lastAnswer.sourceBar,
+        targetBar: vote.lastAnswer.targetBar,
+        op: vote.lastAnswer.op,
+        chordRoot: vote.lastAnswer.chordRoot,
+        resultingDegrees: [...vote.lastAnswer.resultingDegrees],
+        chromaticNoteCount: vote.lastAnswer.chromaticNoteCount,
+      } : undefined,
+    },
+  });
+}
+
 function recordFormVariantChanged(fromVariantId: FormVariantId, toVariantId: FormVariantId): void {
   persistence.record({
     type: "song.form_variant_changed",
@@ -7406,6 +7608,22 @@ interplayUiColorToggle.addEventListener("change", () => {
   setInterplayColorEnabled(interplayUiColorToggle.checked, "interplay-color-experiment-toggle");
 });
 
+interplayTakeControls.addEventListener("click", (event) => {
+  const target = event.target instanceof Element
+    ? event.target.closest<HTMLButtonElement>("[data-interplay-take]")
+    : null;
+  if (!target) return;
+  applyInterplayExperimentTake(target.dataset.interplayTake ?? "");
+});
+
+interplayVoteControls.addEventListener("click", (event) => {
+  const target = event.target instanceof Element
+    ? event.target.closest<HTMLButtonElement>("[data-interplay-vote]")
+    : null;
+  if (!target) return;
+  applyInterplayExperimentVote(target.dataset.interplayVote ?? "");
+});
+
 interplayFeedbackControls.addEventListener("click", (event) => {
   const target = event.target instanceof Element
     ? event.target.closest<HTMLButtonElement>("[data-interplay-feedback]")
@@ -7617,11 +7835,13 @@ declare global {
       setMode(mode: string): TimingFeelMode;
     };
     interplay?: {
+      applyTake(takeId: string): InterplayExperimentState;
       feedback(value: string): InterplayExperimentState;
       getExperiment(): InterplayExperimentState;
       getState(): InterplayStateSnapshot;
       setColorEnabled(enabled: boolean): InterplayStateSnapshot;
       setEnabled(enabled: boolean): InterplayStateSnapshot;
+      vote(value: string): InterplayExperimentState;
     };
     melodyRepair?: {
       getMode(): MelodyDevelopmentMode;
@@ -7879,11 +8099,13 @@ window.timing = {
 };
 
 window.interplay = {
+  applyTake: (takeId) => applyInterplayExperimentTake(takeId),
   feedback: (value) => applyInterplayExperimentFeedback(value),
   getExperiment: () => getInterplayExperimentState(),
   getState: () => getInterplayState(),
   setColorEnabled: (enabled) => setInterplayColorEnabled(enabled),
   setEnabled: (enabled) => setInterplayEnabled(enabled),
+  vote: (value) => applyInterplayExperimentVote(value),
 };
 
 window.melodyRepair = {
