@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Byte E3b starter-material variety before useful votes",
-  "status": "byte-e3b-starter-material-variety-ready-for-review",
-  "updatedAt": "2026-07-03T14:12:14Z",
-  "lastHandoff": ".agent/handoffs/2026-07-03-codex-to-claude-byte-e3b-starter-material-variety.md",
+  "lastTask": "Docs handoff: ask Claude for musical-direction architecture after E3b still sounds thin",
+  "status": "awaiting-claude-architect-direction",
+  "updatedAt": "2026-07-03T14:47:11Z",
+  "lastHandoff": ".agent/handoffs/2026-07-03-codex-to-claude-architect-musical-direction.md",
   "branch": "codex/byte-e3b-starter-material-variety",
-  "commit": "HEAD on codex/byte-e3b-starter-material-variety",
+  "commit": "HEAD on codex/byte-e3b-starter-material-variety after docs handoff commit",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte E3b starter-material variety is implemented on top of E3a after Arne found the vote experiment unhelpful because generated songs sounded too similar. src/song-starter-material.ts now chooses sealed deterministic material profiles from prompt/goal/player-brief hints: pulse styles grounded/backbeat/syncopated/ticking, bass styles sparse/walk/leap/answer, and melody styles spacious/arch/angular/spark. Generated 16-beat pulse/bass/melody phrase packs now vary onset patterns, bass motion, melody contour/density/register, and add starter:* tags while remaining integer scale-degree material through the existing transport path. Added tests/song-starter-material.unit.spec.ts and npm run unit:song-starter-material. Validation: build green; unit:song-starter-material 3/3; focused song-library smoke green; focused interplay smoke green; first full smoke had late unrelated candidate/transport timeouts that passed in focused rerun; confirmation full smoke green 79/79; diff-check green. npm audit remains red on pre-existing esbuild/Vite advisories."
+    "summary": "Byte E3b starter-material variety is implemented and committed, but Arne's latest listening read is that the material remains too thin/same-sounding for feedback to carry much signal. Docs now pause vote/training work and route an architect request to Claude: diagnose why generated songs still sound too similar, propose directions toward more musically interesting output, and include expressive instruments/player articulation as a first-class next direction. See docs/musical-direction-reset.md and .agent/handoffs/2026-07-03-codex-to-claude-architect-musical-direction.md."
   }
 }

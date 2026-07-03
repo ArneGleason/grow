@@ -14,6 +14,16 @@ Each byte should be:
 
 The first working code should teach whether a bounded space, a visible player, and a little sound feel like the right seed. Do not jump straight to Ollama, SQLite, producer prompts, multi-terrarium exchange, capture, or full session logic.
 
+## Current Direction Reset: Musical Variation Before Feedback
+
+Status: active steering question as of 2026-07-03.
+
+Arne's current listening read is that the material is still too thin and same-sounding for votes to teach much. E1 interplay, E2 answer color, E3a vote UI, and E3b starter-material profiles are useful, but the next step should not be more feedback plumbing until generated songs feel like meaningfully different musical propositions.
+
+Pause vote/training work and ask Claude Code to respond as architect/listening lead. The immediate design question is how Grow gets more musically interesting by ear, especially through expressive instruments and stronger source variation. See `docs/musical-direction-reset.md` and `.agent/handoffs/2026-07-03-codex-to-claude-architect-musical-direction.md`.
+
+The next implementation byte should have a listening acceptance test: several generated songs should sound different without opening Inspect. If the difference is only visible in tags, scores, or logs, the byte is not solving the current problem.
+
 ## Current Technical Recommendation
 
 Start with:
