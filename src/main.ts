@@ -1407,7 +1407,6 @@ function createSongFromStarterComposer(): SongLibrarySnapshot | undefined {
   );
   songGoalInterpretation = interpretation;
   songGoalIdeaInput.value = interpretation.goal.sourceIdea;
-  applySongGoalSetup(interpretation);
   closeSongStarterComposer(false);
   songLibraryTitleInput.focus();
   songLibraryTitleInput.select();
@@ -4806,12 +4805,8 @@ function applySongGoalSetup(
     return undefined;
   }
 
-  const goal = cloneSongGoal(interpretation.goal);
   const previousSetup = getCurrentSongGoalSetupSnapshot(appliedSongGoal);
-  world.setTonalContext(createTonalContext(goal.tonic, goal.mode));
-  activeTempoBpm = goal.tempoBpm;
-  formVariantId = goal.formPreference;
-  appliedSongGoal = cloneSongGoal(goal);
+  const goal = applySongGoalSetupState(interpretation.goal);
   melodyRepairFeedbackMessage = "Goal setup applied.";
   invalidateMelodyRepairCache();
   ollamaProposalTextTest = createInitialOllamaProposalTextTest(ollamaConfig);
@@ -4825,6 +4820,25 @@ function applySongGoalSetup(
   recordSongGoalSet(goal, previousSetup, getCurrentSongGoalSetupSnapshot(appliedSongGoal));
   renderWorld();
   return cloneSongGoal(goal);
+}
+
+function applySongGoalSetupState(goal: SongGoal): SongGoal {
+  const nextGoal = cloneSongGoal(goal);
+  world.setTonalContext(createTonalContext(nextGoal.tonic, nextGoal.mode));
+  activeTempoBpm = nextGoal.tempoBpm;
+  formVariantId = nextGoal.formPreference;
+  appliedSongGoal = cloneSongGoal(nextGoal);
+  return cloneSongGoal(nextGoal);
+}
+
+function createStarterSongGoalInterpretation(starter: SongLibraryStarter): SongGoalInterpretation {
+  const validation = validateSongGoal(starter.goal);
+  return {
+    source: "deterministic-keywords",
+    matchedKeywords: [],
+    validation,
+    goal: cloneSongGoal(validation.goal),
+  };
 }
 
 function cloneSongGoal(goal: SongGoal): SongGoal {
@@ -7123,6 +7137,19 @@ function applySongContextChange(
   const materialChanged = previousSongId !== nextSong.baseSongId;
   if (!libraryChanged && !materialChanged) return nextSong;
   songId = nextSong.baseSongId;
+  const starterInterpretation = nextSong.starter
+    ? createStarterSongGoalInterpretation(nextSong.starter)
+    : undefined;
+  let starterGoalPreviousSetup: Record<string, unknown> | undefined;
+  let starterGoal: SongGoal | undefined;
+  if (starterInterpretation) {
+    songGoalInterpretation = starterInterpretation;
+    songGoalIdeaInput.value = starterInterpretation.goal.sourceIdea;
+    if (starterInterpretation.validation.valid) {
+      starterGoalPreviousSetup = getCurrentSongGoalSetupSnapshot(appliedSongGoal);
+      starterGoal = applySongGoalSetupState(starterInterpretation.goal);
+    }
+  }
   resetAnchorPhraseEditorSession("Song changed; generated phrase restored.", { refresh: false, render: false });
   resetAnchorPhraseEditorSaveState();
   melodyRepairFeedbackMessage = "No feedback yet.";
@@ -7135,6 +7162,14 @@ function applySongContextChange(
   world.clearMusicalEvents();
   world.resetTasteEvaluations();
   refreshLookaheadSchedule();
+  if (starterGoal && starterGoalPreviousSetup) {
+    recordSongGoalSet(
+      starterGoal,
+      starterGoalPreviousSetup,
+      getCurrentSongGoalSetupSnapshot(appliedSongGoal),
+      source,
+    );
+  }
   recordSongChanged(previousSongId, songId, {
     fromLibrarySongId: previousLibrarySongId,
     toLibrarySongId: nextLibrarySongId,
@@ -7423,6 +7458,7 @@ function recordSongGoalSet(
   goal: SongGoal,
   previousSetup: Record<string, unknown>,
   nextSetup: Record<string, unknown>,
+  source = "song-goal-apply",
 ): void {
   persistence.record({
     type: "song.goal_set",
@@ -7430,7 +7466,7 @@ function recordSongGoalSet(
     sessionMode: world.getSessionMode(),
     beat: getPersistenceBeat(),
     payload: {
-      source: "song-goal-apply",
+      source,
       goal: cloneSongGoal(goal) as unknown as Record<string, unknown>,
       previousSetup,
       nextSetup,

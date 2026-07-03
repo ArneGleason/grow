@@ -3351,6 +3351,31 @@ test("song library creates, renames, and switches deterministic starter material
   await page.getByTestId("song-library-previous").click();
   await expect(page.getByTestId("song-current")).toHaveText("Basement take");
   expect((await getTransportState(page)).songId).toBe("switchback");
+  const restoredStarterGoal = await page.evaluate(() => {
+    const appWindow = window as unknown as {
+      songLibrary?: {
+        getState(): {
+          active: {
+            starter?: {
+              goal: { mode: string; tempoBpm: number; tonic: string };
+            };
+          };
+        };
+      };
+    };
+    return appWindow.songLibrary?.getState().active.starter?.goal;
+  });
+  expect(restoredStarterGoal).toBeTruthy();
+  await expect(page.getByTestId("control-key-readout")).toHaveAttribute(
+    "data-mode-classical",
+    restoredStarterGoal!.mode,
+  );
+  await expect(page.getByTestId("control-tempo-readout")).toHaveText(`${restoredStarterGoal!.tempoBpm} BPM`);
+  expect(await getAppliedSongGoal(page)).toMatchObject({
+    mode: restoredStarterGoal!.mode,
+    tempoBpm: restoredStarterGoal!.tempoBpm,
+    tonic: restoredStarterGoal!.tonic,
+  });
 
   await button.click();
   await expect(button).toHaveText("Start");
@@ -3453,6 +3478,16 @@ test("E4 starter generation spreads unpinned goals and melody plans", async ({ p
   expect(reselected.goal).toEqual(remembered.goal);
   expect(reselected.materialSeed).toBe(remembered.materialSeed);
   expect(reselected.plan).toEqual(remembered.plan);
+  await expect(page.getByTestId("control-key-readout")).toHaveAttribute(
+    "data-mode-classical",
+    remembered.goal.mode,
+  );
+  await expect(page.getByTestId("control-tempo-readout")).toHaveText(`${remembered.goal.tempoBpm} BPM`);
+  expect(await getAppliedSongGoal(page)).toMatchObject({
+    mode: remembered.goal.mode,
+    tempoBpm: remembered.goal.tempoBpm,
+    tonic: remembered.goal.tonic,
+  });
 
   await page.getByTestId("song-library-new").click();
   await page.getByTestId("song-starter-prompt").fill(prompts[0]);

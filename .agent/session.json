@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Byte E4 composition variety: seeded goal redraws and melody plans",
-  "status": "ready-for-claude-review",
-  "updatedAt": "2026-07-03T18:53:43Z",
+  "lastTask": "Byte E4 request-changes fix: saved starter selection reapplies stored goal",
+  "status": "ready-for-claude-re-review",
+  "updatedAt": "2026-07-03T19:39:35Z",
   "lastHandoff": ".agent/handoffs/2026-07-03-codex-to-claude-byte-e4-composition-variety.md",
   "branch": "codex/byte-e4-composition-variety",
-  "commit": "branch HEAD after Codex E4 commit",
+  "commit": "branch HEAD after Codex E4 request-changes fix",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Byte E4 is implemented: unpinned SongGoal knobs redraw from seeded wide bands while explicit prompt/UI pins stay authoritative, and starter melody shape now comes from the new pure MelodyPlan module. E3b melody styles bias plan choice instead of applying a second post-plan degree offset. Validation is green except npm audit's known Vite/esbuild advisories: build green, E4 unit suites green, full smoke 80/80 three times including two passes on a non-clean store and one final current-tree pass."
+    "summary": "Byte E4 is implemented and Claude's request-changes blocker is fixed: selecting a saved starter song reapplies its stored goal so key/mode/tempo/form readouts and getAppliedGoal match the selected entry. Validation follows the new byte-scoped doctrine: build green, unit:song-goal 3/3, unit:song-starter-material 3/3, focused song-library/E4 smoke 2/2, git diff --check green."
   }
 }

@@ -35,6 +35,13 @@ What changed:
   - A new song created from the same prompt redraws material instead of replaying the prior goal/plan.
   - `window.melodyPlan.getState()` exposes the current read-only plan for smoke/debug.
 
+Request-changes fix after Claude review:
+- Claude live-reproduced that selecting a saved starter song restored material/plan state but left the applied tonic/mode/tempo/form from the previously created song.
+- `applySongContextChange()` now applies a selected entry's stored `starter.goal` through the same goal-setup state path used by manual Apply/Create before refreshing lookahead.
+- Entries without a starter goal still keep the previous legacy behavior.
+- The create path no longer performs a second goal apply after creating the library entry; create and select now share the same stored-goal replay path.
+- Smoke now asserts relationally at the readout level: after selecting a starter entry, `control-key-readout[data-mode-classical]`, `control-tempo-readout`, and `window.songGoal.getAppliedGoal()` match that entry's stored goal.
+
 Measured spread:
 - Unit coverage over 96 unpinned `materialSeed` values asserts at least 60 BPM tempo span, all 6 current modes, and at least 3 form variants.
 - Unit coverage over 512 melody-plan seeds asserts every closed plan enum is reachable and at least 12 distinct plan signatures appear.
@@ -55,6 +62,13 @@ Validation:
 - Extra pre-doctrine sweep already run: full `npm run smoke` green three times, 80/80, 80/80 on the same non-clean store, then a final current-tree 80/80.
 - `git status --short --branch` and `git ls-files --cached --others --exclude-standard | sort` were run before commit.
 - `npm audit` is still red on the existing Vite/esbuild advisories. I did not move dependencies in this musical byte because the Vite fix requires changing the exact declared `vite` version.
+
+Request-changes fix validation:
+- `npm run build` green.
+- `npm run unit:song-goal` green, 3/3.
+- `npm run unit:song-starter-material` green, 3/3.
+- Focused song-library/select + E4 starter-generation smoke green: `npx playwright test tests/grow.smoke.spec.ts -g "song library creates|E4 starter generation"`, 2/2 in 13.4s.
+- `git diff --check` green.
 
 Review focus:
 - Confirm `src/melody-plan.ts` is pure, bounded, deterministic, and owns melody shape.
