@@ -41,14 +41,18 @@ Measured spread:
 - Browser smoke over 5 starter prompts asserts at least 4 distinct modes, at least 40 BPM tempo spread, at least 3 phrase structures, deterministic reselect replay, and same-prompt redraw on a newly created song.
 
 Validation:
+- Testing doctrine amendment received after the initial E4 validation pass: per-byte acceptance is now Tier 0/1 only. Treat the focused unit/smoke/determinism/diff-check slice below as the E4 handoff bar; the full smoke runs listed here were extra pre-doctrine validation and should not become a future per-byte expectation.
 - `npm run build` green.
 - `npm run unit:song-goal` green, 3/3.
 - `npm run unit:melody-plan` green, 3/3.
 - `npm run unit:melody-prosody` green, 5/5.
 - `npm run unit:song-starter-material` green, 3/3.
-- Focused prosody regression slice green, 3/3.
-- Focused E4/UI regression smoke green, 4/4.
-- Full `npm run smoke` green three times: 80/80, 80/80 on the same non-clean store, then a final current-tree 80/80 after the seed-zero guard fix.
+- Focused prosody-area regression slice green, 3/3.
+- Focused song-goal/song-library/E4 UI regression smoke green, 4/4.
+- Focused E4 starter-generation smoke green after the final seed-zero guard fix, 1/1.
+- Determinism/replay checks are covered by unit spread tests and browser smoke: same seed/material reselect reproduces; same prompt/new song redraws.
+- `git diff --check` green.
+- Extra pre-doctrine sweep already run: full `npm run smoke` green three times, 80/80, 80/80 on the same non-clean store, then a final current-tree 80/80.
 - `git status --short --branch` and `git ls-files --cached --others --exclude-standard | sort` were run before commit.
 - `npm audit` is still red on the existing Vite/esbuild advisories. I did not move dependencies in this musical byte because the Vite fix requires changing the exact declared `vite` version.
 
