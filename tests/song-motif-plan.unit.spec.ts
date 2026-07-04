@@ -4,6 +4,7 @@ import { selectPulseDrumHit } from "../src/pulse-drums";
 import { createTonalContext } from "../src/tonal-context";
 import {
   SONG_MOTIF_BAR_COUNT,
+  chooseSongMotifDevelopmentOps,
   developSongMotifChorusMelodyPattern,
   SONG_MOTIF_HARMONIC_MOVES,
   SONG_MOTIF_MOVE_ROOTS,
@@ -228,5 +229,58 @@ test.describe("Song motif plan", () => {
     expect(selectPulseDrumHit({ absoluteBeat: 2.5, scaleDegree: 0, velocity: 0.5 }).id).toBe("kick");
     expect(selectPulseDrumHit({ absoluteBeat: 3.5, scaleDegree: 6, velocity: 0.55 }).id).toBe("open-hat");
     expect(selectPulseDrumHit({ absoluteBeat: 31.75, scaleDegree: 4, velocity: 0.62 }).id).toBe("low-tom");
+  });
+
+  test("development speaks many dialects: fragment, augment, retrograde, extend-run, octave-shift", () => {
+    const plan: SongMotifPlan = {
+      version: "grow.songMotifPlan/1",
+      source: "seeded",
+      cellSteps: [0, 2, -1, 1, -2],
+      cellRhythm: [0.5, 0.5, 0.5, 0.5, 0.5],
+      move: "settle",
+      peakBar: 5,
+      chorusTransform: "wider",
+      mood: "",
+    };
+    // vocabulary breadth: across seeds the schedule uses at least 5 distinct ops
+    const seen = new Set<string>();
+    for (let seed = 1; seed <= 40; seed += 1) {
+      for (const op of chooseSongMotifDevelopmentOps(plan, seed)) seen.add(op);
+    }
+    expect(seen.size).toBeGreaterThanOrEqual(6);
+    // and cadence/anchor bars stay stated
+    for (let seed = 1; seed <= 10; seed += 1) {
+      const ops = chooseSongMotifDevelopmentOps(plan, seed);
+      expect(ops[0]).toBe("state");
+      expect(ops[3]).toBe("state");
+      expect(ops[7]).toBe("state");
+    }
+    // per-op shapes, probed via walks across seeds
+    const intervalsOf = (bar: readonly { degree: number }[]) =>
+      bar.slice(1).map((n, i) => n.degree - bar[i]!.degree);
+    const cell = plan.cellSteps.slice(1);
+    const retro = [...cell].reverse().map((s2) => -s2);
+    let sawFragment = false, sawAugment = false, sawRetro = false, sawRun = false, sawOctave = false;
+    for (let seed = 1; seed <= 60; seed += 1) {
+      const ops = chooseSongMotifDevelopmentOps(plan, seed);
+      const walk = developSongMotifWalk(plan, seed);
+      ops.forEach((op, bar) => {
+        const notes = walk.bars[bar] ?? [];
+        const iv = intervalsOf(notes);
+        if (op === "fragment" && notes.length > plan.cellSteps.length) sawFragment = true;
+        if (op === "augment" && notes.length > 0 && notes.length < plan.cellSteps.length) sawAugment = true;
+        if (op === "retrograde" && iv.slice(0, 3).join(",") === retro.slice(0, 3).join(",")) sawRetro = true;
+        if (op === "extend-run" && iv.length >= plan.cellSteps.length) {
+          const tail2 = iv.slice(-2);
+          if (tail2.every((step) => Math.abs(step) === 1)) sawRun = true;
+        }
+        if (op === "octave-shift" && notes.length > 0) sawOctave = true;
+      });
+    }
+    expect(sawFragment).toBe(true);
+    expect(sawAugment).toBe(true);
+    expect(sawRetro).toBe(true);
+    expect(sawRun).toBe(true);
+    expect(sawOctave).toBe(true);
   });
 });

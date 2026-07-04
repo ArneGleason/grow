@@ -285,24 +285,66 @@ interface MotifWalk {
   bars: readonly (readonly MotifWalkNote[])[];
 }
 
-export const SONG_MOTIF_DEVELOPMENT_OPS = ["state", "sequence", "answer", "vary-rhythm", "breath"] as const;
+export const SONG_MOTIF_DEVELOPMENT_OPS = [
+  "state",
+  "sequence",
+  "answer",
+  "vary-rhythm",
+  "breath",
+  "fragment",
+  "augment",
+  "retrograde",
+  "extend-run",
+  "octave-shift",
+] as const;
 export type SongMotifDevelopmentOp = typeof SONG_MOTIF_DEVELOPMENT_OPS[number];
 
 // Development schedule: bar 0 states the cell; cadence bars land; the bars
-// between develop it — sequence along the phrase arc, answer it inverted,
-// split its long note, or breathe. Identity through variation, not looping.
-export function chooseSongMotifDevelopmentOps(_plan: SongMotifPlan, seed: number): readonly SongMotifDevelopmentOp[] {
+// between develop it with a wide vocabulary — sequence along the arc, answer
+// it inverted, fragment its head (intensifying toward the peak), augment it
+// (settling after the peak), play it backwards, extend it with a connective
+// run, displace it an octave, split its long note, or breathe. Adjacent bars
+// sometimes share an op so development reads in two-bar phrases.
+export function chooseSongMotifDevelopmentOps(plan: SongMotifPlan, seed: number): readonly SongMotifDevelopmentOp[] {
   const rng = mulberry32(((seed >>> 0) ^ 0x7f4a7c15) || 1);
-  const pool: SongMotifDevelopmentOp[] = ["sequence", "answer", "vary-rhythm", "breath", "sequence", "state"];
   const ops: SongMotifDevelopmentOp[] = [];
   let previous: SongMotifDevelopmentOp = "state";
+  let carry: SongMotifDevelopmentOp | undefined;
   for (let bar = 0; bar < SONG_MOTIF_BAR_COUNT; bar += 1) {
-    if (bar === 0) { ops.push("state"); previous = "state"; continue; }
-    if (bar === 3 || bar === 7) { ops.push("state"); previous = "state"; continue; }
-    if (bar === 4) { ops.push("state"); previous = "state"; continue; }
+    if (bar === 0 || bar === 3 || bar === 7) {
+      ops.push("state");
+      previous = "state";
+      carry = undefined;
+      continue;
+    }
+    if (bar === 4) {
+      // second phrase re-enters with the idea, occasionally re-lit
+      const reentry: SongMotifDevelopmentOp[] = ["state", "state", "octave-shift", "sequence"];
+      const op4 = reentry[Math.floor(rng() * reentry.length)] ?? "state";
+      ops.push(op4);
+      previous = op4;
+      carry = undefined;
+      continue;
+    }
+    if (carry) {
+      ops.push(carry);
+      previous = carry;
+      carry = undefined;
+      continue;
+    }
+    const approachingPeak = bar < plan.peakBar && plan.peakBar - bar <= 3;
+    const afterPeak = bar > plan.peakBar;
+    const pool: SongMotifDevelopmentOp[] = approachingPeak
+      ? ["fragment", "fragment", "sequence", "extend-run", "vary-rhythm", "octave-shift"]
+      : afterPeak
+        ? ["augment", "augment", "answer", "retrograde", "breath", "state"]
+        : ["sequence", "answer", "extend-run", "retrograde", "vary-rhythm", "breath", "octave-shift", "fragment", "state"];
     let op = pool[Math.floor(rng() * pool.length)] ?? "state";
-    if (op === previous && op !== "sequence") op = "state";
+    if (op === previous && op !== "sequence" && op !== "fragment") op = "state";
     ops.push(op);
+    if (rng() < 0.3 && bar + 1 < SONG_MOTIF_BAR_COUNT && ![3, 4, 7].includes(bar + 1)) {
+      carry = op;
+    }
     previous = op;
   }
   return ops;
@@ -334,17 +376,52 @@ export function developSongMotifWalk(plan: SongMotifPlan, seed: number, walkOpti
     const arcBias = arcLift + (barIndex <= plan.peakBar
       ? (barIndex / Math.max(1, plan.peakBar)) * 2.4
       : 2.4 - ((barIndex - plan.peakBar) / Math.max(1, SONG_MOTIF_BAR_COUNT - 1 - plan.peakBar)) * 3.2);
-    const target = previousExit === undefined ? root + 2 : previousExit + (op === "sequence" ? 1 : 0);
+    const octaveShift = op === "octave-shift" ? (arcBias >= 1.2 ? 7 : -7) : 0;
+    const target = (previousExit === undefined ? root + 2 : previousExit + (op === "sequence" ? 1 : 0)) + octaveShift;
     const entry = previousExit === undefined
       ? root + 2
       : nearestTo(chordTones.map((tone) => tone + (arcBias >= 1.2 ? 7 * Math.round((target + 2 - tone) / 7) : 7 * Math.round((target - tone) / 7))), target + arcBias * 0.5);
-    const steps = op === "answer" ? workingPlan.cellSteps.map((step) => -step) : workingPlan.cellSteps;
+    let steps: readonly number[] = workingPlan.cellSteps;
     let rhythm = [...workingPlan.cellRhythm];
+    if (op === "answer") {
+      steps = workingPlan.cellSteps.map((step) => -step);
+    } else if (op === "retrograde") {
+      // the pitch sequence backwards: reversed intervals, negated
+      steps = [0, ...workingPlan.cellSteps.slice(1).reverse().map((step) => -step)];
+    } else if (op === "fragment") {
+      // hammer the head of the cell, repeated to fill the bar
+      const headLength = Math.min(3, Math.max(2, Math.floor(workingPlan.cellSteps.length / 2)));
+      const headSteps = workingPlan.cellSteps.slice(0, headLength);
+      const headRhythm = workingPlan.cellRhythm.slice(0, headLength);
+      const repeats = Math.max(2, Math.ceil(BEATS_PER_BAR / Math.max(0.5, headRhythm.reduce((a, b) => a + b, 0))));
+      steps = Array.from({ length: repeats }, () => headSteps).flat();
+      rhythm = Array.from({ length: repeats }, () => [...headRhythm]).flat();
+    } else if (op === "augment") {
+      rhythm = workingPlan.cellRhythm.map((value) => Math.min(2, value * 2));
+    } else if (op === "extend-run") {
+      // the cell, then a stepwise run toward the next bar's chord
+      const runLength = 3;
+      const nextRoot = roots[(barIndex + 1) % SONG_MOTIF_BAR_COUNT] ?? 0;
+      const runDirection = normalizeRunDirection(entry, nextRoot);
+      steps = [...workingPlan.cellSteps, ...Array.from({ length: runLength }, () => runDirection)];
+      rhythm = [...workingPlan.cellRhythm.map((value) => Math.max(0.25, value * 0.75)), 0.25, 0.25, 0.25];
+    }
     if (op === "vary-rhythm") {
       const longest = rhythm.indexOf(Math.max(...rhythm));
       if (rhythm[longest]! >= 1) {
         const half = rhythm[longest]! / 2;
         rhythm.splice(longest, 1, half, half);
+      }
+    }
+    // A cell whose rhythm overflows the bar would truncate every op to the
+    // same prefix; compress it to fit so the whole cell speaks (augment keeps
+    // its long-and-few character and is allowed to truncate).
+    if (op !== "augment") {
+      const total = rhythm.reduce((sum, value) => sum + value, 0);
+      const available = BEATS_PER_BAR - (op === "breath" ? 1.5 : 0);
+      if (total > available) {
+        const scale = available / total;
+        rhythm = rhythm.map((value) => Math.max(0.25, Math.floor((value * scale) / 0.25) * 0.25));
       }
     }
     const displacement = chorus
@@ -354,7 +431,7 @@ export function developSongMotifWalk(plan: SongMotifPlan, seed: number, walkOpti
     let degree = entry;
     let cursor = displacement;
     const isCadenceBar = barIndex === 3 || barIndex === 7;
-    const stepsForBar = op === "vary-rhythm" ? expandStepsForRhythm(steps, rhythm.length) : steps;
+    const stepsForBar = rhythm.length > steps.length ? expandStepsForRhythm(steps, rhythm.length) : steps;
     for (let i = 0; i < stepsForBar.length; i += 1) {
       if (i > 0) degree += stepsForBar[i] ?? 0;
       degree = foldDegree(degree, entry);
@@ -584,4 +661,9 @@ export function developSongMotifChorusMelodyPattern(
     chorusTransform: plan.chorusTransform,
     velocityScale: (options.velocityScale ?? 1) * 1.12,
   });
+}
+
+function normalizeRunDirection(entry: number, nextRoot: number): 1 | -1 {
+  const target = nextRoot + 7 * Math.round((entry - nextRoot) / 7);
+  return target >= entry ? 1 : -1;
 }
