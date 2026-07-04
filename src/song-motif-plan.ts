@@ -377,10 +377,9 @@ export function developSongMotifWalk(plan: SongMotifPlan, seed: number, walkOpti
       ? (barIndex / Math.max(1, plan.peakBar)) * 2.4
       : 2.4 - ((barIndex - plan.peakBar) / Math.max(1, SONG_MOTIF_BAR_COUNT - 1 - plan.peakBar)) * 3.2);
     const octaveShift = op === "octave-shift" ? (arcBias >= 1.2 ? 7 : -7) : 0;
-    const target = (previousExit === undefined ? root + 2 : previousExit + (op === "sequence" ? 1 : 0)) + octaveShift;
     const entry = previousExit === undefined
       ? root + 2
-      : nearestTo(chordTones.map((tone) => tone + (arcBias >= 1.2 ? 7 * Math.round((target + 2 - tone) / 7) : 7 * Math.round((target - tone) / 7))), target + arcBias * 0.5);
+      : chooseBoundedEntry(chordTones, previousExit + octaveShift, arcBias, op === "sequence");
     let steps: readonly number[] = workingPlan.cellSteps;
     let rhythm = [...workingPlan.cellRhythm];
     if (op === "answer") {
@@ -439,6 +438,10 @@ export function developSongMotifWalk(plan: SongMotifPlan, seed: number, walkOpti
       if (cursor + duration > BEATS_PER_BAR) duration = BEATS_PER_BAR - cursor;
       if (duration < 0.25) break;
       const strong = i === 0;
+      // long notes belong to the chord; short notes are free to pass
+      if (duration >= 1 && !isChordTone(degree, root)) {
+        degree = nearestTo(chordToneWindow(chordTones, degree), degree);
+      }
       // articulation: inner notes detach, strong notes carry — less plunk, more speech
       const spoken = isCadenceBar ? duration : round3(Math.max(0.25, duration * (strong ? 0.95 : 0.62)));
       notes.push({
@@ -463,15 +466,21 @@ export function developSongMotifWalk(plan: SongMotifPlan, seed: number, walkOpti
       last.degree = target7;
       last.durationBeats = Math.max(1, BEATS_PER_BAR - (last.startBeat - barIndex * BEATS_PER_BAR));
       last.cadence = true;
-      if (barIndex === 7 && notes.length >= 2) {
-        // the note before the final arrival becomes a leading tone resolving up
-        const approach = notes[notes.length - 2];
-        approach.degree = last.degree - 1;
-        approach.leading = true;
-      }
+    } else if (barIndex === 6) {
+      // the leading tone lives on the V: the bar's exit becomes ti (the third
+      // of V, short) so it resolves to do ACROSS the barline, over the right
+      // chord — never sustained against the tonic.
+      const last = notes[notes.length - 1];
+      const ti = 6 + 7 * Math.round((last.degree - 6) / 7);
+      last.degree = ti;
+      last.leading = true;
+      if (last.durationBeats > 0.75) last.durationBeats = 0.75;
     } else if (cursor < BEATS_PER_BAR && rng() < 0.3) {
       const last = notes[notes.length - 1];
-      last.durationBeats = round3(last.durationBeats + Math.min(1, BEATS_PER_BAR - cursor));
+      // a held tail must be a chord tone; otherwise let the bar breathe
+      if (isChordTone(last.degree, root)) {
+        last.durationBeats = round3(last.durationBeats + Math.min(1, BEATS_PER_BAR - cursor));
+      }
     }
     previousExit = notes[notes.length - 1]?.degree;
     bars.push(notes);
@@ -666,4 +675,44 @@ export function developSongMotifChorusMelodyPattern(
 function normalizeRunDirection(entry: number, nextRoot: number): 1 | -1 {
   const target = nextRoot + 7 * Math.round((entry - nextRoot) / 7);
   return target >= entry ? 1 : -1;
+}
+
+function isChordTone(degree: number, root: number): boolean {
+  const rel = (((degree - root) % 7) + 7) % 7;
+  return rel === 0 || rel === 2 || rel === 4;
+}
+
+function chordToneWindow(chordTones: readonly number[], around: number): readonly number[] {
+  return chordTones.flatMap((tone) => {
+    const base = tone + 7 * Math.round((around - tone) / 7);
+    return [base - 7, base, base + 7];
+  });
+}
+
+// Prefer the chord tone nearest the previous exit, nudged by the phrase arc,
+// with leaps capped at a fifth (4 scale steps).
+function chooseBoundedEntry(
+  chordTones: readonly number[],
+  previousExit: number,
+  arcBias: number,
+  sequencing: boolean,
+): number {
+  const direction = arcBias >= 1.2 ? 1 : arcBias <= 0.4 ? -1 : 0;
+  const preferred = previousExit + (sequencing ? 1 : 0) + direction;
+  const candidates = chordToneWindow(chordTones, previousExit);
+  let best = candidates[0] ?? previousExit;
+  let bestScore = Number.POSITIVE_INFINITY;
+  for (const candidate of candidates) {
+    const leap = Math.abs(candidate - previousExit);
+    if (leap > 4) continue;
+    const score = Math.abs(candidate - preferred) + (leap > 2 ? 0.5 : 0);
+    if (score < bestScore || (score === bestScore && candidate < best)) {
+      best = candidate;
+      bestScore = score;
+    }
+  }
+  if (!Number.isFinite(bestScore)) {
+    best = nearestTo(candidates, previousExit);
+  }
+  return best;
 }

@@ -205,17 +205,37 @@ test.describe("Song motif plan", () => {
       mood: "",
     };
     const walk = developSongMotifWalk(plan, 4242);
+    const vBar = walk.bars[6]!;
     const finalBar = walk.bars[7]!;
-    expect(finalBar.length).toBeGreaterThanOrEqual(2);
-    const approach = finalBar[finalBar.length - 2]!;
+    const ti = vBar[vBar.length - 1]!;
     const arrival = finalBar[finalBar.length - 1]!;
-    expect(approach.leading).toBe(true);
-    expect(arrival.degree - approach.degree).toBe(1);
+    // ti lives on the V bar, short, and resolves up across the barline to do
+    expect(ti.leading).toBe(true);
+    expect((((ti.degree % 7) + 7) % 7)).toBe(6);
+    expect(ti.durationBeats).toBeLessThanOrEqual(0.75);
+    expect((((arrival.degree % 7) + 7) % 7)).toBe(0);
+    // bar 8 is a pure arrival: no leading tones sustained over the tonic
+    expect(finalBar.some((note) => note.leading)).toBe(false);
+    // long notes belong to the chord (non-cadence bars)
+    const roots2 = SONG_MOTIF_MOVE_ROOTS[plan.move];
+    walk.bars.forEach((bar, barIndex) => {
+      if (barIndex === 3 || barIndex === 7) return;
+      for (const note of bar) {
+        if (note.durationBeats >= 1 && !note.leading) {
+          const rel = ((((note.degree - (roots2[barIndex] ?? 0)) % 7) + 7) % 7);
+          expect([0, 2, 4]).toContain(rel);
+        }
+      }
+    });
 
     const raised = developSongMotifMelodyPattern(plan, { seed: 4242, raiseLeadingTone: true });
-    const raisedNotes = raised.events.filter((e) => e !== null && e.chromaticOffsetSemitones === 1);
+    const raisedNotes = raised.events
+      .map((e, i) => (e ? { beat: i * raised.subdivisionBeats, e } : null))
+      .filter((x): x is { beat: number; e: NonNullable<typeof x>["e"] } => x !== null && x.e.chromaticOffsetSemitones === 1);
     expect(raisedNotes.length).toBeGreaterThanOrEqual(1);
-    expect(raisedNotes.every((e) => e!.tags?.includes("melody:leading-tone"))).toBe(true);
+    expect(raisedNotes.every((n) => n.e.tags?.includes("melody:leading-tone"))).toBe(true);
+    // every raised note sits in the V bar (24-28), never in the tonic bar
+    expect(raisedNotes.every((n) => n.beat >= 24 && n.beat < 28)).toBe(true);
 
     const plain = developSongMotifMelodyPattern(plan, { seed: 4242, raiseLeadingTone: false });
     expect(plain.events.some((e) => e !== null && e.chromaticOffsetSemitones)).toBe(false);
