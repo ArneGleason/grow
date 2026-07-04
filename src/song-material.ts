@@ -28,6 +28,10 @@ export interface SongMaterial {
   // a section with a variant plays its own material instead of an arrange-time
   // transform of the verse.
   sectionMelody?: Readonly<Record<string, PlayerPatternSource>>;
+  // The song's harmonic sentence: one engine scale degree per bar. When
+  // present, the arrange layer follows it instead of guessing roots from the
+  // bass pattern — the performed harmony IS the composed harmony.
+  rootPlan?: readonly number[];
 }
 
 export const DEFAULT_SONG_ID: SongId = "lantern";

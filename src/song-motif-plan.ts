@@ -439,7 +439,7 @@ export function developSongMotifWalk(plan: SongMotifPlan, seed: number, walkOpti
       if (duration < 0.25) break;
       const strong = i === 0;
       // long notes belong to the chord; short notes are free to pass
-      if (duration >= 1 && !isChordTone(degree, root)) {
+      if (duration >= 0.75 && !isChordTone(degree, root)) {
         degree = nearestTo(chordToneWindow(chordTones, degree), degree);
       }
       // articulation: inner notes detach, strong notes carry — less plunk, more speech
@@ -715,4 +715,17 @@ function chooseBoundedEntry(
     best = nearestTo(candidates, previousExit);
   }
   return best;
+}
+export function developSongMotifBridgeMelodyPattern(
+  plan: SongMotifPlan,
+  options: SongMotifMelodyOptions,
+): PlayerPatternSource {
+  const bridgePlan: SongMotifPlan = {
+    ...plan,
+    cellRhythm: plan.cellRhythm.map((value) => Math.min(2, value * 2)),
+  };
+  return developSongMotifMelodyPattern(bridgePlan, {
+    ...options,
+    velocityScale: (options.velocityScale ?? 1) * 0.88,
+  });
 }

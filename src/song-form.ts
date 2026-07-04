@@ -179,8 +179,21 @@ export function getSongHarmonicContext(
   arrangement: SongArrangement = DEFAULT_SONG_ARRANGEMENT,
 ): SongHarmonicContext {
   const section = sectionAtBeat(absoluteBeat, arrangement);
-  const plans = deriveSongSectionRootPlans(song);
   const sectionId = getHarmonicSectionId(section.sectionType);
+  if (song.rootPlan && song.rootPlan.length > 0) {
+    const bar = Math.floor(absoluteBeat / 4);
+    const planIndex = ((bar % song.rootPlan.length) + song.rootPlan.length) % song.rootPlan.length;
+    return {
+      sectionId,
+      label: sectionId === "gather" ? "Gather" : sectionId === "answer" ? "Answer" : "Bridge",
+      rootDegree: song.rootPlan[planIndex] ?? 0,
+      rootDegrees: song.rootPlan,
+      rootIndex: planIndex,
+      rootSpanBeats: 4,
+      strategy: "modal-root-recolor",
+    };
+  }
+  const plans = deriveSongSectionRootPlans(song);
   const rootDegrees = plans[sectionId].length > 0
     ? plans[sectionId]
     : deriveSongRootDegrees(song);
@@ -217,6 +230,8 @@ export function arrangeSongFormPatternEvent(
   }
 
   if (context.sectionType === "bridge") {
+    const variant = readSectionMelodyEvent(input, "bridge", context);
+    if (variant !== undefined) return variant;
     return createBridgeMelodyEvent(input.sourceEvent);
   }
 

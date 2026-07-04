@@ -6,6 +6,7 @@ import {
 } from "./song-draft-plan";
 import {
   SONG_MOTIF_MOVE_ROOTS,
+  developSongMotifBridgeMelodyPattern,
   developSongMotifChorusMelodyPattern,
   developSongMotifMelodyPattern,
   expandSongMotifPlanToDraftPlan,
@@ -66,6 +67,12 @@ export function createSongStarterMaterial(base: SongMaterial, starter: SongLibra
         velocityScale: 0.9 + clamp01(starter.goal.energy) * 0.2,
         raiseLeadingTone,
       }),
+      bridge: developSongMotifBridgeMelodyPattern(starter.motifPlan, {
+        seed,
+        octave: starter.goal.energy > 0.7 ? 5 : 4,
+        velocityScale: 0.9 + clamp01(starter.goal.energy) * 0.2,
+        raiseLeadingTone,
+      }),
     }
     : undefined;
   return {
@@ -73,6 +80,7 @@ export function createSongStarterMaterial(base: SongMaterial, starter: SongLibra
     label: `${base.label} starter`,
     description: `${base.description} Prompt-seeded into a 32-beat voice-led draft (${connectorProfile.summary}; ${harmonyPlan.draft.summary}).`,
     ...(sectionMelody ? { sectionMelody } : {}),
+    ...(motifRoots ? { rootPlan: [...motifRoots] } : {}),
     patterns: [
       starter.motifPlan
         ? createStarterGroovePulsePattern(effectiveStarter, seed, starter.motifPlan.peakBar)
@@ -1142,6 +1150,26 @@ export function shapeKeyboardCadenceAndPeak(
     if (raiseLeadingTone && isDominantCadenceBar && normalizeDegree(next.scaleDegree) === 6 && !next.chromaticOffsetSemitones) {
       next.chromaticOffsetSemitones = 1;
       next.tags.push("harmony:leading-tone");
+      // a raised tone never hangs: keep it short so it resolves, not sustains
+      if (next.durationBeats > 0.75) {
+        next.durationBeats = 0.75;
+        next.duration = "8n";
+      }
+    }
+    // keyboard long notes obey the chord, exactly like the melody's rule
+    const rootOfBar = normalizeDegree(motifRoots[bar % motifRoots.length] ?? 0);
+    const rel = normalizeDegree(next.scaleDegree - rootOfBar);
+    if (next.durationBeats >= 1 && !(rel === 0 || rel === 2 || rel === 4) && !next.chromaticOffsetSemitones) {
+      const candidates = [0, 2, 4].map((offset) => {
+        const target = rootOfBar + offset;
+        return target + 7 * Math.round((next.scaleDegree - target) / 7);
+      });
+      let best = candidates[0]!;
+      for (const candidate of candidates) {
+        if (Math.abs(candidate - next.scaleDegree) < Math.abs(best - next.scaleDegree)) best = candidate;
+      }
+      next.scaleDegree = best;
+      next.tags.push("harmony:chord-snapped");
     }
     if (bar === peakBar) {
       next.velocity = Math.min(0.85, Math.round(next.velocity * 1.15 * 1000) / 1000);
