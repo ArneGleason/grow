@@ -79,6 +79,8 @@ const SECTION_LABELS = {
 
 const CHORD_TONE_OFFSETS = [0, 2, 4] as const;
 const HARMONIC_ROOT_SPAN_BEATS = 4;
+const CHORUS_HOOK_PHRASE_BEATS = 16;
+const CHORUS_HOOK_SUBDIVISION_BEATS = 0.5;
 const CHORUS_HOOK_SLOTS: readonly (null | {
   motifIndex: number;
   durationBeats: number;
@@ -87,21 +89,35 @@ const CHORUS_HOOK_SLOTS: readonly (null | {
   transposeDegrees?: number;
   rootAdvance?: number;
 })[] = [
-  { motifIndex: 1, chordToneIndex: 2, durationBeats: 1, velocity: 0.48 },
+  { motifIndex: 0, chordToneIndex: 0, durationBeats: 1, velocity: 0.46 },
   null,
-  { motifIndex: 2, transposeDegrees: 2, durationBeats: 0.5, velocity: 0.4 },
-  { motifIndex: 3, transposeDegrees: 2, durationBeats: 0.5, velocity: 0.38 },
+  { motifIndex: 1, transposeDegrees: 1, durationBeats: 0.5, velocity: 0.38 },
+  null,
+  { motifIndex: 2, chordToneIndex: 2, rootAdvance: 1, durationBeats: 1, velocity: 0.5 },
+  null,
+  { motifIndex: 3, transposeDegrees: 2, durationBeats: 0.5, velocity: 0.4 },
+  null,
   { motifIndex: 4, chordToneIndex: 1, rootAdvance: 1, durationBeats: 1, velocity: 0.44 },
+  null,
+  { motifIndex: 5, transposeDegrees: -1, durationBeats: 0.5, velocity: 0.36 },
+  null,
+  { motifIndex: 6, chordToneIndex: 0, rootAdvance: 2, durationBeats: 1, velocity: 0.48 },
+  null,
+  { motifIndex: 7, transposeDegrees: 1, durationBeats: 0.5, velocity: 0.38 },
+  null,
+  { motifIndex: 8, chordToneIndex: 2, rootAdvance: 2, durationBeats: 1, velocity: 0.5 },
+  null,
+  { motifIndex: 9, transposeDegrees: 2, durationBeats: 0.5, velocity: 0.4 },
+  null,
+  { motifIndex: 10, chordToneIndex: 1, rootAdvance: 3, durationBeats: 1, velocity: 0.44 },
+  null,
+  { motifIndex: 11, transposeDegrees: -1, durationBeats: 0.5, velocity: 0.36 },
+  null,
+  { motifIndex: 12, chordToneIndex: 0, rootAdvance: 3, durationBeats: 1, velocity: 0.5 },
   null,
   { motifIndex: 5, transposeDegrees: 1, durationBeats: 0.5, velocity: 0.38 },
   null,
-  { motifIndex: 6, chordToneIndex: 2, rootAdvance: 2, durationBeats: 1, velocity: 0.46 },
-  null,
-  { motifIndex: 7, transposeDegrees: 2, durationBeats: 0.5, velocity: 0.4 },
-  { motifIndex: 8, transposeDegrees: 1, durationBeats: 0.5, velocity: 0.36 },
-  { motifIndex: 0, chordToneIndex: 0, rootAdvance: 3, durationBeats: 1, velocity: 0.42 },
-  null,
-  { motifIndex: 2, transposeDegrees: 2, durationBeats: 0.5, velocity: 0.38 },
+  { motifIndex: 0, chordToneIndex: 0, rootAdvance: 0, durationBeats: 1, velocity: 0.46 },
   null,
 ];
 
@@ -279,26 +295,28 @@ function createChorusMelodyEvent(
   input: SongFormPatternEventInput,
   context: SongSectionContext,
 ): PatternNoteSource | null {
-  const phraseStep = getPhraseStep(context.localBeat, input.pattern.subdivisionBeats);
   if (
     input.chorusDevelopment?.mode === "repaired" &&
     input.chorusDevelopment.repairedEvents &&
     input.chorusDevelopment.repairedEvents.length > 0
   ) {
+    const phraseStep = getPatternPhraseStep(context.localBeat, input.pattern.subdivisionBeats);
     const repairedEvent = input.chorusDevelopment.repairedEvents[
       phraseStep % input.chorusDevelopment.repairedEvents.length
     ] ?? null;
     return repairedEvent ? { ...repairedEvent } : null;
   }
 
-  const hook = CHORUS_HOOK_SLOTS[phraseStep % CHORUS_HOOK_SLOTS.length];
+  const hookStep = getChorusHookStep(context.localBeat);
+  if (hookStep === undefined) return null;
+  const hook = CHORUS_HOOK_SLOTS[hookStep % CHORUS_HOOK_SLOTS.length];
   if (!hook) return null;
 
   const motif = getMotifNotes(input.pattern);
   const motifNote = motif[hook.motifIndex % motif.length] ?? input.sourceEvent;
   if (!motifNote) return null;
 
-  const roots = deriveSongRootDegrees(input.song);
+  const roots = deriveSongSectionRootPlans(input.song).answer;
   const root = roots[getRootIndex(context.localBeat, roots, hook.rootAdvance)] ?? 0;
   const scaleLength = Math.max(1, input.tonalContext.scale.length);
   const scaleDegree = hook.chordToneIndex !== undefined
@@ -330,9 +348,16 @@ function createBridgeMelodyEvent(sourceEvent: PatternNoteSource | null): Pattern
   };
 }
 
-function getPhraseStep(localBeat: number, subdivisionBeats: number): number {
-  const phraseBeat = modulo(localBeat, 8);
+function getPatternPhraseStep(localBeat: number, subdivisionBeats: number): number {
+  const phraseBeat = modulo(localBeat, CHORUS_HOOK_PHRASE_BEATS);
   return Math.round(phraseBeat / subdivisionBeats);
+}
+
+function getChorusHookStep(localBeat: number): number | undefined {
+  const phraseBeat = modulo(localBeat, CHORUS_HOOK_PHRASE_BEATS);
+  const rawStep = phraseBeat / CHORUS_HOOK_SUBDIVISION_BEATS;
+  const step = Math.round(rawStep);
+  return Math.abs(rawStep - step) < 0.000001 ? step : undefined;
 }
 
 function getMotifNotes(pattern: PlayerPatternSource): readonly PatternNoteSource[] {

@@ -25,14 +25,14 @@ Grow currently runs as a browser app with:
 
 - A PixiJS terrarium canvas with simple player markers.
 - Tone.js transport, synth voices, lookahead scheduling, start/stop lifecycle, and audible microtiming.
-- Three deterministic players: `pulse`, `bass`, and `melody`.
+- Four deterministic players: `pulse`, `bass`, `keyboard`, and `melody`.
 - A structured musical event ledger and listening frame.
 - A looping song form: Verse, Chorus, Verse, Chorus, Bridge, Chorus.
 - Audible harmonic motion from the song sketch root plan: pulse and bass move through section roots while staying inside the current modal scale.
 - A deterministic developed chorus melody committed through the lookahead, so the chorus is new material rather than a fire-time pitch trick.
 - A deterministic melody scorer and repair pass that A/Bs the raw transformed chorus against a repaired take from each player's perspective.
 - A manual local Ollama melody critic that can select among strategy-diverse, already-scored chorus candidates without emitting notes.
-- A deterministic band-consensus layer where pulse, bass, and melody respond to the proposed chorus take before one app-owned candidate becomes audible.
+- A deterministic band-consensus layer where pulse, bass, keyboard, and melody respond to the proposed chorus take before one app-owned candidate becomes audible.
 - Per-section behavior: grounded verses, lifted/full choruses, and a sparse shifted bridge.
 - Session modes: break, solo practice, rehearsal, and performance.
 - Player taste rules that can repeat, support, simplify, vary, contrast, or rest.

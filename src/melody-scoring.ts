@@ -932,11 +932,11 @@ function createSpaciousHookPhrase(
 ): readonly MelodyPhraseNote[] {
   if (phrase.length <= 3) return phrase.map((note) => ({ ...note }));
   const finalIndex = phrase.length - 1;
-  return phrase.flatMap((note, index) => {
+  const spacious = phrase.flatMap((note, index) => {
     const keep = index === 0 ||
       index === finalIndex ||
-      isAccent(note.positionBeats) ||
-      index % 3 === 0;
+      (isAccent(note.positionBeats) && index % 2 === 0) ||
+      index % 4 === 0;
     if (!keep) return [];
     return [{
       ...note,
@@ -944,6 +944,12 @@ function createSpaciousHookPhrase(
       velocity: roundVelocity(note.velocity + 0.04),
     }];
   });
+  if (spacious.length < phrase.length) return spacious;
+  return phrase.filter((_, index) => index === 0 || index === finalIndex || index % 2 === 0).map((note) => ({
+    ...note,
+    durationBeats: Math.min(1, Math.max(note.durationBeats, 1)),
+    velocity: roundVelocity(note.velocity + 0.04),
+  }));
 }
 
 function createEnergeticHookPhrase(

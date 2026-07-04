@@ -38,6 +38,25 @@ import {
   type MelodyRepairCandidate,
   type MelodyRepairTake,
 } from "./melody-scoring";
+import {
+  SONG_INTENT_RESPONSE_FORMAT,
+  applySongIntentResponse,
+  createSongIntentPrimer,
+  createSongIntentPrompt,
+  type SongIntentApplication,
+  type SongIntentApplicationResult,
+  type SongIntentPromptInput,
+} from "./song-intent";
+import {
+  SONG_DRAFT_PLAN_RESPONSE_FORMAT,
+  createSongDraftPlanPrimer,
+  createSongDraftPlanPrompt,
+  validateSongDraftPlanResponse,
+  type SongDraftPlan,
+  type SongDraftPlanPromptInput,
+  type SongDraftPlanValidationResult,
+} from "./song-draft-plan";
+import type { SongGoalInterpretation } from "./song-goal";
 
 export interface OllamaConfig {
   baseUrl: string;
@@ -137,6 +156,49 @@ export interface OllamaMelodyCriticTestResult {
   selection?: MelodyCriticSelection;
   fallbackSelection?: MelodyCriticSelection;
   fallbackValidation?: MelodyCriticValidation;
+  message: string;
+}
+
+export interface OllamaSongIntentParseResult {
+  status: "idle" | "ok" | "error";
+  errors: string[];
+  validation?: SongIntentApplicationResult;
+  application?: SongIntentApplication;
+}
+
+export interface OllamaSongIntentTestResult {
+  status: "idle" | "running" | "valid" | "invalid" | "failed";
+  provider: "none" | "ollama" | "mock-fallback";
+  model: string;
+  baseUrl: string;
+  promptProtocol: "song-intent";
+  latencyMs?: number;
+  rawResponse: string;
+  parse: OllamaSongIntentParseResult;
+  validation: SongIntentApplicationResult;
+  application?: SongIntentApplication;
+  fallbackInterpretation: SongGoalInterpretation;
+  message: string;
+}
+
+export interface OllamaSongDraftPlanParseResult {
+  status: "idle" | "ok" | "error";
+  errors: string[];
+  validation?: SongDraftPlanValidationResult;
+  plan?: SongDraftPlan;
+}
+
+export interface OllamaSongDraftPlanTestResult {
+  status: "idle" | "running" | "valid" | "invalid" | "failed";
+  provider: "none" | "ollama" | "mock-fallback";
+  model: string;
+  baseUrl: string;
+  promptProtocol: "song-draft-plan";
+  latencyMs?: number;
+  rawResponse: string;
+  parse: OllamaSongDraftPlanParseResult;
+  validation: SongDraftPlanValidationResult;
+  plan?: SongDraftPlan;
   message: string;
 }
 
@@ -252,6 +314,50 @@ export function createInitialOllamaMelodyCriticTest(
   };
 }
 
+export function createInitialOllamaSongIntentTest(
+  config: OllamaConfig,
+  fallbackInterpretation: SongGoalInterpretation,
+): OllamaSongIntentTestResult {
+  return {
+    status: "idle",
+    provider: "none",
+    model: config.model,
+    baseUrl: config.baseUrl,
+    promptProtocol: "song-intent",
+    rawResponse: "",
+    parse: { status: "idle", errors: [] },
+    validation: {
+      valid: false,
+      errors: [],
+      warnings: [],
+      clamps: [],
+    },
+    fallbackInterpretation,
+    message: "No song intent sent",
+  };
+}
+
+export function createInitialOllamaSongDraftPlanTest(
+  config: OllamaConfig,
+): OllamaSongDraftPlanTestResult {
+  return {
+    status: "idle",
+    provider: "none",
+    model: config.model,
+    baseUrl: config.baseUrl,
+    promptProtocol: "song-draft-plan",
+    rawResponse: "",
+    parse: { status: "idle", errors: [] },
+    validation: {
+      valid: false,
+      errors: [],
+      warnings: [],
+      clamps: [],
+    },
+    message: "No song draft plan sent",
+  };
+}
+
 export function createOllamaSessionPrimer(options: {
   allowsRegisterShift?: boolean;
 } = {}): string {
@@ -294,6 +400,14 @@ export function createOllamaMelodyCriticPrimer(): string {
     "The app validates your JSON. Invalid output is ignored and the deterministic scorer fallback stays active.",
     MELODY_CRITIC_RULE,
   ].join("\n");
+}
+
+export function createOllamaSongIntentPrimer(): string {
+  return createSongIntentPrimer();
+}
+
+export function createOllamaSongDraftPlanPrimer(): string {
+  return createSongDraftPlanPrimer();
 }
 
 export function createOllamaThoughtPrompt(
@@ -372,6 +486,14 @@ export function createOllamaMelodyCriticPrompt(
     "Candidate projection:",
     JSON.stringify(projection),
   ].join("\n");
+}
+
+export function createOllamaSongIntentPrompt(input: SongIntentPromptInput): string {
+  return createSongIntentPrompt(input);
+}
+
+export function createOllamaSongDraftPlanPrompt(input: SongDraftPlanPromptInput): string {
+  return createSongDraftPlanPrompt(input);
 }
 
 export async function checkOllamaHealth(config: OllamaConfig): Promise<OllamaHealthState> {
@@ -683,6 +805,162 @@ export async function runOllamaMelodyCriticTest(
   }
 }
 
+export async function runOllamaSongIntentTest(
+  input: SongIntentPromptInput,
+  fallbackInterpretation: SongGoalInterpretation,
+  config: OllamaConfig,
+  options: OllamaThoughtRunOptions = {},
+): Promise<OllamaSongIntentTestResult> {
+  const startedAt = Date.now();
+  const ollamaRequest: OllamaChatRequest = {
+    model: config.model,
+    messages: [
+      { role: "system", content: createOllamaSongIntentPrimer() },
+      { role: "user", content: createOllamaSongIntentPrompt(input) },
+    ],
+    stream: false,
+    format: SONG_INTENT_RESPONSE_FORMAT,
+    think: false,
+    options: {
+      temperature: 0.42,
+      num_predict: 448,
+    },
+  };
+
+  try {
+    const response = await fetchWithTimeout(
+      createOllamaProxyUrl("chat", config),
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          baseUrl: sanitizeBaseUrl(config.baseUrl),
+          request: ollamaRequest,
+        } satisfies OllamaProxyChatRequest),
+      },
+      config.timeoutMs,
+      options.signal,
+    );
+    const latencyMs = Date.now() - startedAt;
+    if (!response.ok) {
+      return createFailedSongIntentTest(
+        config,
+        fallbackInterpretation,
+        latencyMs,
+        `HTTP ${response.status}`,
+      );
+    }
+
+    const payload = await response.json() as OllamaChatResponse;
+    const rawResponse = getOllamaResponseText(payload);
+    const parse = parseOllamaSongIntentResponse(rawResponse, fallbackInterpretation);
+    const validation = parse.validation ?? {
+        valid: false,
+        errors: parse.errors,
+        warnings: [],
+        clamps: [],
+      };
+
+    return {
+      status: parse.application ? "valid" : "invalid",
+      provider: "ollama",
+      model: config.model,
+      baseUrl: config.baseUrl,
+      promptProtocol: "song-intent",
+      latencyMs,
+      rawResponse,
+      parse,
+      validation,
+      application: parse.application,
+      fallbackInterpretation,
+      message: parse.application
+        ? "Ollama returned valid song intent"
+        : "Ollama responded, but song intent did not validate",
+    };
+  } catch (error) {
+    return createFailedSongIntentTest(
+      config,
+      fallbackInterpretation,
+      Date.now() - startedAt,
+      getErrorMessage(error),
+    );
+  }
+}
+
+export async function runOllamaSongDraftPlanTest(
+  input: SongDraftPlanPromptInput,
+  config: OllamaConfig,
+  options: OllamaThoughtRunOptions = {},
+): Promise<OllamaSongDraftPlanTestResult> {
+  const startedAt = Date.now();
+  const ollamaRequest: OllamaChatRequest = {
+    model: config.model,
+    messages: [
+      { role: "system", content: createOllamaSongDraftPlanPrimer() },
+      { role: "user", content: createOllamaSongDraftPlanPrompt(input) },
+    ],
+    stream: false,
+    format: SONG_DRAFT_PLAN_RESPONSE_FORMAT,
+    think: false,
+    options: {
+      temperature: 0.58,
+      num_predict: 768,
+    },
+  };
+
+  try {
+    const response = await fetchWithTimeout(
+      createOllamaProxyUrl("chat", config),
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          baseUrl: sanitizeBaseUrl(config.baseUrl),
+          request: ollamaRequest,
+        } satisfies OllamaProxyChatRequest),
+      },
+      config.timeoutMs,
+      options.signal,
+    );
+    const latencyMs = Date.now() - startedAt;
+    if (!response.ok) {
+      return createFailedSongDraftPlanTest(config, latencyMs, `HTTP ${response.status}`);
+    }
+
+    const payload = await response.json() as OllamaChatResponse;
+    const rawResponse = getOllamaResponseText(payload);
+    const parse = parseOllamaSongDraftPlanResponse(rawResponse);
+    const validation = parse.validation ?? {
+      valid: false,
+      errors: parse.errors,
+      warnings: [],
+      clamps: [],
+    };
+
+    return {
+      status: parse.plan ? "valid" : "invalid",
+      provider: "ollama",
+      model: config.model,
+      baseUrl: config.baseUrl,
+      promptProtocol: "song-draft-plan",
+      latencyMs,
+      rawResponse,
+      parse,
+      validation,
+      plan: parse.plan,
+      message: parse.plan
+        ? "Ollama returned a valid song draft plan"
+        : "Ollama responded, but the song draft plan did not validate",
+    };
+  } catch (error) {
+    return createFailedSongDraftPlanTest(
+      config,
+      Date.now() - startedAt,
+      getErrorMessage(error),
+    );
+  }
+}
+
 function getOllamaResponseText(payload: OllamaChatResponse): string {
   const candidates = [
     payload.message?.content,
@@ -717,6 +995,79 @@ export function parseOllamaMelodyCriticResponse(
       status: "ok",
       errors: [],
       selection: coerceMelodyCriticSelection(object),
+    };
+  } catch (error) {
+    return {
+      status: "error",
+      errors: [`response JSON parse failed: ${getErrorMessage(error)}`],
+    };
+  }
+}
+
+export function parseOllamaSongIntentResponse(
+  rawResponse: string,
+  fallbackInterpretation: SongGoalInterpretation,
+): OllamaSongIntentParseResult {
+  const jsonText = extractJsonObject(rawResponse);
+  if (!jsonText) {
+    return {
+      status: "error",
+      errors: ["response did not contain a JSON object"],
+    };
+  }
+
+  try {
+    const parsed = JSON.parse(jsonText) as unknown;
+    const object = unwrapSongIntentObject(parsed);
+    if (!object) {
+      return {
+        status: "error",
+        errors: ["response JSON was not an object"],
+      };
+    }
+
+    const validation = applySongIntentResponse(fallbackInterpretation, object);
+    return {
+      status: validation.valid ? "ok" : "error",
+      errors: [...validation.errors],
+      validation,
+      application: validation.application,
+    };
+  } catch (error) {
+    return {
+      status: "error",
+      errors: [`response JSON parse failed: ${getErrorMessage(error)}`],
+    };
+  }
+}
+
+export function parseOllamaSongDraftPlanResponse(
+  rawResponse: string,
+): OllamaSongDraftPlanParseResult {
+  const jsonText = extractJsonObject(rawResponse);
+  if (!jsonText) {
+    return {
+      status: "error",
+      errors: ["response did not contain a JSON object"],
+    };
+  }
+
+  try {
+    const parsed = JSON.parse(jsonText) as unknown;
+    const object = unwrapSongDraftPlanObject(parsed);
+    if (!object) {
+      return {
+        status: "error",
+        errors: ["response JSON was not an object"],
+      };
+    }
+
+    const validation = validateSongDraftPlanResponse(object);
+    return {
+      status: validation.valid ? "ok" : "error",
+      errors: [...validation.errors],
+      validation,
+      plan: validation.plan,
     };
   } catch (error) {
     return {
@@ -895,6 +1246,56 @@ function createFailedMelodyCriticTest(
     message: `Ollama unavailable; deterministic melody critic fallback is ${
       fallbackValidation.valid ? "valid" : "invalid"
     }`,
+  };
+}
+
+function createFailedSongIntentTest(
+  config: OllamaConfig,
+  fallbackInterpretation: SongGoalInterpretation,
+  latencyMs: number,
+  message: string,
+): OllamaSongIntentTestResult {
+  return {
+    status: "failed",
+    provider: "mock-fallback",
+    model: config.model,
+    baseUrl: config.baseUrl,
+    promptProtocol: "song-intent",
+    latencyMs,
+    rawResponse: "",
+    parse: { status: "error", errors: [message] },
+    validation: {
+      valid: false,
+      errors: [message],
+      warnings: [],
+      clamps: [],
+    },
+    fallbackInterpretation,
+    message: "Ollama unavailable; deterministic song intent fallback is active",
+  };
+}
+
+function createFailedSongDraftPlanTest(
+  config: OllamaConfig,
+  latencyMs: number,
+  message: string,
+): OllamaSongDraftPlanTestResult {
+  return {
+    status: "failed",
+    provider: "mock-fallback",
+    model: config.model,
+    baseUrl: config.baseUrl,
+    promptProtocol: "song-draft-plan",
+    latencyMs,
+    rawResponse: "",
+    parse: { status: "error", errors: [message] },
+    validation: {
+      valid: false,
+      errors: [message],
+      warnings: [],
+      clamps: [],
+    },
+    message: "Ollama unavailable; deterministic song draft fallback is active",
   };
 }
 
@@ -1167,6 +1568,21 @@ function unwrapMelodyCriticObject(value: unknown): Record<string, unknown> | und
   if (!isRecord(value)) return undefined;
   if (isRecord(value.melodyCritic)) return value.melodyCritic;
   if (isRecord(value.selection)) return value.selection;
+  return value;
+}
+
+function unwrapSongIntentObject(value: unknown): Record<string, unknown> | undefined {
+  if (!isRecord(value)) return undefined;
+  if (isRecord(value.songIntent)) return value.songIntent;
+  if (isRecord(value.intent)) return value.intent;
+  return value;
+}
+
+function unwrapSongDraftPlanObject(value: unknown): Record<string, unknown> | undefined {
+  if (!isRecord(value)) return undefined;
+  if (isRecord(value.songDraftPlan)) return value.songDraftPlan;
+  if (isRecord(value.draftPlan)) return value.draftPlan;
+  if (isRecord(value.plan)) return value.plan;
   return value;
 }
 

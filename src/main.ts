@@ -72,20 +72,32 @@ import {
   createInitialOllamaHealth,
   createInitialOllamaMelodyCriticTest,
   createInitialOllamaProposalTextTest,
+  createInitialOllamaSongDraftPlanTest,
+  createInitialOllamaSongIntentTest,
   createInitialOllamaThoughtTest,
   createOllamaInfluenceProbePrompt,
   createOllamaMelodyCriticPrompt,
+  createOllamaSongDraftPlanPrompt,
+  createOllamaSongIntentPrompt,
   createOllamaSessionPrimer,
   parseOllamaMelodyCriticResponse,
+  parseOllamaSongDraftPlanResponse,
+  parseOllamaSongIntentResponse,
   parseOllamaThoughtResponse,
   runOllamaMelodyCriticTest,
   runOllamaProposalTextTest,
+  runOllamaSongDraftPlanTest,
+  runOllamaSongIntentTest,
   runOllamaThoughtTest,
   type OllamaConfig,
   type OllamaHealthState,
   type OllamaMelodyCriticParseResult,
   type OllamaMelodyCriticTestResult,
   type OllamaProposalTextTestResult,
+  type OllamaSongDraftPlanParseResult,
+  type OllamaSongDraftPlanTestResult,
+  type OllamaSongIntentParseResult,
+  type OllamaSongIntentTestResult,
   type OllamaThoughtParseResult,
   type OllamaThoughtTestResult,
 } from "./ollama";
@@ -94,6 +106,15 @@ import {
   type PlayerPerformedTimingSnapshot,
 } from "./performed-time";
 import { exportSongToMidi, type MidiSongExportResult } from "./midi-export";
+import {
+  DEFAULT_SOUND_MIX,
+  clampSoundLevel,
+  cloneSoundMixSettings,
+  getPlayerSoundSettings,
+  getVoiceOptionsForPlayer,
+  isVoiceAllowedForPlayer,
+  type SoundMixSettings,
+} from "./sound-settings";
 import {
   createPersistenceClient,
   type PersistenceClientState,
@@ -126,6 +147,7 @@ import {
   type SessionMode,
   type SessionModeOption,
 } from "./session-mode";
+import type { SongDraftPlan } from "./song-draft-plan";
 import {
   applySectionDynamics,
   createGoalSectionDynamicsProfile,
@@ -141,6 +163,11 @@ import {
 } from "./song-material";
 import { createSongStarterMaterial } from "./song-starter-material";
 import {
+  generateVoiceLedHarmonyDraft,
+  type VoiceLedHarmonyDraft,
+  type VoiceLedHarmonyDraftOptions,
+} from "./voice-led-harmony";
+import {
   SONG_LIBRARY_STORAGE_KEY,
   appendSongLibraryEntry,
   chooseStarterSongId,
@@ -150,6 +177,7 @@ import {
   getSongLibrarySnapshot,
   normalizeSongLibraryState,
   renameSongLibraryEntry,
+  removeSongLibraryEntry,
   selectSongLibraryEntry,
   updateSongLibraryEntryBase,
   updateSongLibraryEntryStarter,
@@ -252,6 +280,7 @@ let cachedSongStarterMaterial: SongMaterial | undefined;
 let songStarterOpen = false;
 let songStarterEditingSongId: string | undefined;
 let songStarterGeneration: SongStarterGeneration | undefined;
+let songStarterGenerateInFlight = false;
 let timingFeelMode: TimingFeelMode = "feel";
 let melodyDevelopmentMode: MelodyDevelopmentMode = "repaired";
 let formVariantId: FormVariantId = DEFAULT_FORM_VARIANT_ID;
@@ -309,7 +338,10 @@ type WrittenEvolvingRegime = "written" | "speaking" | "evolving";
 let writtenEvolvingDialValue = WRITTEN_EVOLVING_DIAL_DEFAULT;
 let writtenEvolvingRegime: WrittenEvolvingRegime = "written";
 let activeTempoBpm = DEFAULT_TRANSPORT_BPM;
+let soundMix = cloneSoundMixSettings(DEFAULT_SOUND_MIX);
 let songGoalInterpretation = interpretSongGoal("Build a balanced modal terrarium piece.");
+let ollamaSongIntentTest = createInitialOllamaSongIntentTest(ollamaConfig, songGoalInterpretation);
+let ollamaSongDraftPlanTest = createInitialOllamaSongDraftPlanTest(ollamaConfig);
 let appliedSongGoal: SongGoal | undefined;
 let cachedSongSketchKey = "";
 let cachedSongSketchBase: SongSketch | undefined;
@@ -443,7 +475,7 @@ const songStarterPlayerRows = PLAYER_REGISTRY.map((player) => `
                     data-testid="song-starter-player-${player.id}"
                     type="checkbox"
                     value="${player.id}"
-                    ${player.role === "melody" || player.role === "pulse" || player.role === "bass" ? "checked" : ""}
+                    ${isDefaultSongStarterPlayer(player) ? "checked" : ""}
                   />
                   <strong>${capitalizeModeName(player.displayName)}</strong>
                   <small>${player.role}</small>
@@ -521,6 +553,7 @@ interface SongStarterGeneration {
   baseSongId: SongId;
   materialSeed: number;
   structureSummary: string;
+  draftPlan?: SongDraftPlan;
   playerPlans: readonly SongLibraryPlayerPlan[];
 }
 const DEFAULT_INSPECTOR_WIDTH = 320;
@@ -591,6 +624,20 @@ function getCurrentSongMaterial(): SongMaterial {
   return cachedSongStarterMaterial;
 }
 
+function getCurrentVoiceLedHarmonyDraft(
+  options: VoiceLedHarmonyDraftOptions = {},
+): VoiceLedHarmonyDraft {
+  const activeSong = getActiveSongLibraryEntry();
+  const starterGoal = activeSong.starter?.goal;
+  return generateVoiceLedHarmonyDraft({
+    seed: options.seed ?? activeSong.starter?.materialSeed ?? prosodySeedForSong(activeSong.id),
+    bars: options.bars ?? 8,
+    tonalContext: options.tonalContext ?? world.getTonalContext(),
+    ambiguity: options.ambiguity ?? starterGoal?.surpriseTarget ?? 0.48,
+    motion: options.motion ?? starterGoal?.energy ?? 0.58,
+  });
+}
+
 function createCurrentSongMaterialCacheKey(
   activeSong: SongLibraryEntry,
   starter: SongLibraryStarter,
@@ -604,6 +651,11 @@ function createCurrentSongMaterialCacheKey(
     starter.goal.mode,
     starter.goal.tempoBpm,
     starter.goal.formPreference,
+    starter.draftPlan
+      ? starter.draftPlan.bars.map((bar) =>
+        `${bar.barIndex}:${bar.leader}:${bar.rootDegree}:${bar.anchorDegrees.join(".")}:${bar.contour}:${bar.rhythm}:${bar.cadence}:${bar.tension}`
+      ).join(",")
+      : "no-plan",
     starter.playerPlans.map((plan) => `${plan.playerId}:${plan.enabled}:${plan.brief}`).join(","),
   ].join("|");
 }
@@ -628,6 +680,9 @@ function persistSongLibraryState(): void {
 }
 
 function getDefaultSongStarterPlayerBrief(player: Player): string {
+  if (player.id === "keyboard") {
+    return "Voice the chords in warm, steady shapes; leave the vocal lane open.";
+  }
   switch (player.role) {
     case "pulse":
       return "Set the time-feel and decide when the room should breathe.";
@@ -659,10 +714,10 @@ function openSongStarterComposer(song: SongLibraryEntry | undefined = undefined)
     const checkbox = getSongStarterPlayerCheckbox(player.id);
     const briefInput = getSongStarterPlayerBriefInput(player.id);
     const plan = starter?.playerPlans.find((candidate) => candidate.playerId === player.id);
-    checkbox.checked = plan?.enabled ?? (player.role === "melody" || player.role === "pulse" || player.role === "bass");
+    checkbox.checked = plan?.enabled ?? isDefaultSongStarterPlayer(player);
     briefInput.value = plan?.brief ?? getDefaultSongStarterPlayerBrief(player);
   }
-  songStarterCreate.textContent = songStarterEditingSongId ? "Update starter" : "Create starter";
+  songStarterCreate.textContent = songStarterEditingSongId ? "Update song" : "Use this song";
   renderSongStarterPreview();
   songStarter.focus();
   window.setTimeout(() => songStarterPrompt.focus(), 0);
@@ -682,9 +737,14 @@ function isSongStarterComposerOpen(): boolean {
 function renderSongStarterPreview(): void {
   const draft = readSongStarterDraft();
   if (!draft.prompt.trim()) {
-    songStarterPreview.textContent = "Describe the song to derive the starter setup and player briefs.";
+    songStarter.dataset.workflowState = "needs-prompt";
+    setSongStarterWorkflowSteps("current", "locked", "locked");
+    songStarterStatus.textContent = "Describe the song first.";
+    songStarterPreview.textContent = "Write the musical direction. Leave the key, tempo, shape, and band choices alone unless you care.";
     songStarterGenerate.disabled = true;
     songStarterCreate.disabled = true;
+    songStarterGenerate.title = "Describe the song before making a draft.";
+    songStarterCreate.title = "Make a draft before using this song.";
     renderSongStarterGeneratedSeed(undefined);
     return;
   }
@@ -701,9 +761,55 @@ function renderSongStarterPreview(): void {
     `players: ${playerSummary}`,
   ].join(" | ");
   const validStarter = interpretation.validation.valid && enabledPlayers.length > 0;
-  songStarterGenerate.disabled = !validStarter;
-  songStarterCreate.disabled = !validStarter || !songStarterGeneration;
+  const hasGeneratedStarter = Boolean(songStarterGeneration);
+  songStarterGenerate.disabled = !validStarter || songStarterGenerateInFlight;
+  songStarterCreate.disabled = !validStarter || !hasGeneratedStarter || songStarterGenerateInFlight;
+  songStarterGenerate.title = validStarter
+    ? "Make a playable draft from this direction."
+    : enabledPlayers.length === 0
+      ? "Choose at least one player before making a draft."
+      : "Resolve the song setup before making a draft.";
+  songStarterCreate.title = hasGeneratedStarter
+    ? songStarterEditingSongId
+      ? "Update this song with the draft."
+      : "Use this draft as a song."
+    : "Make a draft before using this song.";
+  if (!validStarter) {
+    songStarter.dataset.workflowState = "blocked";
+    setSongStarterWorkflowSteps("done", "current", "locked");
+    songStarterStatus.textContent = enabledPlayers.length === 0
+      ? "Choose at least one player."
+      : interpretation.validation.errors[0] ?? "The song description needs a valid setup.";
+  } else if (songStarterGenerateInFlight) {
+    songStarter.dataset.workflowState = "generating";
+    setSongStarterWorkflowSteps("done", "current", "locked");
+    songStarterGenerate.title = "Interpreting the song direction.";
+    songStarterCreate.title = "Wait for the draft to finish.";
+    songStarterStatus.textContent = "Interpreting the song direction.";
+  } else if (hasGeneratedStarter) {
+    songStarter.dataset.workflowState = "ready";
+    setSongStarterWorkflowSteps("done", "done", "current");
+    songStarterStatus.textContent = songStarterEditingSongId
+      ? "Draft ready. Update the song, then press Start."
+      : "Draft ready. Use it, then press Start.";
+  } else {
+    songStarter.dataset.workflowState = "ready-to-generate";
+    setSongStarterWorkflowSteps("done", "current", "locked");
+    songStarterStatus.textContent = "Ready to make a draft.";
+  }
   renderSongStarterGeneratedSeed(songStarterGeneration);
+}
+
+type StarterWorkflowStepState = "locked" | "current" | "done";
+
+function setSongStarterWorkflowSteps(
+  describe: StarterWorkflowStepState,
+  generate: StarterWorkflowStepState,
+  create: StarterWorkflowStepState,
+): void {
+  songStarterStepDescribe.dataset.stepState = describe;
+  songStarterStepGenerate.dataset.stepState = generate;
+  songStarterStepCreate.dataset.stepState = create;
 }
 
 function createSongFromStarterComposer(): SongLibrarySnapshot | undefined {
@@ -716,6 +822,7 @@ function createSongFromStarterComposer(): SongLibrarySnapshot | undefined {
     baseSongId: generated.baseSongId,
     materialSeed: generated.materialSeed,
     structureSummary: generated.structureSummary,
+    draftPlan: generated.draftPlan,
     goal: cloneSongGoal(interpretation.goal),
     playerPlans: generated.playerPlans.map((plan) => ({ ...plan })),
   };
@@ -743,6 +850,99 @@ function handleSongStarterDraftChanged(): void {
 
 function generateSongStarterSeed(): SongStarterGeneration | undefined {
   const draft = readSongStarterDraft();
+  const materialSeed = createSongStarterMaterialSeed(draft);
+  return generateSongStarterSeedFromDraft(draft, materialSeed);
+}
+
+async function generateSongStarterSeedWithIntent(): Promise<SongStarterGeneration | undefined> {
+  const draft = readSongStarterDraft();
+  const materialSeed = createSongStarterMaterialSeed(draft);
+  const fallbackInterpretation = createSongStarterInterpretation(draft, materialSeed);
+  if (!shouldTrySongIntentModel(fallbackInterpretation)) {
+    return generateSongStarterSeedFromDraft(draft, materialSeed, fallbackInterpretation);
+  }
+
+  const config = {
+    ...readOllamaConfigFromInputs(),
+    timeoutMs: Math.min(
+      ollamaConfig.timeoutMs,
+      ollamaHealth.status === "ready" ? 8_000 : 3_500,
+    ),
+  };
+  songStarterGenerateInFlight = true;
+  ollamaRequestInFlight = true;
+  ollamaSongIntentTest = {
+    ...createInitialOllamaSongIntentTest(config, fallbackInterpretation),
+    status: "running",
+    provider: "ollama",
+    message: "Sending song direction to local Ollama",
+  };
+  renderSongStarterPreview();
+  renderOllama();
+  try {
+    ollamaSongIntentTest = await runOllamaSongIntentTest(
+      {
+        prompt: draft.prompt,
+        deterministicGoal: fallbackInterpretation.goal,
+        playerPlans: draft.playerPlans,
+      },
+      fallbackInterpretation,
+      config,
+    );
+    const application = ollamaSongIntentTest.status === "valid"
+      ? ollamaSongIntentTest.application
+      : undefined;
+    const interpretation = application
+      ? createSongStarterInterpretation(draft, materialSeed, application.interpretation)
+      : fallbackInterpretation;
+    ollamaSongDraftPlanTest = {
+      ...createInitialOllamaSongDraftPlanTest(config),
+      status: "running",
+      provider: "ollama",
+      message: "Sending song spine request to local Ollama",
+    };
+    renderOllama();
+    ollamaSongDraftPlanTest = await runOllamaSongDraftPlanTest(
+      {
+        prompt: draft.prompt,
+        goal: interpretation.goal,
+        materialSeed,
+        playerPlans: draft.playerPlans,
+      },
+      config,
+    );
+    const draftPlan = ollamaSongDraftPlanTest.status === "valid"
+      ? ollamaSongDraftPlanTest.plan
+      : undefined;
+    return generateSongStarterSeedFromDraft(
+      draft,
+      materialSeed,
+      interpretation,
+      application?.baseSongId,
+      application?.playerBriefs,
+      draftPlan,
+    );
+  } finally {
+    songStarterGenerateInFlight = false;
+    ollamaRequestInFlight = false;
+    renderSongStarterPreview();
+    renderOllama();
+  }
+}
+
+function shouldTrySongIntentModel(fallbackInterpretation: SongGoalInterpretation): boolean {
+  if (!fallbackInterpretation.validation.valid) return false;
+  return ollamaHealth.status === "ready";
+}
+
+function generateSongStarterSeedFromDraft(
+  draft: ReturnType<typeof readSongStarterDraft>,
+  materialSeed: number,
+  interpretation = createSongStarterInterpretation(draft, materialSeed),
+  baseSongIdOverride?: SongId,
+  playerBriefs: Readonly<Record<string, string>> = {},
+  draftPlan?: SongDraftPlan,
+): SongStarterGeneration | undefined {
   if (!draft.prompt.trim()) {
     renderSongStarterPreview();
     return undefined;
@@ -752,20 +952,13 @@ function generateSongStarterSeed(): SongStarterGeneration | undefined {
     renderSongStarterPreview();
     return undefined;
   }
-  const interpretation = createSongStarterInterpretation(draft);
   if (!interpretation.validation.valid) {
     renderSongStarterPreview();
     return undefined;
   }
-  const baseSongId = chooseStarterMaterialForPrompt(draft.prompt, interpretation.goal);
-  const materialSeed = hashStarterSeed([
-    draft.prompt,
-    interpretation.goal.id,
-    baseSongId,
-    draft.playerPlans.map((plan) => `${plan.playerId}:${plan.enabled}:${plan.brief}`).join("|"),
-  ].join("||"));
-  const structureSummary = createSongStarterStructureSummary(interpretation.goal, baseSongId);
-  const playerPlans = createGeneratedSongStarterPlayerPlans(draft, interpretation.goal, baseSongId);
+  const baseSongId = baseSongIdOverride ?? chooseStarterMaterialForPrompt(draft.prompt, interpretation.goal);
+  const structureSummary = createSongStarterStructureSummary(interpretation.goal, baseSongId, draftPlan);
+  const playerPlans = createGeneratedSongStarterPlayerPlans(draft, interpretation.goal, baseSongId, playerBriefs);
   for (const plan of playerPlans) {
     getSongStarterPlayerCheckbox(plan.playerId).checked = plan.enabled;
     getSongStarterPlayerBriefInput(plan.playerId).value = plan.brief;
@@ -776,6 +969,7 @@ function generateSongStarterSeed(): SongStarterGeneration | undefined {
     baseSongId,
     materialSeed,
     structureSummary,
+    draftPlan,
     playerPlans,
   };
   renderSongStarterPreview();
@@ -788,7 +982,7 @@ function renderSongStarterGeneratedSeed(generated: SongStarterGeneration | undef
   if (!generated) return;
   const { goal } = generated.interpretation;
   songStarterGeneratedSetup.textContent = `${goal.tonic} ${modeDisplayName(goal.mode) ?? goal.mode}, ${goal.tempoBpm} BPM, ${getFormVariant(goal.formPreference).label}`;
-  songStarterGeneratedMaterial.textContent = `${getSongLabel(generated.baseSongId)} template, seed ${generated.materialSeed}`;
+  songStarterGeneratedMaterial.textContent = `${getSongLabel(generated.baseSongId)} sound`;
   songStarterGeneratedStructure.textContent = generated.structureSummary;
   const items = generated.playerPlans.map((plan) => {
     const item = document.createElement("li");
@@ -836,8 +1030,12 @@ function readSongStarterDraft(): {
   };
 }
 
-function createSongStarterInterpretation(draft: ReturnType<typeof readSongStarterDraft>): SongGoalInterpretation {
-  const base = interpretSongGoal(draft.prompt);
+function createSongStarterInterpretation(
+  draft: ReturnType<typeof readSongStarterDraft>,
+  materialSeed?: number,
+  baseInterpretation?: SongGoalInterpretation,
+): SongGoalInterpretation {
+  const base = baseInterpretation ?? interpretSongGoal(draft.prompt, { materialSeed });
   const candidate: SongGoal = {
     ...base.goal,
     tonic: draft.tonic ?? base.goal.tonic,
@@ -860,6 +1058,19 @@ function createSongStarterInterpretation(draft: ReturnType<typeof readSongStarte
   };
 }
 
+function createSongStarterMaterialSeed(draft: ReturnType<typeof readSongStarterDraft>): number {
+  return hashStarterSeed([
+    "e4",
+    songLibraryState.songs.length,
+    draft.prompt,
+    draft.tonic ?? "draw-tonic",
+    draft.mode ?? "draw-mode",
+    draft.tempoBpm ?? "draw-tempo",
+    draft.formPreference ?? "draw-form",
+    draft.playerPlans.map((plan) => `${plan.playerId}:${plan.enabled}:${plan.brief}`).join("|"),
+  ].join("||"));
+}
+
 function readSongStarterTempo(): number | undefined {
   if (!songStarterTempoInput.value.trim()) return undefined;
   const tempo = Number(songStarterTempoInput.value);
@@ -870,21 +1081,26 @@ function createGeneratedSongStarterPlayerPlans(
   draft: ReturnType<typeof readSongStarterDraft>,
   goal: SongGoal,
   baseSongId: SongId,
+  intentPlayerBriefs: Readonly<Record<string, string>> = {},
 ): readonly SongLibraryPlayerPlan[] {
   return PLAYER_REGISTRY.map((player) => {
     const existing = draft.playerPlans.find((plan) => plan.playerId === player.id);
-    const enabled = existing?.enabled ?? (player.role === "melody" || player.role === "pulse" || player.role === "bass");
+    const enabled = existing?.enabled ?? isDefaultSongStarterPlayer(player);
     const existingBrief = existing?.brief ?? "";
     const defaultBrief = getDefaultSongStarterPlayerBrief(player);
     const generatedBrief = createGeneratedPlayerBrief(player, goal, baseSongId);
     const hasCustomBrief = existingBrief.trim().length > 0 && existingBrief !== defaultBrief;
+    const intentBrief = intentPlayerBriefs[player.id]?.trim() ?? "";
+    const briefParts = [
+      generatedBrief,
+      intentBrief ? `Intent: ${intentBrief}` : undefined,
+      hasCustomBrief ? `Direction: ${existingBrief}` : undefined,
+    ].filter((part): part is string => Boolean(part));
     return {
       playerId: player.id,
       role: player.role,
       enabled,
-      brief: hasCustomBrief
-        ? `${generatedBrief} Direction: ${existingBrief}`.slice(0, 180)
-        : generatedBrief,
+      brief: briefParts.join(" ").slice(0, 180),
     };
   });
 }
@@ -898,6 +1114,9 @@ function createGeneratedPlayerBrief(player: Player, goal: SongGoal, baseSongId: 
       : "add small variation";
   const formLabel = getFormVariant(goal.formPreference).label.toLowerCase();
   const template = getSongLabel(baseSongId).toLowerCase();
+  if (player.id === "keyboard") {
+    return `${goal.tonic} ${goal.mode} chord bed; voice the ${formLabel} with warm comping and keep room for the hook.`;
+  }
   switch (player.role) {
     case "pulse":
       return `${goal.tempoBpm} BPM ${energyWord}; mark the ${formLabel} without crowding the ${template} feel.`;
@@ -914,6 +1133,13 @@ function createGeneratedPlayerBrief(player: Player, goal: SongGoal, baseSongId: 
   }
 }
 
+function isDefaultSongStarterPlayer(player: Player): boolean {
+  return player.role === "melody" ||
+    player.role === "pulse" ||
+    player.role === "bass" ||
+    player.id === "keyboard";
+}
+
 function chooseStarterMaterialForPrompt(prompt: string, goal: SongGoal): SongId {
   const text = prompt.toLowerCase();
   if (/\b(machine|industrial|basement|switchback|restless|urgent|drive|factory|gear)\b/.test(text)) {
@@ -926,12 +1152,19 @@ function chooseStarterMaterialForPrompt(prompt: string, goal: SongGoal): SongId 
   return "lantern";
 }
 
-function createSongStarterStructureSummary(goal: SongGoal, baseSongId: SongId): string {
+function createSongStarterStructureSummary(
+  goal: SongGoal,
+  baseSongId: SongId,
+  draftPlan?: SongDraftPlan,
+): string {
   const variant = getFormVariant(goal.formPreference);
   const emphasis = Object.entries(goal.sectionEmphasis)
     .map(([section, value]) => `${section} ${Number(value).toFixed(2)}`)
     .join(", ");
-  return `${variant.label} over ${getSongLabel(baseSongId)} roots; connector-led melody; ${emphasis || "balanced section emphasis"}.`;
+  const planSummary = draftPlan
+    ? `model co-draft: ${draftPlan.summary}`
+    : "32-beat voice-led harmony draft with melodic counters";
+  return `${variant.label} over ${getSongLabel(baseSongId)} roots; ${planSummary}; ${emphasis || "balanced section emphasis"}.`;
 }
 
 function hashStarterSeed(value: string): number {
@@ -983,7 +1216,7 @@ app.innerHTML = `
     <header class="topbar">
       <div class="brand">
         <h1 class="brand__title">Grow</h1>
-        <p class="brand__subtitle">A song idea becomes bounded knobs</p>
+        <p class="brand__subtitle">Describe, draft, listen, revise</p>
       </div>
       <div class="transport-controls">
         <fieldset class="mode-control">
@@ -1026,28 +1259,41 @@ ${sessionModeControls}
             class="song-library-control__new"
             data-testid="song-library-new"
             type="button"
-          >New song</button>
+          >Write song</button>
           <button
             class="song-library-control__step"
             data-testid="song-library-edit-starter"
+            data-requires-starter="true"
             type="button"
-          >Edit</button>
+          >Edit draft</button>
           <button
             class="song-library-control__step"
             data-testid="song-library-regenerate-starter"
+            data-requires-starter="true"
             type="button"
-          >Regen</button>
+          >Fresh take</button>
           <button
             class="song-library-control__step"
             data-testid="song-library-clone"
             type="button"
-          >Clone</button>
+          >Duplicate</button>
+          <button
+            class="song-library-control__prune"
+            data-testid="song-library-prune"
+            type="button"
+          >Prune</button>
           <button
             class="song-library-control__step"
             data-testid="song-library-export-midi"
             type="button"
           >Export MIDI</button>
           <span class="song-library-control__count" data-testid="song-library-count">1 / 1</span>
+          <output
+            id="song-library-workflow-status"
+            class="song-library-control__status"
+            data-testid="song-library-workflow-status"
+            aria-live="polite"
+          ></output>
         </section>
         <fieldset class="mode-control timing-control">
           <legend class="visually-hidden">Timing feel</legend>
@@ -1055,6 +1301,21 @@ ${sessionModeControls}
           <div class="mode-segments" data-testid="timing-feel-control">
 ${timingFeelControls}
           </div>
+        </fieldset>
+        <fieldset class="mix-control" data-testid="mix-control">
+          <legend class="visually-hidden">Master volume</legend>
+          <label class="mix-control__slider">
+            <span>Mix</span>
+            <input
+              data-testid="master-volume-control"
+              type="range"
+              min="0"
+              max="1"
+              step="0.01"
+              value="${soundMix.masterLevel}"
+            />
+            <output data-testid="master-volume-readout">${formatSoundPercent(soundMix.masterLevel)}</output>
+          </label>
         </fieldset>
         <button
           class="transport-button"
@@ -1110,7 +1371,7 @@ ${timingFeelControls}
     <section
       class="song-starter-overlay"
       data-testid="song-starter-overlay"
-      aria-label="New song starter"
+      aria-label="Song builder"
       hidden
     >
       <div class="song-starter-backdrop" data-testid="song-starter-backdrop"></div>
@@ -1124,18 +1385,44 @@ ${timingFeelControls}
       >
         <header class="song-starter__header">
           <div>
-            <p class="song-starter__eyebrow">New song</p>
-            <h2 id="song-starter-title">Start from a direction</h2>
+            <p class="song-starter__eyebrow">Song builder</p>
+            <h2 id="song-starter-title">Describe the song you want to hear</h2>
           </div>
           <button
             class="song-starter__close"
             data-testid="song-starter-close"
             type="button"
-            aria-label="Close new song starter"
+            aria-label="Close song builder"
           >Close</button>
         </header>
+        <ol class="song-starter__steps" data-testid="song-starter-steps" aria-label="Song writing workflow">
+          <li
+            class="song-starter__step"
+            data-testid="song-starter-step-describe"
+            data-step-state="current"
+          >
+            <span>1</span>
+            <strong>Describe</strong>
+          </li>
+          <li
+            class="song-starter__step"
+            data-testid="song-starter-step-generate"
+            data-step-state="locked"
+          >
+            <span>2</span>
+            <strong>Make draft</strong>
+          </li>
+          <li
+            class="song-starter__step"
+            data-testid="song-starter-step-create"
+            data-step-state="locked"
+          >
+            <span>3</span>
+            <strong>Use it</strong>
+          </li>
+        </ol>
         <label class="song-starter__prompt">
-          <span>Song direction</span>
+          <span>What should it feel like?</span>
           <textarea
             data-testid="song-starter-prompt"
             rows="4"
@@ -1143,9 +1430,9 @@ ${timingFeelControls}
             placeholder="A restless, smoky G dorian song with an early hook, patient pulse, and a bass that leaves space"
           ></textarea>
         </label>
-        <div class="song-starter__setup" aria-label="Optional setup hints">
+        <div class="song-starter__setup" aria-label="Optional musical anchors">
           <label>
-            <span>Tonic</span>
+            <span>Key</span>
             <select data-testid="song-starter-tonic">
               <option value="">From prompt</option>
 ${songStarterTonicOptions}
@@ -1170,7 +1457,7 @@ ${songStarterModeOptions}
             />
           </label>
           <label>
-            <span>Structure</span>
+            <span>Shape</span>
             <select data-testid="song-starter-form">
               <option value="">From prompt</option>
 ${songStarterFormOptions}
@@ -1178,14 +1465,15 @@ ${songStarterFormOptions}
           </label>
         </div>
         <fieldset class="song-starter__players" data-testid="song-starter-players">
-          <legend>Players</legend>
+          <legend>Band</legend>
 ${songStarterPlayerRows}
         </fieldset>
+        <output class="song-starter__status" data-testid="song-starter-status" aria-live="polite"></output>
         <output class="song-starter__preview" data-testid="song-starter-preview" aria-live="polite"></output>
         <section
           class="song-starter__generated"
           data-testid="song-starter-generated"
-          aria-label="Generated starter seed"
+          aria-label="Song draft"
           hidden
         >
           <div>
@@ -1193,19 +1481,19 @@ ${songStarterPlayerRows}
             <strong data-testid="song-starter-generated-setup"></strong>
           </div>
           <div>
-            <span>Material</span>
+            <span>Sound</span>
             <strong data-testid="song-starter-generated-material"></strong>
           </div>
           <div>
-            <span>Structure</span>
+            <span>Shape</span>
             <strong data-testid="song-starter-generated-structure"></strong>
           </div>
           <ul data-testid="song-starter-generated-players"></ul>
         </section>
         <footer class="song-starter__footer">
           <button class="mini-button" data-testid="song-starter-cancel" type="button">Cancel</button>
-          <button class="mini-button" data-testid="song-starter-generate" type="button">Generate starter</button>
-          <button class="transport-button" data-testid="song-starter-create" type="button">Create starter</button>
+          <button class="mini-button" data-testid="song-starter-generate" type="button">Make draft</button>
+          <button class="transport-button" data-testid="song-starter-create" type="button">Use this song</button>
         </footer>
       </article>
     </section>
@@ -1841,6 +2129,8 @@ const inspectDrawer = requireElement<HTMLElement>("[data-testid='inspect-drawer'
 const inspectToggle = requireElement<HTMLButtonElement>("[data-testid='inspect-toggle']");
 const controlTempoReadout = requireElement<HTMLElement>("[data-testid='control-tempo-readout']");
 const controlKeyReadout = requireElement<HTMLElement>("[data-testid='control-key-readout']");
+const masterVolumeInput = requireElement<HTMLInputElement>("[data-testid='master-volume-control']");
+const masterVolumeReadout = requireElement<HTMLOutputElement>("[data-testid='master-volume-readout']");
 const writtenEvolvingDialInput = requireElement<HTMLInputElement>("[data-testid='written-evolving-dial']");
 const writtenEvolvingRegimeReadout = requireElement<HTMLElement>("[data-testid='written-evolving-regime']");
 const helpPanel = requireElement<HTMLElement>("[data-testid='inspector-help-panel']");
@@ -1860,17 +2150,25 @@ const songLibraryRegenerateStarterButton = requireElement<HTMLButtonElement>(
   "[data-testid='song-library-regenerate-starter']",
 );
 const songLibraryCloneButton = requireElement<HTMLButtonElement>("[data-testid='song-library-clone']");
+const songLibraryPruneButton = requireElement<HTMLButtonElement>("[data-testid='song-library-prune']");
 const songLibraryExportMidiButton = requireElement<HTMLButtonElement>("[data-testid='song-library-export-midi']");
 const songLibraryCount = requireElement<HTMLElement>("[data-testid='song-library-count']");
+const songLibraryWorkflowStatus = requireElement<HTMLOutputElement>(
+  "[data-testid='song-library-workflow-status']",
+);
 const songStarterOverlay = requireElement<HTMLElement>("[data-testid='song-starter-overlay']");
 const songStarter = requireElement<HTMLElement>("[data-testid='song-starter']");
 const songStarterBackdrop = requireElement<HTMLElement>("[data-testid='song-starter-backdrop']");
+const songStarterStepDescribe = requireElement<HTMLElement>("[data-testid='song-starter-step-describe']");
+const songStarterStepGenerate = requireElement<HTMLElement>("[data-testid='song-starter-step-generate']");
+const songStarterStepCreate = requireElement<HTMLElement>("[data-testid='song-starter-step-create']");
 const songStarterPrompt = requireElement<HTMLTextAreaElement>("[data-testid='song-starter-prompt']");
 const songStarterTonicSelect = requireElement<HTMLSelectElement>("[data-testid='song-starter-tonic']");
 const songStarterModeSelect = requireElement<HTMLSelectElement>("[data-testid='song-starter-mode']");
 const songStarterTempoInput = requireElement<HTMLInputElement>("[data-testid='song-starter-tempo']");
 const songStarterFormSelect = requireElement<HTMLSelectElement>("[data-testid='song-starter-form']");
 const songStarterPlayers = requireElement<HTMLElement>("[data-testid='song-starter-players']");
+const songStarterStatus = requireElement<HTMLOutputElement>("[data-testid='song-starter-status']");
 const songStarterPreview = requireElement<HTMLOutputElement>("[data-testid='song-starter-preview']");
 const songStarterGenerated = requireElement<HTMLElement>("[data-testid='song-starter-generated']");
 const songStarterGeneratedSetup = requireElement<HTMLElement>("[data-testid='song-starter-generated-setup']");
@@ -2052,6 +2350,9 @@ const playerTasteSummaryNodes = new Map<string, HTMLElement>();
 const playerExpressionNodes = new Map<string, HTMLElement>();
 const playerTimingNodes = new Map<string, HTMLElement>();
 const playerContagionNodes = new Map<string, HTMLElement>();
+const playerVolumeInputs = new Map<string, HTMLInputElement>();
+const playerVolumeReadouts = new Map<string, HTMLOutputElement>();
+const playerVoiceSelects = new Map<string, HTMLSelectElement>();
 const thoughtSeedFocusNodes = new Map<string, HTMLElement>();
 const thoughtSeedMotifNodes = new Map<string, HTMLElement>();
 const thoughtSeedFragmentsNodes = new Map<string, HTMLElement>();
@@ -2098,6 +2399,119 @@ function createDefinition(
   dd.append(valueNode);
 
   return [dt, dd];
+}
+
+function createPlayerSoundControls(player: Player): HTMLElement {
+  const settings = getPlayerSoundSettings(soundMix, player.id);
+  const controls = document.createElement("div");
+  controls.className = "player-sound-controls";
+  controls.dataset.testid = `player-${player.id}-sound-controls`;
+
+  const levelLabel = document.createElement("label");
+  levelLabel.className = "player-sound-control player-sound-control--level";
+  const levelText = document.createElement("span");
+  levelText.textContent = "Level";
+  const levelInput = document.createElement("input");
+  levelInput.dataset.testid = `player-${player.id}-volume`;
+  levelInput.dataset.playerVolume = player.id;
+  levelInput.type = "range";
+  levelInput.min = "0";
+  levelInput.max = "1";
+  levelInput.step = "0.01";
+  levelInput.value = String(settings.level);
+  const levelOutput = document.createElement("output");
+  levelOutput.dataset.testid = `player-${player.id}-volume-readout`;
+  levelOutput.textContent = formatSoundPercent(settings.level);
+  levelLabel.append(levelText, levelInput, levelOutput);
+
+  const voiceLabel = document.createElement("label");
+  voiceLabel.className = "player-sound-control player-sound-control--voice";
+  const voiceText = document.createElement("span");
+  voiceText.textContent = "Voice";
+  const voiceSelect = document.createElement("select");
+  voiceSelect.dataset.testid = `player-${player.id}-voice`;
+  voiceSelect.dataset.playerVoice = player.id;
+  for (const option of getVoiceOptionsForPlayer(player.id)) {
+    const optionElement = document.createElement("option");
+    optionElement.value = option.id;
+    optionElement.textContent = option.label;
+    optionElement.selected = option.id === settings.voice;
+    voiceSelect.append(optionElement);
+  }
+  voiceLabel.append(voiceText, voiceSelect);
+
+  controls.append(levelLabel, voiceLabel);
+  return controls;
+}
+
+function formatSoundPercent(level: number): string {
+  return `${Math.round(clampSoundLevel(level) * 100)}%`;
+}
+
+function getCurrentSoundMix(): SoundMixSettings {
+  return cloneSoundMixSettings(soundMix);
+}
+
+function setMasterLevel(level: number): SoundMixSettings {
+  soundMix = {
+    ...soundMix,
+    masterLevel: clampSoundLevel(level),
+  };
+  syncSoundControls();
+  return getCurrentSoundMix();
+}
+
+function setPlayerLevel(playerId: string, level: number): SoundMixSettings {
+  const existing = getPlayerSoundSettings(soundMix, playerId);
+  soundMix = {
+    ...soundMix,
+    players: {
+      ...soundMix.players,
+      [playerId]: {
+        ...existing,
+        level: clampSoundLevel(level),
+      },
+    },
+  };
+  syncSoundControls();
+  return getCurrentSoundMix();
+}
+
+function setPlayerVoice(playerId: string, voice: string): SoundMixSettings {
+  const existing = getPlayerSoundSettings(soundMix, playerId);
+  const nextVoice = isVoiceAllowedForPlayer(playerId, voice) ? voice : existing.voice;
+  soundMix = {
+    ...soundMix,
+    players: {
+      ...soundMix.players,
+      [playerId]: {
+        ...existing,
+        voice: nextVoice,
+      },
+    },
+  };
+  syncSoundControls();
+  return getCurrentSoundMix();
+}
+
+function syncSoundControls(): void {
+  masterVolumeInput.value = String(soundMix.masterLevel);
+  masterVolumeReadout.value = formatSoundPercent(soundMix.masterLevel);
+  masterVolumeReadout.textContent = formatSoundPercent(soundMix.masterLevel);
+
+  for (const [playerId, input] of playerVolumeInputs) {
+    const settings = getPlayerSoundSettings(soundMix, playerId);
+    input.value = String(settings.level);
+    const readout = playerVolumeReadouts.get(playerId);
+    if (readout) {
+      readout.value = formatSoundPercent(settings.level);
+      readout.textContent = formatSoundPercent(settings.level);
+    }
+    const select = playerVoiceSelects.get(playerId);
+    if (select && select.value !== settings.voice) {
+      select.value = settings.voice;
+    }
+  }
 }
 
 function showHelpTopic(topicId: HelpTopicId, sourceButton: HTMLButtonElement): void {
@@ -2207,6 +2621,9 @@ function renderPlayerInspector(
     playerExpressionNodes.clear();
     playerTimingNodes.clear();
     playerContagionNodes.clear();
+    playerVolumeInputs.clear();
+    playerVolumeReadouts.clear();
+    playerVoiceSelects.clear();
     const cards = players.map(({ player, state }) => {
       const evaluation = evaluationsByPlayer.get(player.id);
       const expression = expressionsByPlayer.get(player.id);
@@ -2256,7 +2673,8 @@ function renderPlayerInspector(
         ),
       );
 
-      card.append(dl);
+      const soundControls = createPlayerSoundControls(player);
+      card.append(dl, soundControls);
       const stateNode = dl.querySelector<HTMLElement>(`[data-testid='player-${player.id}-state']`);
       if (stateNode) {
         playerStateNodes.set(player.id, stateNode);
@@ -2290,6 +2708,24 @@ function renderPlayerInspector(
       );
       if (contagionNode) {
         playerContagionNodes.set(player.id, contagionNode);
+      }
+      const volumeInput = soundControls.querySelector<HTMLInputElement>(
+        `[data-testid='player-${player.id}-volume']`,
+      );
+      if (volumeInput) {
+        playerVolumeInputs.set(player.id, volumeInput);
+      }
+      const volumeReadout = soundControls.querySelector<HTMLOutputElement>(
+        `[data-testid='player-${player.id}-volume-readout']`,
+      );
+      if (volumeReadout) {
+        playerVolumeReadouts.set(player.id, volumeReadout);
+      }
+      const voiceSelect = soundControls.querySelector<HTMLSelectElement>(
+        `[data-testid='player-${player.id}-voice']`,
+      );
+      if (voiceSelect) {
+        playerVoiceSelects.set(player.id, voiceSelect);
       }
       return card;
     });
@@ -2325,6 +2761,7 @@ function renderPlayerInspector(
       contagionNode.textContent = formatPlayerContagion(framePlayersByPlayer.get(player.id));
     }
   }
+  syncSoundControls();
 }
 
 function openAnchorPhraseEditor(): void {
@@ -4045,12 +4482,8 @@ function applySongGoalSetup(
     return undefined;
   }
 
-  const goal = cloneSongGoal(interpretation.goal);
   const previousSetup = getCurrentSongGoalSetupSnapshot(appliedSongGoal);
-  world.setTonalContext(createTonalContext(goal.tonic, goal.mode));
-  activeTempoBpm = goal.tempoBpm;
-  formVariantId = goal.formPreference;
-  appliedSongGoal = cloneSongGoal(goal);
+  const goal = applySongGoalSetupState(interpretation.goal);
   melodyRepairFeedbackMessage = "Goal setup applied.";
   invalidateMelodyRepairCache();
   ollamaProposalTextTest = createInitialOllamaProposalTextTest(ollamaConfig);
@@ -4063,6 +4496,25 @@ function applySongGoalSetup(
   recordSongGoalSet(goal, previousSetup, getCurrentSongGoalSetupSnapshot(appliedSongGoal));
   renderWorld();
   return cloneSongGoal(goal);
+}
+
+function applySongGoalSetupState(goal: SongGoal): SongGoal {
+  const nextGoal = cloneSongGoal(goal);
+  world.setTonalContext(createTonalContext(nextGoal.tonic, nextGoal.mode));
+  activeTempoBpm = nextGoal.tempoBpm;
+  formVariantId = nextGoal.formPreference;
+  appliedSongGoal = cloneSongGoal(nextGoal);
+  return cloneSongGoal(nextGoal);
+}
+
+function createStarterSongGoalInterpretation(starter: SongLibraryStarter): SongGoalInterpretation {
+  const validation = validateSongGoal(starter.goal);
+  return {
+    source: starter.source,
+    matchedKeywords: [],
+    validation,
+    goal: cloneSongGoal(validation.goal),
+  };
 }
 
 function cloneSongGoal(goal: SongGoal): SongGoal {
@@ -4607,6 +5059,7 @@ function createCurrentSongMidiExport(): MidiSongExportResult {
     players: world.getPlayers().map(({ player }) => player),
     sectionDynamicsProfile: getGoalSectionDynamicsProfile(variant),
     chorusDevelopment: getCurrentChorusDevelopment(),
+    soundMix: getCurrentSoundMix(),
   });
 }
 
@@ -5447,24 +5900,56 @@ function renderSongLibraryControls(): void {
   }
   songLibraryTitleInput.title = active.starter
     ? `${active.title} · ${formatSongLibraryStarterSummary(active.starter)}`
-    : `${active.title} · starter ${getSongLabel(active.baseSongId)}`;
+    : `${active.title} · ${getSongLabel(active.baseSongId)} starting sound`;
   songLibraryPreviousButton.disabled = songs.length <= 1;
   songLibraryNextButton.disabled = songs.length <= 1;
   songLibraryEditStarterButton.disabled = !active.starter;
   songLibraryRegenerateStarterButton.disabled = !active.starter;
   songLibraryCloneButton.disabled = songs.length >= 64;
+  songLibraryPruneButton.disabled = songs.length <= 1;
+  songLibraryPreviousButton.hidden = songs.length <= 1;
+  songLibraryNextButton.hidden = songs.length <= 1;
+  songLibraryEditStarterButton.hidden = !active.starter;
+  songLibraryRegenerateStarterButton.hidden = !active.starter;
+  songLibraryNewButton.title = "Describe a song and make a playable draft.";
+  songLibraryPreviousButton.title = songs.length <= 1 ? "Create another song before stepping back." : "Previous song";
+  songLibraryNextButton.title = songs.length <= 1 ? "Create another song before stepping forward." : "Next song";
+  songLibraryEditStarterButton.title = active.starter
+    ? "Edit this song's description and make another draft."
+    : "Use Write song first.";
+  songLibraryRegenerateStarterButton.title = active.starter
+    ? "Make a fresh take from the same song description."
+    : "Use Write song first.";
+  songLibraryCloneButton.title = songs.length >= 64
+    ? "Song library limit reached."
+    : "Duplicate the current song as a separate version.";
+  songLibraryPruneButton.title = songs.length <= 1
+    ? "Keep at least one song in the library."
+    : `Remove ${active.title} from this local song library.`;
+  songLibraryExportMidiButton.title = active.starter
+    ? `Export ${active.title}'s arrangement as a MIDI file.`
+    : `Export ${active.title}'s current starting arrangement as a MIDI file.`;
   songLibraryCount.textContent = `${activeIndex + 1} / ${songs.length}`;
+  songLibraryWorkflowStatus.value = createSongLibraryWorkflowStatus(active, songs.length);
+  songLibraryWorkflowStatus.textContent = songLibraryWorkflowStatus.value;
 }
 
 function formatSongLibraryStarterSummary(starter: SongLibraryStarter): string {
   const enabledPlayers = starter.playerPlans.filter((plan) => plan.enabled).map((plan) => plan.playerId);
   return [
-    `${starter.goal.tonic} ${starter.goal.mode}`,
+    `${starter.goal.tonic} ${modeDisplayName(starter.goal.mode) ?? starter.goal.mode}`,
     `${starter.goal.tempoBpm} BPM`,
     getFormVariant(starter.goal.formPreference).label,
-    starter.materialSeed ? `seed ${starter.materialSeed}` : undefined,
     enabledPlayers.length > 0 ? enabledPlayers.join(", ") : "no active players",
   ].filter((part): part is string => Boolean(part)).join(" · ");
+}
+
+function createSongLibraryWorkflowStatus(active: SongLibraryEntry, songCount: number): string {
+  if (active.starter) {
+    return `Song draft ready · ${formatSongLibraryStarterSummary(active.starter)} · press Start to hear it`;
+  }
+  const navigation = songCount <= 1 ? " · one song" : ` · ${songCount} songs`;
+  return `${getSongLabel(active.baseSongId)} starting sound${navigation} · Write song to make your own draft`;
 }
 
 function formatSongSection(section: GrowTransportState["songForm"]): string {
@@ -5826,6 +6311,8 @@ function setOllamaConfig(nextConfig: Partial<OllamaConfig>): OllamaConfig {
     ...createInitialOllamaHealth(ollamaConfig),
     message: "Config changed; health not checked",
   };
+  ollamaSongIntentTest = createInitialOllamaSongIntentTest(ollamaConfig, songGoalInterpretation);
+  ollamaSongDraftPlanTest = createInitialOllamaSongDraftPlanTest(ollamaConfig);
   ollamaProposalTextTest = createInitialOllamaProposalTextTest(ollamaConfig);
   resetMelodyCriticTest("Config changed; melody critic reset");
   renderOllama();
@@ -5893,6 +6380,29 @@ async function runManualOllamaProposalTextTest(): Promise<OllamaProposalTextTest
     ollamaRequestInFlight = false;
     renderWorld();
   }
+}
+
+function getCurrentSongIntentPrompt(): string {
+  const draft = readSongStarterDraft();
+  const materialSeed = createSongStarterMaterialSeed(draft);
+  const interpretation = createSongStarterInterpretation(draft, materialSeed);
+  return createOllamaSongIntentPrompt({
+    prompt: draft.prompt,
+    deterministicGoal: interpretation.goal,
+    playerPlans: draft.playerPlans,
+  });
+}
+
+function getCurrentSongDraftPlanPrompt(): string {
+  const draft = readSongStarterDraft();
+  const materialSeed = createSongStarterMaterialSeed(draft);
+  const interpretation = createSongStarterInterpretation(draft, materialSeed);
+  return createOllamaSongDraftPlanPrompt({
+    prompt: draft.prompt,
+    goal: interpretation.goal,
+    materialSeed,
+    playerPlans: draft.playerPlans,
+  });
 }
 
 async function runManualOllamaMelodyCriticTest(): Promise<OllamaMelodyCriticTestResult> {
@@ -5998,6 +6508,17 @@ function parseManualOllamaThoughtResponse(
 
 function parseManualOllamaMelodyCriticResponse(rawResponse: string): OllamaMelodyCriticParseResult {
   return parseOllamaMelodyCriticResponse(rawResponse);
+}
+
+function parseManualOllamaSongIntentResponse(rawResponse: string): OllamaSongIntentParseResult {
+  const draft = readSongStarterDraft();
+  const materialSeed = createSongStarterMaterialSeed(draft);
+  const fallbackInterpretation = createSongStarterInterpretation(draft, materialSeed);
+  return parseOllamaSongIntentResponse(rawResponse, fallbackInterpretation);
+}
+
+function parseManualOllamaSongDraftPlanResponse(rawResponse: string): OllamaSongDraftPlanParseResult {
+  return parseOllamaSongDraftPlanResponse(rawResponse);
 }
 
 function formatOllamaLatency(
@@ -6250,6 +6771,19 @@ function applySongContextChange(
   const starterChanged = JSON.stringify(previousSong.starter ?? null) !== JSON.stringify(nextSong.starter ?? null);
   if (!libraryChanged && !materialChanged && !starterChanged) return nextSong;
   songId = nextSong.baseSongId;
+  const starterInterpretation = nextSong.starter
+    ? createStarterSongGoalInterpretation(nextSong.starter)
+    : undefined;
+  let starterGoalPreviousSetup: Record<string, unknown> | undefined;
+  let starterGoal: SongGoal | undefined;
+  if (starterInterpretation) {
+    songGoalInterpretation = starterInterpretation;
+    songGoalIdeaInput.value = starterInterpretation.goal.sourceIdea;
+    if (starterInterpretation.validation.valid) {
+      starterGoalPreviousSetup = getCurrentSongGoalSetupSnapshot(appliedSongGoal);
+      starterGoal = applySongGoalSetupState(starterInterpretation.goal);
+    }
+  }
   resetAnchorPhraseEditorSession("Song changed; generated phrase restored.", { refresh: false, render: false });
   resetAnchorPhraseEditorSaveState();
   melodyRepairFeedbackMessage = "No feedback yet.";
@@ -6261,6 +6795,14 @@ function applySongContextChange(
   world.clearMusicalEvents();
   world.resetTasteEvaluations();
   refreshLookaheadSchedule();
+  if (starterGoal && starterGoalPreviousSetup) {
+    recordSongGoalSet(
+      starterGoal,
+      starterGoalPreviousSetup,
+      getCurrentSongGoalSetupSnapshot(appliedSongGoal),
+      source,
+    );
+  }
   recordSongChanged(previousSongId, songId, {
     fromLibrarySongId: previousLibrarySongId,
     toLibrarySongId: nextLibrarySongId,
@@ -6316,7 +6858,7 @@ function updateLibrarySongStarter(
   return snapshot;
 }
 
-function regenerateActiveLibrarySongStarter(): SongLibrarySnapshot | undefined {
+async function regenerateActiveLibrarySongStarter(): Promise<SongLibrarySnapshot | undefined> {
   const active = getActiveSongLibraryEntry();
   if (!active.starter) return undefined;
   const previousSong = active;
@@ -6327,10 +6869,47 @@ function regenerateActiveLibrarySongStarter(): SongLibrarySnapshot | undefined {
     Date.now(),
     "regenerate",
   ].join("|"));
+  let draftPlan: SongDraftPlan | undefined;
+  if (active.starter.source === "model" && ollamaHealth.status === "ready") {
+    const config = {
+      ...readOllamaConfigFromInputs(),
+      timeoutMs: Math.min(ollamaConfig.timeoutMs, 8_000),
+    };
+    ollamaRequestInFlight = true;
+    ollamaSongDraftPlanTest = {
+      ...createInitialOllamaSongDraftPlanTest(config),
+      status: "running",
+      provider: "ollama",
+      message: "Sending fresh song spine request to local Ollama",
+    };
+    renderOllama();
+    try {
+      ollamaSongDraftPlanTest = await runOllamaSongDraftPlanTest(
+        {
+          prompt: active.starter.sourcePrompt,
+          goal: active.starter.goal,
+          materialSeed: nextSeed,
+          playerPlans: active.starter.playerPlans,
+        },
+        config,
+      );
+      draftPlan = ollamaSongDraftPlanTest.status === "valid"
+        ? ollamaSongDraftPlanTest.plan
+        : undefined;
+    } finally {
+      ollamaRequestInFlight = false;
+      renderOllama();
+    }
+  }
   const starter = {
     ...cloneSongLibraryStarter(active.starter)!,
     materialSeed: nextSeed,
-    structureSummary: createSongStarterStructureSummary(active.starter.goal, active.starter.baseSongId ?? active.baseSongId),
+    draftPlan,
+    structureSummary: createSongStarterStructureSummary(
+      active.starter.goal,
+      active.starter.baseSongId ?? active.baseSongId,
+      draftPlan,
+    ),
   };
   songLibraryState = updateSongLibraryEntryStarter(
     songLibraryState,
@@ -6351,6 +6930,23 @@ function cloneActiveLibrarySong(): SongLibrarySnapshot {
   const starter = cloneSongLibraryStarter(active.starter);
   const title = `${active.title} copy`.slice(0, 80);
   return createLibrarySong(title, active.baseSongId, starter, "song-library-clone");
+}
+
+function pruneActiveLibrarySong(source = "song-library-prune"): SongLibrarySnapshot {
+  const before = getActiveSongLibrarySnapshot();
+  const previousSong = before.active;
+  songLibraryState = removeSongLibraryEntry(songLibraryState, previousSong.id);
+  songLibraryState = normalizeSongLibraryState(songLibraryState);
+  persistSongLibraryState();
+  const snapshot = getActiveSongLibrarySnapshot();
+  const removed = snapshot.songs.length < before.songs.length &&
+    !snapshot.songs.some((song) => song.id === previousSong.id);
+  if (removed) {
+    applySongContextChange(previousSong, snapshot.active, source);
+  } else {
+    renderWorld();
+  }
+  return snapshot;
 }
 
 function renameActiveLibrarySong(title: string): SongLibrarySnapshot {
@@ -6494,6 +7090,7 @@ function recordSongGoalSet(
   goal: SongGoal,
   previousSetup: Record<string, unknown>,
   nextSetup: Record<string, unknown>,
+  source = "song-goal-apply",
 ): void {
   persistence.record({
     type: "song.goal_set",
@@ -6501,7 +7098,7 @@ function recordSongGoalSet(
     sessionMode: world.getSessionMode(),
     beat: getPersistenceBeat(),
     payload: {
-      source: "song-goal-apply",
+      source,
       goal: cloneSongGoal(goal) as unknown as Record<string, unknown>,
       previousSetup,
       nextSetup,
@@ -6531,12 +7128,17 @@ initTransport({
   chorusDevelopment: () => getCurrentChorusDevelopment(),
   melodyPhrasing: () => getActiveMelodyPhrasing(),
   songMaterial: () => getCurrentSongMaterial(),
+  soundMix: () => getCurrentSoundMix(),
 }, {
   tonalContext: world.getTonalContext(),
   tempoBpm: activeTempoBpm,
 });
 recordSessionStarted();
 renderWorld();
+
+masterVolumeInput.addEventListener("input", () => {
+  setMasterLevel(masterVolumeInput.valueAsNumber);
+});
 
 inspectToggle.addEventListener("click", () => {
   setInspectDrawerOpen(!isInspectDrawerOpen);
@@ -6583,6 +7185,7 @@ document.addEventListener("click", (event) => {
 playerList.addEventListener("click", (event) => {
   const target = event.target;
   if (!(target instanceof Element)) return;
+  if (target.closest("input, select, button, textarea, label")) return;
   const card = target.closest<HTMLElement>("[data-testid='player-card-melody']");
   if (!card) return;
   openPlayerActionMenu(card);
@@ -6592,10 +7195,27 @@ playerList.addEventListener("keydown", (event) => {
   if (event.key !== "Enter" && event.key !== " ") return;
   const target = event.target;
   if (!(target instanceof Element)) return;
+  if (target.closest("input, select, button, textarea")) return;
   const card = target.closest<HTMLElement>("[data-testid='player-card-melody']");
   if (!card) return;
   openPlayerActionMenu(card);
   event.preventDefault();
+});
+
+playerList.addEventListener("input", (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLInputElement)) return;
+  const playerId = target.dataset.playerVolume;
+  if (!playerId) return;
+  setPlayerLevel(playerId, target.valueAsNumber);
+});
+
+playerList.addEventListener("change", (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLSelectElement)) return;
+  const playerId = target.dataset.playerVoice;
+  if (!playerId) return;
+  setPlayerVoice(playerId, target.value);
 });
 
 anchorPhraseEditorClose.addEventListener("click", () => {
@@ -6831,11 +7451,15 @@ songLibraryEditStarterButton.addEventListener("click", () => {
 });
 
 songLibraryRegenerateStarterButton.addEventListener("click", () => {
-  regenerateActiveLibrarySongStarter();
+  void regenerateActiveLibrarySongStarter();
 });
 
 songLibraryCloneButton.addEventListener("click", () => {
   cloneActiveLibrarySong();
+});
+
+songLibraryPruneButton.addEventListener("click", () => {
+  pruneActiveLibrarySong();
 });
 
 songLibraryExportMidiButton.addEventListener("click", () => {
@@ -6860,7 +7484,7 @@ songStarterFormSelect.addEventListener("change", handleSongStarterDraftChanged);
 songStarterPlayers.addEventListener("input", handleSongStarterDraftChanged);
 songStarterPlayers.addEventListener("change", handleSongStarterDraftChanged);
 songStarterGenerate.addEventListener("click", () => {
-  generateSongStarterSeed();
+  void generateSongStarterSeedWithIntent();
 });
 songStarterBackdrop.addEventListener("click", () => closeSongStarterComposer());
 songStarterCancel.addEventListener("click", () => closeSongStarterComposer());
@@ -7050,11 +7674,18 @@ declare global {
       getSketch(): SongSketch;
       setId(nextSongId: string): SongId;
     };
+    sound?: {
+      getMix(): SoundMixSettings;
+      setMasterLevel(level: number): SoundMixSettings;
+      setPlayerLevel(playerId: string, level: number): SoundMixSettings;
+      setPlayerVoice(playerId: string, voice: string): SoundMixSettings;
+    };
     songLibrary?: {
       createSong(input?: { title?: string; baseSongId?: string }): SongLibrarySnapshot;
       getState(): SongLibrarySnapshot;
       next(): SongLibrarySnapshot;
       previous(): SongLibrarySnapshot;
+      prune(): SongLibrarySnapshot;
       rename(title: string): SongLibrarySnapshot;
       select(songLibraryId: string): SongLibrarySnapshot;
     };
@@ -7104,6 +7735,10 @@ declare global {
       fromProsody(options?: { seed?: number; baseOctave?: number; bars?: number }): AnchorPhrase;
       getDemoPhrase(): AnchorPhrase;
       renderDemo(options?: { baseOctave?: number; playerId?: string; subdivisionBeats?: number }): PlayerPatternSource;
+    };
+    harmonyDraft?: {
+      generate(options?: VoiceLedHarmonyDraftOptions): VoiceLedHarmonyDraft;
+      getCurrent(options?: VoiceLedHarmonyDraftOptions): VoiceLedHarmonyDraft;
     };
     phraseEditor?: {
       addAnchor(segmentIndex: number, atBeat: number, options?: AddAnchorOptions): AnchorEditResult;
@@ -7171,11 +7806,17 @@ declare global {
       runManualMelodyCriticTest(): Promise<OllamaMelodyCriticTestResult>;
       getLastProposalTextTest(): OllamaProposalTextTestResult;
       runManualProposalTextTest(): Promise<OllamaProposalTextTestResult>;
+      getLastSongDraftPlanTest(): OllamaSongDraftPlanTestResult;
+      getSongDraftPlanPrompt(): string;
+      getLastSongIntentTest(): OllamaSongIntentTestResult;
+      getSongIntentPrompt(): string;
       getLastThoughtTest(): OllamaThoughtTestResult;
       runManualThoughtTest(playerId?: string): Promise<OllamaThoughtTestResult>;
       getSessionPrimer(): string;
       getInfluenceProbePrompt(playerId?: string): string;
       parseMelodyCriticResponse(rawResponse: string): OllamaMelodyCriticParseResult;
+      parseSongDraftPlanResponse(rawResponse: string): OllamaSongDraftPlanParseResult;
+      parseSongIntentResponse(rawResponse: string): OllamaSongIntentParseResult;
       parseThoughtResponse(rawResponse: string, playerId?: string): OllamaThoughtParseResult;
     };
     terrarium?: {
@@ -7274,6 +7915,13 @@ window.song = {
   },
 };
 
+window.sound = {
+  getMix: () => getCurrentSoundMix(),
+  setMasterLevel,
+  setPlayerLevel,
+  setPlayerVoice,
+};
+
 window.songLibrary = {
   createSong: (input) => createLibrarySong(
     input?.title,
@@ -7282,6 +7930,7 @@ window.songLibrary = {
   getState: () => getActiveSongLibrarySnapshot(),
   next: () => stepLibrarySong(1),
   previous: () => stepLibrarySong(-1),
+  prune: () => pruneActiveLibrarySong("song-library-api"),
   rename: (title) => renameActiveLibrarySong(title),
   select: (songLibraryId) => selectLibrarySong(songLibraryId, "song-library-api"),
 };
@@ -7374,6 +8023,14 @@ window.anchorPhrase = {
   renderDemo: (options) => renderDemoAnchorPhrase(options),
 };
 
+window.harmonyDraft = {
+  generate: (options) => generateVoiceLedHarmonyDraft({
+    ...options,
+    tonalContext: options?.tonalContext ?? world.getTonalContext(),
+  }),
+  getCurrent: (options) => getCurrentVoiceLedHarmonyDraft(options),
+};
+
 window.phraseEditor = {
   addAnchor: (segmentIndex, atBeat, options) => addAnchorPhraseAnchor(segmentIndex, atBeat, options),
   editAnchor: (segmentIndex, anchorIndex, patch) => editAnchorPhraseAnchor(segmentIndex, anchorIndex, patch),
@@ -7436,11 +8093,17 @@ window.ollama = {
   runManualMelodyCriticTest: () => runManualOllamaMelodyCriticTest(),
   getLastProposalTextTest: () => ollamaProposalTextTest,
   runManualProposalTextTest: () => runManualOllamaProposalTextTest(),
+  getLastSongDraftPlanTest: () => ollamaSongDraftPlanTest,
+  getSongDraftPlanPrompt: () => getCurrentSongDraftPlanPrompt(),
+  getLastSongIntentTest: () => ollamaSongIntentTest,
+  getSongIntentPrompt: () => getCurrentSongIntentPrompt(),
   getLastThoughtTest: () => ollamaThoughtTest,
   runManualThoughtTest: (playerId) => runManualOllamaThoughtTest(playerId),
   getSessionPrimer: () => createOllamaSessionPrimer(),
   getInfluenceProbePrompt: (playerId) => getInfluenceProbePrompt(playerId),
   parseMelodyCriticResponse: (rawResponse) => parseManualOllamaMelodyCriticResponse(rawResponse),
+  parseSongDraftPlanResponse: (rawResponse) => parseManualOllamaSongDraftPlanResponse(rawResponse),
+  parseSongIntentResponse: (rawResponse) => parseManualOllamaSongIntentResponse(rawResponse),
   parseThoughtResponse: (rawResponse, playerId) => parseManualOllamaThoughtResponse(rawResponse, playerId),
 };
 
@@ -7469,6 +8132,7 @@ if (import.meta.hot) {
     window.thinking = undefined;
     window.session = undefined;
     window.song = undefined;
+    window.sound = undefined;
     window.songLibrary = undefined;
     window.songGoal = undefined;
     window.prosody = undefined;
@@ -7476,6 +8140,7 @@ if (import.meta.hot) {
     window.melodyRepair = undefined;
     window.formScore = undefined;
     window.anchorPhrase = undefined;
+    window.harmonyDraft = undefined;
     window.phraseEditor = undefined;
     window.persistence = undefined;
     window.ollama = undefined;

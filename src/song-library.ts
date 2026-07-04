@@ -5,6 +5,7 @@ import {
   type SongId,
 } from "./song-material";
 import type { PlayerRole } from "./players";
+import { normalizeStoredSongDraftPlan, type SongDraftPlan } from "./song-draft-plan";
 import { validateSongGoal, type SongGoal } from "./song-goal";
 
 export const SONG_LIBRARY_STORAGE_KEY = "grow.songLibrary.v1";
@@ -35,6 +36,7 @@ export interface SongLibraryStarter {
   baseSongId?: SongId;
   materialSeed?: number;
   structureSummary?: string;
+  draftPlan?: SongDraftPlan;
   goal: SongGoal;
   playerPlans: readonly SongLibraryPlayerPlan[];
 }
@@ -200,6 +202,23 @@ export function appendSongLibraryEntry(state: SongLibraryState, entry: SongLibra
   };
 }
 
+export function removeSongLibraryEntry(state: SongLibraryState, songId: string): SongLibraryState {
+  const normalized = normalizeSongLibraryState(state);
+  if (normalized.songs.length <= 1) return normalized;
+  const removeId = normalizeSongLibraryId(songId);
+  if (!removeId) return normalized;
+  const removeIndex = normalized.songs.findIndex((song) => song.id === removeId);
+  if (removeIndex < 0) return normalized;
+  const songs = normalized.songs.filter((song) => song.id !== removeId);
+  const activeSongId = normalized.activeSongId === removeId
+    ? songs[Math.min(removeIndex, songs.length - 1)]!.id
+    : normalized.activeSongId;
+  return normalizeSongLibraryState({
+    activeSongId,
+    songs,
+  });
+}
+
 export function createNextLibrarySongTitle(count: number): string {
   return `Untitled song ${Math.max(1, Math.trunc(count) + 1)}`;
 }
@@ -253,6 +272,7 @@ export function cloneSongLibraryStarter(starter: SongLibraryStarter | undefined)
     baseSongId: starter.baseSongId,
     materialSeed: starter.materialSeed,
     structureSummary: starter.structureSummary,
+    draftPlan: cloneSongDraftPlan(starter.draftPlan),
     goal: {
       ...starter.goal,
       dispositionBias: { ...starter.goal.dispositionBias },
@@ -273,6 +293,7 @@ function readSongLibraryStarter(candidate: unknown): SongLibraryStarter | undefi
     ? raw.playerPlans.map(readSongLibraryPlayerPlan).filter((plan): plan is SongLibraryPlayerPlan => Boolean(plan))
     : [];
   const validation = validateSongGoal(raw.goal);
+  const draftPlan = normalizeStoredSongDraftPlan(raw.draftPlan);
   return {
     source,
     sourcePrompt,
@@ -281,8 +302,22 @@ function readSongLibraryStarter(candidate: unknown): SongLibraryStarter | undefi
     structureSummary: typeof raw.structureSummary === "string"
       ? raw.structureSummary.replace(/\s+/g, " ").trim().slice(0, 240)
       : undefined,
+    draftPlan,
     goal: validation.goal,
     playerPlans,
+  };
+}
+
+function cloneSongDraftPlan(plan: SongDraftPlan | undefined): SongDraftPlan | undefined {
+  if (!plan) return undefined;
+  return {
+    version: plan.version,
+    source: plan.source,
+    summary: plan.summary,
+    bars: plan.bars.map((bar) => ({
+      ...bar,
+      anchorDegrees: [...bar.anchorDegrees],
+    })),
   };
 }
 

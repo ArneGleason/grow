@@ -9,7 +9,14 @@ import {
   type ChorusDevelopment,
   type SongArrangement,
 } from "./song-form";
-import { noteFromScaleDegree } from "./tonal-context";
+import { selectPulseDrumHit } from "./pulse-drums";
+import {
+  DEFAULT_SOUND_MIX,
+  cloneSoundMixSettings,
+  getPlayerSoundSettings,
+  type SoundMixSettings,
+} from "./sound-settings";
+import { noteFromScaleDegreeWithChromaticOffset, pitchToMidiNumber } from "./tonal-context";
 import type { TonalContext } from "./listening";
 import type { TimingFeelMode } from "./transport";
 
@@ -23,11 +30,14 @@ export interface MidiSongExportInput {
   players: readonly Player[];
   sectionDynamicsProfile?: SectionDynamicsProfile;
   chorusDevelopment?: ChorusDevelopment;
+  soundMix?: SoundMixSettings;
 }
 
 export interface MidiTrackSummary {
   playerId: string;
   noteCount: number;
+  channel: number;
+  voice: string;
 }
 
 export interface MidiSongExportResult {
@@ -46,7 +56,9 @@ interface MidiNote {
   startBeat: number;
   durationBeats: number;
   pitch: string;
+  midiNote?: number;
   velocity: number;
+  voice: string;
 }
 
 interface MidiEvent {
@@ -61,13 +73,13 @@ const MIDI_HEADER_LENGTH = 6;
 const MIDI_DEFAULT_TIME_SIGNATURE = [4, 2, 24, 8] as const;
 const MAX_WIDE_TIMING_OFFSET_BEATS = 0.06;
 const WIDE_TIMING_SCALE = 4;
-const MAX_MIDI_NOTE = 127;
-const MIN_MIDI_NOTE = 0;
+const GM_DRUM_CHANNEL = 9;
 const PLAYER_CHANNELS: Record<string, number> = {
   pulse: 0,
   bass: 1,
+  keyboard: 3,
   melody: 2,
-  texture: 3,
+  texture: 4,
   effects: 4,
 };
 
@@ -76,6 +88,7 @@ export function exportSongToMidi(input: MidiSongExportInput): MidiSongExportResu
   const notesByPlayer = new Map<string, MidiNote[]>();
   const previousPitchByPlayer = new Map<string, string>();
   const eventIndexByPlayer = new Map<string, number>();
+  const soundMix = cloneSoundMixSettings(input.soundMix ?? DEFAULT_SOUND_MIX);
 
   for (const pattern of input.song.patterns) {
     if (pattern.events.length === 0 || pattern.subdivisionBeats <= 0) continue;
@@ -115,7 +128,12 @@ export function exportSongToMidi(input: MidiSongExportInput): MidiSongExportResu
       if (!dynamics.shouldPlay) continue;
 
       const eventIndex = eventIndexByPlayer.get(player.id) ?? 0;
-      const gridPitch = noteFromScaleDegree(input.tonalContext, arranged.scaleDegree, arranged.octave);
+      const gridPitch = noteFromScaleDegreeWithChromaticOffset(
+        input.tonalContext,
+        arranged.scaleDegree,
+        arranged.octave,
+        arranged.chromaticOffsetSemitones,
+      );
       const expression = calculatePlayerExpression({
         player,
         absoluteBeat,
@@ -124,6 +142,7 @@ export function exportSongToMidi(input: MidiSongExportInput): MidiSongExportResu
         tasteVelocityMultiplier: dynamics.velocityMultiplier,
       });
       if (expression.finalVelocity <= 0) continue;
+      const playerSound = getPlayerSoundSettings(soundMix, player.id);
 
       const performedTiming = calculatePerformedTiming({
         player,
@@ -137,13 +156,31 @@ export function exportSongToMidi(input: MidiSongExportInput): MidiSongExportResu
       });
       const offsetBeats = applyMidiTimingFeel(performedTiming.performedOffsetBeats, input.timingFeelMode);
       const startBeat = Math.max(0, roundBeat(absoluteBeat + offsetBeats));
+      let velocity = expression.finalVelocity;
+      let durationBeats = Math.max(0.0625, arranged.durationBeats);
+      let midiNote: number | undefined;
+      if (player.id === "pulse" && playerSound.voice === "drum-kit") {
+        const drumHit = selectPulseDrumHit({
+          absoluteBeat,
+          scaleDegree: arranged.scaleDegree,
+          velocity: expression.finalVelocity,
+        });
+        midiNote = drumHit.midiNote;
+        velocity = clamp(expression.finalVelocity * drumHit.velocityMultiplier, 0, 1);
+        durationBeats = Math.max(
+          0.0625,
+          Math.min(durationBeats, secondsToBeats(drumHit.durationSeconds, input.tempoBpm)),
+        );
+      }
       const note = {
         playerId: player.id,
-        channel: PLAYER_CHANNELS[player.id] ?? (notesByPlayer.size % 15),
+        channel: getPlayerMidiChannel(player.id, playerSound.voice, notesByPlayer.size),
         startBeat,
-        durationBeats: Math.max(0.0625, arranged.durationBeats),
+        durationBeats,
         pitch: gridPitch,
-        velocity: toMidiVelocity(expression.finalVelocity),
+        ...(midiNote !== undefined ? { midiNote } : {}),
+        velocity: toMidiVelocity(velocity),
+        voice: playerSound.voice,
       };
 
       if (!notesByPlayer.has(player.id)) notesByPlayer.set(player.id, []);
@@ -159,6 +196,8 @@ export function exportSongToMidi(input: MidiSongExportInput): MidiSongExportResu
       playerId,
       bytes: createPlayerTrack(playerId, notes),
       noteCount: notes.length,
+      channel: notes[0]?.channel ?? PLAYER_CHANNELS[playerId] ?? 0,
+      voice: notes[0]?.voice ?? getPlayerSoundSettings(soundMix, playerId).voice,
     }));
   const tempoTrack = createTempoTrack(input.title, input.tempoBpm, input.arrangement);
   const bytes = createMidiFile([
@@ -176,6 +215,8 @@ export function exportSongToMidi(input: MidiSongExportInput): MidiSongExportResu
     trackSummaries: playerTracks.map((track) => ({
       playerId: track.playerId,
       noteCount: track.noteCount,
+      channel: track.channel,
+      voice: track.voice,
     })),
   };
 }
@@ -203,11 +244,14 @@ function createTempoTrack(title: string, tempoBpm: number, arrangement: SongArra
 }
 
 function createPlayerTrack(playerId: string, notes: readonly MidiNote[]): Uint8Array {
-  const events: MidiEvent[] = [metaEvent(0, 0, 0x03, playerId)];
+  const trackName = playerId === "pulse" && notes.some((note) => note.channel === GM_DRUM_CHANNEL)
+    ? "pulse GM drums"
+    : playerId;
+  const events: MidiEvent[] = [metaEvent(0, 0, 0x03, trackName)];
   for (const note of notes) {
     const startTick = beatsToTicks(note.startBeat);
     const endTick = Math.max(startTick + 1, beatsToTicks(note.startBeat + note.durationBeats));
-    const noteNumber = pitchToMidiNumber(note.pitch);
+    const noteNumber = note.midiNote ?? pitchToMidiNumber(note.pitch);
     if (noteNumber === undefined) continue;
     events.push({
       tick: startTick,
@@ -296,33 +340,13 @@ function estimatePatternDensity(pattern: PlayerPatternSource, stepIndex: number)
   return noteCount / windowSteps;
 }
 
-function pitchToMidiNumber(pitch: string): number | undefined {
-  const match = pitch.match(/^([A-G])(#|b)?(-?\d+)$/);
-  if (!match) return undefined;
-  const [, letter, accidental = "", octaveText] = match;
-  const semitoneByPitch: Record<string, number> = {
-    C: 0,
-    "C#": 1,
-    Db: 1,
-    D: 2,
-    "D#": 3,
-    Eb: 3,
-    E: 4,
-    F: 5,
-    "F#": 6,
-    Gb: 6,
-    G: 7,
-    "G#": 8,
-    Ab: 8,
-    A: 9,
-    "A#": 10,
-    Bb: 10,
-    B: 11,
-  };
-  const semitone = semitoneByPitch[`${letter}${accidental}`];
-  const octave = Number(octaveText);
-  if (semitone === undefined || !Number.isInteger(octave)) return undefined;
-  return clampInteger((octave + 1) * 12 + semitone, MIN_MIDI_NOTE, MAX_MIDI_NOTE);
+function getPlayerMidiChannel(playerId: string, voice: string, fallbackIndex: number): number {
+  if (playerId === "pulse" && voice === "drum-kit") return GM_DRUM_CHANNEL;
+  return PLAYER_CHANNELS[playerId] ?? (fallbackIndex % 15);
+}
+
+function secondsToBeats(seconds: number, tempoBpm: number): number {
+  return Math.max(0, seconds * normalizeTempo(tempoBpm) / 60);
 }
 
 function toMidiVelocity(velocity: number): number {

@@ -22,14 +22,14 @@
       "localCheckout": ""
     }
   },
-  "lastTask": "Add the first per-player MIDI export for selected songs",
-  "status": "midi-export-a-ready-for-review",
-  "updatedAt": "2026-06-20T23:48:00Z",
-  "lastHandoff": "",
-  "branch": "codex/byte-midi-export-a",
-  "commit": "HEAD on codex/byte-midi-export-a",
+  "lastTask": "Hand off hands-on listening-led musical improvement cycles to Claude",
+  "status": "handoff-to-claude-for-hands-on-musical-cycles",
+  "updatedAt": "2026-07-04T00:55:00Z",
+  "lastHandoff": ".agent/handoffs/2026-07-04-codex-to-claude-hands-on-musical-toy-cycles.md",
+  "branch": "codex/byte-connector-color-a",
+  "commit": "HEAD on codex/byte-connector-color-a",
   "remote": "https://github.com/ArneGleason/grow",
   "projectState": {
-    "summary": "Current branch codex/byte-midi-export-a adds the first simplest MIDI export. src/midi-export.ts writes a dependency-free Standard MIDI File type 1 with a tempo/section-marker track plus one track per active player. The export renders the selected active song through arrangeSongFormPatternEvent, shared section dynamics, deterministic expression velocity, and performed-time offsets. The engine currently has one active BPM and no tempo automation, so the MIDI file writes one static tempo meta event; timing feel is baked into note start ticks and velocities. UI adds a top-bar Export MIDI button and window.song.exportMidi() for tests/inspection. Validation: npm run build green, focused MIDI smoke green, full npm run smoke 79/79 green, npm run db:smoke green, git diff --check clean; npm audit still reports the known Vite/esbuild advisories."
+    "summary": "Current branch codex/byte-connector-color-a is a dirty stacked branch with connector color, sound-preview, starter-musicality, workflow-clarity, song-builder language cleanup, audible voice-led starter integration, keyboard player, foreground song-library pruning, melody-harmony binding, seeded-goal/leadership, tempo-cue correction, llm-song-intent-a, and latest llm-melody-harmony-draft-a. The latest byte adds pure src/song-draft-plan.ts, a bounded eight-bar model sketch grammar: leaders (melody/harmony/answer), modal rootDegree/anchorDegrees 1..7, contour, rhythm, cadence, and tension. The schema forbids pitches, chord names, note durations, event lists, MIDI, lyrics, and scheduling. After a valid song-intent call, Make draft can ask Ollama for a co-draft plan; valid plans persist as starter.draftPlan, render into the existing VoiceLedHarmonyDraft shape, and drive createSongStarterMaterial() through the normal pulse/bass/keyboard/melody paths with song-plan:model tags. Saved songs replay their plan deterministically; Fresh take asks for a new plan when Ollama health is ready, otherwise it drops the old plan for deterministic fallback. Validation: npm run unit:song-draft-plan green 6/6; npm run unit:song-intent green 5/5; npm run unit:song-library green 4/4; npm run unit:song-starter-material green 4/4; npx tsc --noEmit green; focused npm run smoke -- --grep \"song library creates|E4 starter generation|song starter applies bounded Ollama song intent and co-draft plan\" --workers=1 green 3/3; npm run build green; git diff --check clean. Full sweep not run under byte-scoped doctrine."
   }
 }

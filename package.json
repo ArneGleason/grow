@@ -17,6 +17,12 @@
     "unit:grow-language": "playwright test tests/grow-language.unit.spec.ts --config=playwright.unit.config.ts",
     "unit:melody-prosody": "playwright test tests/melody-prosody.unit.spec.ts --config=playwright.unit.config.ts",
     "unit:phrase-candidate-genome": "playwright test tests/phrase-candidate-genome.unit.spec.ts --config=playwright.unit.config.ts",
+    "unit:song-goal": "playwright test tests/song-goal.unit.spec.ts --config=playwright.unit.config.ts",
+    "unit:song-draft-plan": "playwright test tests/song-draft-plan.unit.spec.ts --config=playwright.unit.config.ts",
+    "unit:song-intent": "playwright test tests/song-intent.unit.spec.ts --config=playwright.unit.config.ts",
+    "unit:song-library": "playwright test tests/song-library.unit.spec.ts --config=playwright.unit.config.ts",
+    "unit:song-starter-material": "playwright test tests/song-starter-material.unit.spec.ts --config=playwright.unit.config.ts",
+    "unit:voice-led-harmony": "playwright test tests/voice-led-harmony.unit.spec.ts --config=playwright.unit.config.ts",
     "db:init": "node scripts/grow-db.mjs init",
     "db:dump": "node scripts/grow-db.mjs dump",
     "db:smoke": "node scripts/grow-db.mjs smoke"

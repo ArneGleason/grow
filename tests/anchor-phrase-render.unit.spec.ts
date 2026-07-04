@@ -5,7 +5,10 @@ import {
   renderAnchorPhrase,
   renderDemoAnchorPhrase,
 } from "../src/anchor-phrase-render";
-import { createTonalContext, noteFromScaleDegree } from "../src/tonal-context";
+import {
+  createTonalContext,
+  noteFromScaleDegreeWithChromaticOffset,
+} from "../src/tonal-context";
 
 function activeEvents(source: ReturnType<typeof renderAnchorPhrase>) {
   return source.events
@@ -38,7 +41,12 @@ test.describe("Anchor phrase renderer", () => {
     const tonalContext = createTonalContext("C", "mixolydian");
     const rendered = renderDemoAnchorPhrase({ subdivisionBeats: 0.25 });
     const emittedNotes = activeEvents(rendered).map((event) =>
-      noteFromScaleDegree(tonalContext, event.scaleDegree, event.octave)
+      noteFromScaleDegreeWithChromaticOffset(
+        tonalContext,
+        event.scaleDegree,
+        event.octave,
+        event.chromaticOffsetSemitones,
+      )
     );
 
     expect(emittedNotes.length).toBeGreaterThan(0);
@@ -87,6 +95,35 @@ test.describe("Anchor phrase renderer", () => {
     expect(detourPassing.length).toBeGreaterThan(0);
     expect(detourPassing.every((event) => event.startBeat >= 0.5 && event.startBeat < 4)).toBe(true);
     expect(detourPassing[0].scaleDegree).toBeGreaterThan(0);
+  });
+
+  test("connector color adds bounded chromatic offsets without moving anchors", () => {
+    const tonalContext = createTonalContext("C", "mixolydian");
+    const rendered = renderAnchorPhrase(phraseWithConnector({
+      kernel: "detour",
+      reach: 1,
+      density: 1,
+      bias: -1,
+      color: 1,
+    }), { subdivisionBeats: 0.5 });
+    const passing = connectorEvents(rendered);
+    const anchors = [rendered.events[0], rendered.events[8]];
+
+    expect(passing.length).toBeGreaterThan(0);
+    expect(passing.some((event) => event.chromaticOffsetSemitones === -1)).toBe(true);
+    expect(passing.every((event) => Math.abs(event.chromaticOffsetSemitones ?? 0) <= 1)).toBe(true);
+    expect(passing.some((event) => event.tags?.includes("connector:chromatic"))).toBe(true);
+    expect(anchors.every((event) => event?.chromaticOffsetSemitones === undefined)).toBe(true);
+
+    const pitchClasses = passing.map((event) =>
+      noteFromScaleDegreeWithChromaticOffset(
+        tonalContext,
+        event.scaleDegree,
+        event.octave,
+        event.chromaticOffsetSemitones,
+      ).replace(/\d+$/, "")
+    );
+    expect(pitchClasses.some((pitchClass) => !tonalContext.scale.includes(pitchClass))).toBe(true);
   });
 
   test("preserves segment gaps as null slots", () => {

@@ -23,10 +23,12 @@ export interface ConnectorRenderContext {
 }
 
 export interface ConnectorRenderedNote {
+  chromaticOffsetSemitones?: number;
   durationBeats: number;
   octave: number;
   scaleDegree: number;
   startBeat: number;
+  tags?: readonly string[];
   velocity: number;
 }
 
@@ -400,13 +402,50 @@ function connectorNote(
   );
   const averageDynamics = (context.from.dynamics + context.to.dynamics) / 2;
   const ghostFactor = 0.34 + context.connector.density * 0.18 + context.connector.pull * 0.08;
+  const chromaticOffsetSemitones = connectorChromaticOffset(context, options.scaleDegree, options.progress);
+  const tags = chromaticOffsetSemitones === 0
+    ? undefined
+    : [
+      "connector:color",
+      "connector:chromatic",
+      `chromatic:${chromaticOffsetSemitones > 0 ? "+" : ""}${chromaticOffsetSemitones}`,
+    ];
   return {
+    chromaticOffsetSemitones,
     durationBeats: roundBeat(Math.min(context.subdivisionBeats * 0.86, maximumDuration)),
     octave: options.octave,
     scaleDegree: options.scaleDegree,
     startBeat,
+    tags,
     velocity: roundVelocity(averageDynamics * ghostFactor + (options.velocityBoost ?? 0)),
   };
+}
+
+function connectorChromaticOffset(
+  context: ConnectorRenderContext,
+  scaleDegree: number,
+  progress: number,
+): -1 | 0 | 1 {
+  const color = clamp01(context.connector.color);
+  if (color < 0.5) return 0;
+
+  const roundedPhase = Math.round(progress * 8);
+  const shouldColor = color >= 0.9 || (roundedPhase + context.connectorIndex) % 2 === 0;
+  if (!shouldColor) return 0;
+
+  const fromDegree = languageDegreeToEngineDegree(context.from.degree);
+  const toDegree = languageDegreeToEngineDegree(context.to.degree);
+  const degreeClass = positiveModulo(scaleDegree, 7);
+
+  if (color >= 0.9) {
+    if (degreeClass === 2 || degreeClass === 4 || degreeClass === 6) return -1;
+    return context.connector.bias > 0.65 ? 1 : -1;
+  }
+
+  const targetDirection = toDegree >= scaleDegree ? 1 : -1;
+  if (context.connector.kernel === "approach") return targetDirection;
+  if (Math.abs(toDegree - scaleDegree) <= Math.abs(scaleDegree - fromDegree)) return targetDirection;
+  return context.connector.bias >= 0 ? 1 : -1;
 }
 
 function placeNote(
@@ -420,10 +459,12 @@ function placeNote(
   if (index < 0 || index >= events.length) return;
   events[index] = {
     playerId,
+    ...(note.chromaticOffsetSemitones ? { chromaticOffsetSemitones: note.chromaticOffsetSemitones } : {}),
     scaleDegree: Math.trunc(note.scaleDegree),
     octave: finiteOctave(note.octave, baseOctave),
     duration: beatsToBarsBeatsSixteenths(note.durationBeats),
     durationBeats: roundBeat(note.durationBeats),
+    ...(note.tags ? { tags: [...note.tags] } : {}),
     velocity: roundVelocity(note.velocity),
   };
 }
@@ -444,6 +485,10 @@ function languageDegreeToEngineDegree(degree: number): number {
 
 function finiteOctave(octave: number, fallback: number): number {
   return Math.trunc(Number.isFinite(octave) ? octave : fallback);
+}
+
+function positiveModulo(value: number, length: number): number {
+  return ((Math.trunc(value) % length) + length) % length;
 }
 
 function snapBeat(beat: number, subdivisionBeats: number): number {

@@ -6,8 +6,10 @@ export interface PatternNoteSource {
   playerId: string;
   scaleDegree: number;
   octave: number;
+  chromaticOffsetSemitones?: number;
   duration: ToneNS.Unit.Time;
   durationBeats: number;
+  tags?: readonly string[];
   velocity: number;
 }
 
@@ -25,11 +27,23 @@ export interface SongMaterial {
 
 export const DEFAULT_SONG_ID: SongId = "lantern";
 
+function keyboardCompNote(scaleDegree: number, octave: number, velocity: number): PatternNoteSource {
+  return {
+    playerId: "keyboard",
+    scaleDegree,
+    octave,
+    duration: "2n",
+    durationBeats: 1.75,
+    tags: ["keyboard:built-in-comp", "keyboard:chord-tone"],
+    velocity,
+  };
+}
+
 export const SONG_MATERIALS: readonly SongMaterial[] = [
   {
     id: "lantern",
     label: "Lantern",
-    description: "The original modal pulse, bass, and melody loop.",
+    description: "The original modal pulse, bass, keyboard, and melody loop.",
     patterns: [
       {
         subdivisionBeats: 1,
@@ -83,6 +97,33 @@ export const SONG_MATERIALS: readonly SongMaterial[] = [
             velocity: 0.42,
           },
           null,
+        ],
+      },
+      {
+        subdivisionBeats: 2,
+        events: [
+          keyboardCompNote(0, 3, 0.3),
+          keyboardCompNote(4, 3, 0.27),
+          keyboardCompNote(6, 3, 0.29),
+          keyboardCompNote(4, 3, 0.26),
+        ],
+      },
+      {
+        subdivisionBeats: 2,
+        events: [
+          keyboardCompNote(2, 4, 0.27),
+          keyboardCompNote(6, 4, 0.24),
+          keyboardCompNote(1, 4, 0.25),
+          keyboardCompNote(6, 4, 0.23),
+        ],
+      },
+      {
+        subdivisionBeats: 2,
+        events: [
+          keyboardCompNote(4, 4, 0.25),
+          keyboardCompNote(1, 4, 0.22),
+          keyboardCompNote(3, 4, 0.23),
+          keyboardCompNote(1, 4, 0.22),
         ],
       },
       {
@@ -231,6 +272,33 @@ export const SONG_MATERIALS: readonly SongMaterial[] = [
         ],
       },
       {
+        subdivisionBeats: 2,
+        events: [
+          keyboardCompNote(0, 3, 0.28),
+          keyboardCompNote(6, 3, 0.26),
+          keyboardCompNote(4, 3, 0.3),
+          keyboardCompNote(5, 3, 0.27),
+        ],
+      },
+      {
+        subdivisionBeats: 2,
+        events: [
+          keyboardCompNote(2, 4, 0.25),
+          keyboardCompNote(1, 4, 0.23),
+          keyboardCompNote(6, 4, 0.26),
+          keyboardCompNote(0, 4, 0.24),
+        ],
+      },
+      {
+        subdivisionBeats: 2,
+        events: [
+          keyboardCompNote(4, 4, 0.23),
+          keyboardCompNote(3, 4, 0.22),
+          keyboardCompNote(1, 4, 0.24),
+          keyboardCompNote(2, 4, 0.22),
+        ],
+      },
+      {
         subdivisionBeats: 0.5,
         events: [
           {
@@ -356,6 +424,33 @@ export const SONG_MATERIALS: readonly SongMaterial[] = [
             durationBeats: 0.5,
             velocity: 0.38,
           },
+        ],
+      },
+      {
+        subdivisionBeats: 2,
+        events: [
+          keyboardCompNote(0, 3, 0.24),
+          keyboardCompNote(3, 3, 0.22),
+          keyboardCompNote(6, 3, 0.2),
+          null,
+        ],
+      },
+      {
+        subdivisionBeats: 2,
+        events: [
+          keyboardCompNote(2, 4, 0.22),
+          keyboardCompNote(5, 4, 0.2),
+          keyboardCompNote(1, 4, 0.19),
+          null,
+        ],
+      },
+      {
+        subdivisionBeats: 2,
+        events: [
+          keyboardCompNote(4, 4, 0.2),
+          keyboardCompNote(0, 4, 0.18),
+          keyboardCompNote(3, 4, 0.18),
+          null,
         ],
       },
       {

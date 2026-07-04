@@ -28,8 +28,19 @@ import {
   type SongHarmonicContext,
   type SongSectionContext,
 } from "./song-form";
+import { selectPulseDrumHit } from "./pulse-drums";
+import {
+  DEFAULT_SOUND_MIX,
+  cloneSoundMixSettings,
+  getPlayerSoundSettings,
+  type BassVoiceId,
+  type KeyboardVoiceId,
+  type MelodyVoiceId,
+  type PlayerVoiceId,
+  type SoundMixSettings,
+} from "./sound-settings";
 import type { TasteNoteDecision, TasteNoteDecisionInput } from "./taste";
-import { DEFAULT_TONAL_CONTEXT, noteFromScaleDegree } from "./tonal-context";
+import { DEFAULT_TONAL_CONTEXT, noteFromScaleDegreeWithChromaticOffset } from "./tonal-context";
 
 export type TransportStatus = "stopped" | "playing";
 export type LookaheadHealth = "stopped" | "empty" | "thin" | "healthy";
@@ -59,6 +70,7 @@ export interface GrowTransportState {
   performedTiming: {
     latest: readonly PlayerPerformedTimingSnapshot[];
   };
+  sound: SoundMixSettings;
   songForm: SongSectionContext;
   harmony: SongHarmonicContext;
 }
@@ -90,6 +102,7 @@ export interface TransportHandlers {
   chorusDevelopment?: () => ChorusDevelopment | undefined;
   melodyPhrasing?: () => PlayerPatternSource | undefined;
   songMaterial?: () => SongMaterial;
+  soundMix?: () => SoundMixSettings;
 }
 
 export interface TransportOptions {
@@ -112,6 +125,7 @@ const MAX_PERFORMED_OFFSET_BEATS = 0.06;
 const WIDE_TIMING_SCALE = 4;
 const WIDE_TIMING_MAXIMUM_OFFSET_BEATS = MAX_PERFORMED_OFFSET_BEATS;
 const DEFAULT_TIMING_FEEL_MODE: TimingFeelMode = "feel";
+const SILENCE_DB = -80;
 const DEFAULT_NOTE_DECISION: TasteNoteDecision = {
   action: "repeat",
   shouldPlay: true,
@@ -146,9 +160,17 @@ interface CommittedScheduledNote {
 }
 
 let Tone: typeof ToneNS | null = null;
-let pulseSynth: ToneNS.MembraneSynth | null = null;
+let pulseRootSynth: ToneNS.MembraneSynth | null = null;
+let pulseKickSynth: ToneNS.MembraneSynth | null = null;
+let pulseTomSynth: ToneNS.MembraneSynth | null = null;
+let pulseSnareSynth: ToneNS.NoiseSynth | null = null;
+let pulseHatSynth: ToneNS.NoiseSynth | null = null;
 let bassSynth: ToneNS.MonoSynth | null = null;
+let keyboardSynth: ToneNS.PolySynth<ToneNS.Synth> | null = null;
 let melodySynth: ToneNS.Synth | null = null;
+let bassVoice: BassVoiceId | undefined;
+let keyboardVoice: KeyboardVoiceId | undefined;
+let melodyVoice: MelodyVoiceId | undefined;
 const scheduledEventIds = new Set<number>();
 let status: TransportStatus = "stopped";
 let eventSerial = 0;
@@ -190,9 +212,16 @@ function materializeNote(tonalContext: TonalContext, note: PatternNoteSource): S
     playerId: note.playerId,
     scaleDegree: note.scaleDegree,
     octave: note.octave,
-    pitch: noteFromScaleDegree(tonalContext, note.scaleDegree, note.octave),
+    ...(note.chromaticOffsetSemitones ? { chromaticOffsetSemitones: note.chromaticOffsetSemitones } : {}),
+    pitch: noteFromScaleDegreeWithChromaticOffset(
+      tonalContext,
+      note.scaleDegree,
+      note.octave,
+      note.chromaticOffsetSemitones,
+    ),
     duration: note.duration,
     durationBeats: note.durationBeats,
+    ...(note.tags ? { tags: [...note.tags] } : {}),
     velocity: note.velocity,
   };
 }
@@ -236,6 +265,10 @@ function getTimingFeelMode(): TimingFeelMode {
   return handlers.timingFeelMode?.() ?? DEFAULT_TIMING_FEEL_MODE;
 }
 
+function getActiveSoundMix(): SoundMixSettings {
+  return cloneSoundMixSettings(handlers.soundMix?.() ?? DEFAULT_SOUND_MIX);
+}
+
 function getScheduledSnapshot(absoluteBeat: number): ScheduledSnapshot {
   const snappedBeat = snapBeat(absoluteBeat);
   const totalSixteenths = Math.round(snappedBeat * 4);
@@ -257,6 +290,7 @@ function emitNoteEvent(
   expression: PlayerExpressionSnapshot,
   velocity: number,
   performedPitch: string,
+  extraTags: readonly string[] = [],
 ): void {
   if (status !== "playing") return;
   const { note, snapshot } = committed;
@@ -284,6 +318,7 @@ function emitNoteEvent(
     performedTiming: committed.performedTiming,
     tags: [
       ...player.tags,
+      ...(note.tags ?? []),
       `taste:${decision.action}`,
       `song:${committed.songId}`,
       "expression:velocity",
@@ -291,6 +326,7 @@ function emitNoteEvent(
       committed.timingFeelMode === "grid" ? "timing:grid" : "timing:audible-offset",
       ...(committed.timingFeelMode === "wide" ? ["timing:wide-audition"] : []),
       ...(decision.tags ?? []),
+      ...extraTags,
     ],
     createdAtMs: performance.now(),
   };
@@ -346,9 +382,9 @@ async function waitForAudioContextRunning(tone: typeof ToneNS): Promise<void> {
   }
 }
 
-function ensurePulseSynth(tone: typeof ToneNS): ToneNS.MembraneSynth {
-  if (!pulseSynth || pulseSynth.disposed) {
-    pulseSynth = new tone.MembraneSynth({
+function ensurePulseRootSynth(tone: typeof ToneNS): ToneNS.MembraneSynth {
+  if (!pulseRootSynth || pulseRootSynth.disposed) {
+    pulseRootSynth = new tone.MembraneSynth({
       pitchDecay: 0.025,
       octaves: 4,
       oscillator: { type: "sine" },
@@ -359,14 +395,128 @@ function ensurePulseSynth(tone: typeof ToneNS): ToneNS.MembraneSynth {
         release: 0.08,
       },
     }).toDestination();
-    pulseSynth.volume.value = -13;
   }
 
-  return pulseSynth;
+  return pulseRootSynth;
 }
 
-function ensureBassSynth(tone: typeof ToneNS): ToneNS.MonoSynth {
-  if (!bassSynth || bassSynth.disposed) {
+function ensurePulseKickSynth(tone: typeof ToneNS): ToneNS.MembraneSynth {
+  if (!pulseKickSynth || pulseKickSynth.disposed) {
+    pulseKickSynth = new tone.MembraneSynth({
+      pitchDecay: 0.032,
+      octaves: 5,
+      oscillator: { type: "sine" },
+      envelope: {
+        attack: 0.001,
+        decay: 0.22,
+        sustain: 0,
+        release: 0.05,
+      },
+    }).toDestination();
+  }
+
+  return pulseKickSynth;
+}
+
+function ensurePulseTomSynth(tone: typeof ToneNS): ToneNS.MembraneSynth {
+  if (!pulseTomSynth || pulseTomSynth.disposed) {
+    pulseTomSynth = new tone.MembraneSynth({
+      pitchDecay: 0.018,
+      octaves: 2,
+      oscillator: { type: "triangle" },
+      envelope: {
+        attack: 0.001,
+        decay: 0.18,
+        sustain: 0,
+        release: 0.08,
+      },
+    }).toDestination();
+  }
+
+  return pulseTomSynth;
+}
+
+function ensurePulseSnareSynth(tone: typeof ToneNS): ToneNS.NoiseSynth {
+  if (!pulseSnareSynth || pulseSnareSynth.disposed) {
+    pulseSnareSynth = new tone.NoiseSynth({
+      noise: { type: "white" },
+      envelope: {
+        attack: 0.001,
+        decay: 0.11,
+        sustain: 0,
+        release: 0.04,
+      },
+    }).toDestination();
+  }
+
+  return pulseSnareSynth;
+}
+
+function ensurePulseHatSynth(tone: typeof ToneNS): ToneNS.NoiseSynth {
+  if (!pulseHatSynth || pulseHatSynth.disposed) {
+    pulseHatSynth = new tone.NoiseSynth({
+      noise: { type: "brown" },
+      envelope: {
+        attack: 0.001,
+        decay: 0.045,
+        sustain: 0,
+        release: 0.018,
+      },
+    }).toDestination();
+  }
+
+  return pulseHatSynth;
+}
+
+function ensureBassSynth(tone: typeof ToneNS, voice: BassVoiceId): ToneNS.MonoSynth {
+  if (bassSynth && !bassSynth.disposed && bassVoice === voice) {
+    return bassSynth;
+  }
+
+  if (bassSynth && !bassSynth.disposed) {
+    bassSynth.dispose();
+  }
+
+  bassVoice = voice;
+  if (voice === "sub-bass") {
+    bassSynth = new tone.MonoSynth({
+      oscillator: { type: "sine" },
+      filter: { Q: 0.8, type: "lowpass", rolloff: -24, frequency: 620 },
+      envelope: {
+        attack: 0.018,
+        decay: 0.1,
+        sustain: 0.68,
+        release: 0.24,
+      },
+      filterEnvelope: {
+        attack: 0.012,
+        decay: 0.14,
+        sustain: 0.12,
+        release: 0.18,
+        baseFrequency: 80,
+        octaves: 1.4,
+      },
+    }).toDestination();
+  } else if (voice === "rubber-bass") {
+    bassSynth = new tone.MonoSynth({
+      oscillator: { type: "square" },
+      filter: { Q: 2.2, type: "lowpass", rolloff: -24, frequency: 1_050 },
+      envelope: {
+        attack: 0.004,
+        decay: 0.12,
+        sustain: 0.46,
+        release: 0.13,
+      },
+      filterEnvelope: {
+        attack: 0.002,
+        decay: 0.18,
+        sustain: 0.08,
+        release: 0.12,
+        baseFrequency: 110,
+        octaves: 2.8,
+      },
+    }).toDestination();
+  } else {
     bassSynth = new tone.MonoSynth({
       oscillator: { type: "triangle" },
       filter: { Q: 1, type: "lowpass", rolloff: -24, frequency: 900 },
@@ -385,14 +535,42 @@ function ensureBassSynth(tone: typeof ToneNS): ToneNS.MonoSynth {
         octaves: 2,
       },
     }).toDestination();
-    bassSynth.volume.value = -17;
   }
 
   return bassSynth;
 }
 
-function ensureMelodySynth(tone: typeof ToneNS): ToneNS.Synth {
-  if (!melodySynth || melodySynth.disposed) {
+function ensureMelodySynth(tone: typeof ToneNS, voice: MelodyVoiceId): ToneNS.Synth {
+  if (melodySynth && !melodySynth.disposed && melodyVoice === voice) {
+    return melodySynth;
+  }
+
+  if (melodySynth && !melodySynth.disposed) {
+    melodySynth.dispose();
+  }
+
+  melodyVoice = voice;
+  if (voice === "reed-line") {
+    melodySynth = new tone.Synth({
+      oscillator: { type: "square" },
+      envelope: {
+        attack: 0.018,
+        decay: 0.1,
+        sustain: 0.34,
+        release: 0.2,
+      },
+    }).toDestination();
+  } else if (voice === "pluck-line") {
+    melodySynth = new tone.Synth({
+      oscillator: { type: "triangle" },
+      envelope: {
+        attack: 0.003,
+        decay: 0.16,
+        sustain: 0.08,
+        release: 0.12,
+      },
+    }).toDestination();
+  } else if (voice === "sine-line") {
     melodySynth = new tone.Synth({
       oscillator: { type: "sine" },
       envelope: {
@@ -402,10 +580,153 @@ function ensureMelodySynth(tone: typeof ToneNS): ToneNS.Synth {
         release: 0.18,
       },
     }).toDestination();
-    melodySynth.volume.value = -19;
+  } else {
+    melodySynth = new tone.Synth({
+      oscillator: { type: "triangle" },
+      envelope: {
+        attack: 0.006,
+        decay: 0.14,
+        sustain: 0.24,
+        release: 0.2,
+      },
+    }).toDestination();
   }
 
   return melodySynth;
+}
+
+function ensureKeyboardSynth(tone: typeof ToneNS, voice: KeyboardVoiceId): ToneNS.PolySynth<ToneNS.Synth> {
+  if (keyboardSynth && !keyboardSynth.disposed && keyboardVoice === voice) {
+    return keyboardSynth;
+  }
+
+  if (keyboardSynth && !keyboardSynth.disposed) {
+    keyboardSynth.dispose();
+  }
+
+  keyboardVoice = voice;
+  if (voice === "soft-piano") {
+    keyboardSynth = new tone.PolySynth(tone.Synth, {
+      oscillator: { type: "triangle" },
+      envelope: {
+        attack: 0.006,
+        decay: 0.22,
+        sustain: 0.18,
+        release: 0.48,
+      },
+    }).toDestination();
+  } else if (voice === "muted-organ") {
+    keyboardSynth = new tone.PolySynth(tone.Synth, {
+      oscillator: { type: "sine" },
+      envelope: {
+        attack: 0.018,
+        decay: 0.08,
+        sustain: 0.72,
+        release: 0.32,
+      },
+    }).toDestination();
+  } else {
+    keyboardSynth = new tone.PolySynth(tone.Synth, {
+      oscillator: { type: "triangle" },
+      envelope: {
+        attack: 0.012,
+        decay: 0.16,
+        sustain: 0.38,
+        release: 0.42,
+      },
+    }).toDestination();
+  }
+
+  return keyboardSynth;
+}
+
+function getBassVoice(voice: PlayerVoiceId): BassVoiceId {
+  return voice === "sub-bass" || voice === "rubber-bass" ? voice : "round-bass";
+}
+
+function getKeyboardVoice(voice: PlayerVoiceId): KeyboardVoiceId {
+  if (voice === "soft-piano" || voice === "muted-organ") return voice;
+  return "warm-keys";
+}
+
+function getMelodyVoice(voice: PlayerVoiceId): MelodyVoiceId {
+  if (voice === "sine-line" || voice === "reed-line" || voice === "pluck-line") return voice;
+  return "glass-line";
+}
+
+function getBassVoiceBaseDb(voice: BassVoiceId): number {
+  if (voice === "sub-bass") return -13;
+  if (voice === "rubber-bass") return -16;
+  return -15;
+}
+
+function getMelodyVoiceBaseDb(voice: MelodyVoiceId): number {
+  if (voice === "reed-line") return -21;
+  if (voice === "pluck-line") return -18;
+  if (voice === "sine-line") return -18;
+  return -16;
+}
+
+function getKeyboardVoiceBaseDb(voice: KeyboardVoiceId): number {
+  if (voice === "soft-piano") return -18;
+  if (voice === "muted-organ") return -23;
+  return -21;
+}
+
+function getPlayerOutputDb(playerId: string, baseDb: number): number {
+  const mix = getActiveSoundMix();
+  const playerSettings = getPlayerSoundSettings(mix, playerId);
+  return clampDb(baseDb + levelToDb(mix.masterLevel * playerSettings.level));
+}
+
+function levelToDb(level: number): number {
+  if (!Number.isFinite(level) || level <= 0) return SILENCE_DB;
+  return 20 * Math.log10(Math.max(0.0001, Math.min(1, level)));
+}
+
+function clampDb(value: number): number {
+  if (!Number.isFinite(value)) return SILENCE_DB;
+  return Math.max(SILENCE_DB, Math.min(6, value));
+}
+
+function clampVelocity(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(1, value));
+}
+
+function triggerPulseDrumKit(
+  tone: typeof ToneNS,
+  note: ScheduledNote,
+  snapshot: ScheduledSnapshot,
+  audioTime: number,
+  velocity: number,
+): readonly string[] {
+  const hit = selectPulseDrumHit({
+    absoluteBeat: snapshot.absoluteBeat,
+    scaleDegree: note.scaleDegree,
+    velocity,
+  });
+  const hitVelocity = clampVelocity(velocity * hit.velocityMultiplier);
+
+  if (hit.id === "kick") {
+    const synth = ensurePulseKickSynth(tone);
+    synth.volume.value = getPlayerOutputDb("pulse", -11);
+    synth.triggerAttackRelease(hit.synthPitch ?? "C1", hit.durationSeconds, audioTime, hitVelocity);
+  } else if (hit.id === "low-tom" || hit.id === "mid-tom" || hit.id === "high-tom") {
+    const synth = ensurePulseTomSynth(tone);
+    synth.volume.value = getPlayerOutputDb("pulse", -15);
+    synth.triggerAttackRelease(hit.synthPitch ?? "C2", hit.durationSeconds, audioTime, hitVelocity);
+  } else if (hit.id === "snare") {
+    const synth = ensurePulseSnareSynth(tone);
+    synth.volume.value = getPlayerOutputDb("pulse", -19);
+    synth.triggerAttackRelease(hit.durationSeconds, audioTime, hitVelocity);
+  } else {
+    const synth = ensurePulseHatSynth(tone);
+    synth.volume.value = getPlayerOutputDb("pulse", hit.id === "open-hat" ? -22 : -25);
+    synth.triggerAttackRelease(hit.durationSeconds, audioTime, hitVelocity);
+  }
+
+  return hit.tags;
 }
 
 function triggerScheduledNote(
@@ -438,14 +759,35 @@ function triggerScheduledNote(
     finalVelocity: velocity,
   };
   latestExpressionByPlayer.set(note.playerId, appliedExpression);
+  const soundMix = getActiveSoundMix();
+  const playerSound = getPlayerSoundSettings(soundMix, note.playerId);
+  const soundTags = [`voice:${playerSound.voice}`];
 
   try {
     if (decision.shouldPlay && note.playerId === "pulse") {
-      ensurePulseSynth(tone).triggerAttackRelease(performedPitch, note.duration, audioTime, velocity);
+      if (playerSound.voice === "drum-kit") {
+        soundTags.push(...triggerPulseDrumKit(tone, note, snapshot, audioTime, velocity));
+      } else {
+        const synth = ensurePulseRootSynth(tone);
+        synth.volume.value = getPlayerOutputDb("pulse", -13);
+        synth.triggerAttackRelease(performedPitch, note.duration, audioTime, velocity);
+        soundTags.push("pulse:root-pulse");
+      }
     } else if (decision.shouldPlay && note.playerId === "bass") {
-      ensureBassSynth(tone).triggerAttackRelease(performedPitch, note.duration, audioTime, velocity);
+      const voice = getBassVoice(playerSound.voice);
+      const synth = ensureBassSynth(tone, voice);
+      synth.volume.value = getPlayerOutputDb("bass", getBassVoiceBaseDb(voice));
+      synth.triggerAttackRelease(performedPitch, note.duration, audioTime, velocity);
+    } else if (decision.shouldPlay && note.playerId === "keyboard") {
+      const voice = getKeyboardVoice(playerSound.voice);
+      const synth = ensureKeyboardSynth(tone, voice);
+      synth.volume.value = getPlayerOutputDb("keyboard", getKeyboardVoiceBaseDb(voice));
+      synth.triggerAttackRelease(performedPitch, note.duration, audioTime, velocity);
     } else if (decision.shouldPlay && note.playerId === "melody") {
-      ensureMelodySynth(tone).triggerAttackRelease(performedPitch, note.duration, audioTime, velocity);
+      const voice = getMelodyVoice(playerSound.voice);
+      const synth = ensureMelodySynth(tone, voice);
+      synth.volume.value = getPlayerOutputDb("melody", getMelodyVoiceBaseDb(voice));
+      synth.triggerAttackRelease(performedPitch, note.duration, audioTime, velocity);
     }
   } catch (error) {
     if (import.meta.env.DEV) {
@@ -453,7 +795,7 @@ function triggerScheduledNote(
     }
   }
 
-  emitNoteEvent(committed, decision, appliedExpression, velocity, performedPitch);
+  emitNoteEvent(committed, decision, appliedExpression, velocity, performedPitch, soundTags);
 }
 
 function clampAudioFireTime(tone: typeof ToneNS, performedTime: ToneNS.Unit.Time): number {
@@ -805,9 +1147,18 @@ export async function startTransport(): Promise<GrowTransportState> {
     return getState();
   }
 
-  ensurePulseSynth(tone);
-  ensureBassSynth(tone);
-  ensureMelodySynth(tone);
+  const soundMix = getActiveSoundMix();
+  const bassSettings = getPlayerSoundSettings(soundMix, "bass");
+  const keyboardSettings = getPlayerSoundSettings(soundMix, "keyboard");
+  const melodySettings = getPlayerSoundSettings(soundMix, "melody");
+  ensurePulseRootSynth(tone);
+  ensurePulseKickSynth(tone);
+  ensurePulseTomSynth(tone);
+  ensurePulseSnareSynth(tone);
+  ensurePulseHatSynth(tone);
+  ensureBassSynth(tone, getBassVoice(bassSettings.voice));
+  ensureKeyboardSynth(tone, getKeyboardVoice(keyboardSettings.voice));
+  ensureMelodySynth(tone, getMelodyVoice(melodySettings.voice));
 
   const transport = tone.getTransport();
   transport.bpm.value = getActiveTempoBpm();
@@ -888,18 +1239,41 @@ export function refreshLookaheadSchedule(): GrowTransportState {
 
 export function disposeTransport(): void {
   stopTransport();
-  if (pulseSynth && !pulseSynth.disposed) {
-    pulseSynth.dispose();
+  if (pulseRootSynth && !pulseRootSynth.disposed) {
+    pulseRootSynth.dispose();
+  }
+  if (pulseKickSynth && !pulseKickSynth.disposed) {
+    pulseKickSynth.dispose();
+  }
+  if (pulseTomSynth && !pulseTomSynth.disposed) {
+    pulseTomSynth.dispose();
+  }
+  if (pulseSnareSynth && !pulseSnareSynth.disposed) {
+    pulseSnareSynth.dispose();
+  }
+  if (pulseHatSynth && !pulseHatSynth.disposed) {
+    pulseHatSynth.dispose();
   }
   if (bassSynth && !bassSynth.disposed) {
     bassSynth.dispose();
   }
+  if (keyboardSynth && !keyboardSynth.disposed) {
+    keyboardSynth.dispose();
+  }
   if (melodySynth && !melodySynth.disposed) {
     melodySynth.dispose();
   }
-  pulseSynth = null;
+  pulseRootSynth = null;
+  pulseKickSynth = null;
+  pulseTomSynth = null;
+  pulseSnareSynth = null;
+  pulseHatSynth = null;
   bassSynth = null;
+  keyboardSynth = null;
   melodySynth = null;
+  bassVoice = undefined;
+  keyboardVoice = undefined;
+  melodyVoice = undefined;
   handlers = {};
   log("disposed");
 }
@@ -921,6 +1295,7 @@ export function getState(): GrowTransportState {
     performedTiming: {
       latest: [...latestPerformedTimingByPlayer.values()],
     },
+    sound: getActiveSoundMix(),
     songForm: sectionAtBeat(currentBeat, getActiveSongArrangement()),
     harmony: getSongHarmonicContext(getActiveSongMaterial(), currentBeat, getActiveSongArrangement()),
   };

@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "grow",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "/Users/arnegleason/code/github.com/arnegleason/grow", "run", "dev"],
+      "port": 5173
+    }
+  ]
+}

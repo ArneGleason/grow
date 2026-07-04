@@ -178,6 +178,63 @@ export const BASS_PLAYER: Player = {
   tags: ["low", "support", "modal"],
 };
 
+export const KEYBOARD_PLAYER: Player = {
+  id: "keyboard",
+  displayName: "keyboard",
+  role: "texture",
+  soundLabel: "voice-led chords",
+  instrumentId: "soft-keyboard",
+  position: { x: 505, y: 420 },
+  visual: {
+    color: 0x5f6fb8,
+    accentColor: 0xdfe5ff,
+    haloRadius: 31,
+    bodyRadius: 18,
+    labelOffsetY: 28,
+  },
+  taste: {
+    densityTarget: 0.62,
+    densityTolerance: 0.3,
+    repetitionPreference: 0.82,
+    brightnessPreference: "mid",
+    rhythmicStabilityPreference: 0.82,
+    noveltyPreference: 0.28,
+  },
+  thinking: {
+    disposition: {
+      steadiness: 0.82,
+      disruption: 0.14,
+      caution: 0.7,
+      novelty: 0.26,
+      density: 0.42,
+      responsiveness: 0.58,
+    },
+    memoryFragments: [
+      {
+        id: "keyboard-parlor-hammers",
+        text: "keeps old parlor-piano hammers wrapped in felt so the vocal has a room",
+        tags: ["mid", "support", "chords"],
+      },
+      {
+        id: "keyboard-window-chords",
+        text: "likes chords that move like light crossing a kitchen window",
+        tags: ["harmony", "motion", "warm"],
+      },
+      {
+        id: "keyboard-left-hand-oath",
+        text: "promises the left hand will not compete with a bass that already knows the floor",
+        tags: ["space", "support", "caution"],
+      },
+    ],
+    influencePhrases: [
+      { id: "keyboard-close-voice", scaleDegrees: [0, 2, 4, 2, 5, 4, 1, 0] },
+      { id: "keyboard-suspended-window", scaleDegrees: [0, 3, 4, 6, 5, 3, 4, 0] },
+      { id: "keyboard-gentle-turn", scaleDegrees: [2, 4, 3, 1, 2, 5, 4, 0] },
+    ],
+  },
+  tags: ["mid", "support", "chords"],
+};
+
 export const MELODY_PLAYER: Player = {
   id: "melody",
   displayName: "melody",
@@ -238,6 +295,7 @@ export const MELODY_PLAYER: Player = {
 export const PLAYER_REGISTRY: readonly Player[] = [
   PULSE_PLAYER,
   BASS_PLAYER,
+  KEYBOARD_PLAYER,
   MELODY_PLAYER,
 ];
 
