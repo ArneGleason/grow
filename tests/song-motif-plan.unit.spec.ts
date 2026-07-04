@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { DEFAULT_SONG_ARRANGEMENT, arrangeSongFormPatternEvent } from "../src/song-form";
+import { selectPulseDrumHit } from "../src/pulse-drums";
 import { createTonalContext } from "../src/tonal-context";
 import {
   SONG_MOTIF_BAR_COUNT,
@@ -217,5 +218,15 @@ test.describe("Song motif plan", () => {
 
     const plain = developSongMotifMelodyPattern(plan, { seed: 4242, raiseLeadingTone: false });
     expect(plain.events.some((e) => e !== null && e.chromaticOffsetSemitones)).toBe(false);
+  });
+
+  test("the kit is offbeat-aware: hats between beats never become snare or kick", () => {
+    expect(selectPulseDrumHit({ absoluteBeat: 0, scaleDegree: 0, velocity: 0.8 }).id).toBe("kick");
+    expect(selectPulseDrumHit({ absoluteBeat: 2, scaleDegree: 3, velocity: 0.6 }).id).toBe("snare");
+    expect(selectPulseDrumHit({ absoluteBeat: 1.5, scaleDegree: 3, velocity: 0.3 }).id).toBe("closed-hat");
+    expect(selectPulseDrumHit({ absoluteBeat: 3.5, scaleDegree: 3, velocity: 0.3 }).id).toBe("closed-hat");
+    expect(selectPulseDrumHit({ absoluteBeat: 2.5, scaleDegree: 0, velocity: 0.5 }).id).toBe("kick");
+    expect(selectPulseDrumHit({ absoluteBeat: 3.5, scaleDegree: 6, velocity: 0.55 }).id).toBe("open-hat");
+    expect(selectPulseDrumHit({ absoluteBeat: 31.75, scaleDegree: 4, velocity: 0.62 }).id).toBe("low-tom");
   });
 });

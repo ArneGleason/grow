@@ -178,3 +178,53 @@ function chordDegreeClasses(chord: HarmonyChordEvent): Set<number> {
 function normalizeDegree(degree: number): number {
   return ((Math.trunc(degree) % 7) + 7) % 7;
 }
+
+test("motif songs get a groove: kick anchors, snare answers, hats breathe, a fill tumbles into the loop", () => {
+  const base = createStarter({ energy: 0.7, materialSeed: 909 });
+  const starter = {
+    ...base,
+    motifPlan: {
+      version: "grow.songMotifPlan/1" as const,
+      source: "seeded" as const,
+      cellSteps: [0, 2, -1, -1, 2],
+      cellRhythm: [0.5, 0.5, 0.5, 0.5, 0.5],
+      move: "lean" as const,
+      peakBar: 5,
+      chorusTransform: "wider" as const,
+      mood: "",
+    },
+  };
+  const material = createSongStarterMaterial(getSongMaterial("switchback"), starter);
+  const pulse = material.patterns.find((pattern) =>
+    pattern.events.some((event) => event?.playerId === "pulse")
+  )!;
+  expect(pulse.subdivisionBeats).toBe(0.25);
+  const notes = pulse.events
+    .map((event, index) => (event ? { beat: index * pulse.subdivisionBeats, event } : null))
+    .filter((entry): entry is { beat: number; event: NonNullable<typeof entry>["event"] } => entry !== null);
+  const norm = (d: number) => ((d % 7) + 7) % 7;
+  for (let bar = 0; bar < 8; bar += 1) {
+    const downbeat = notes.find((n) => n.beat === bar * 4);
+    expect(downbeat).toBeDefined();
+    expect(norm(downbeat!.event.scaleDegree)).toBe(0);
+    const backbeat = notes.find((n) => n.beat === bar * 4 + 2);
+    expect(backbeat).toBeDefined();
+    expect(norm(backbeat!.event.scaleDegree)).toBe(2);
+  }
+  const offbeatHats = notes.filter((n) => n.beat % 1 === 0.5 && norm(n.event.scaleDegree) === 3);
+  expect(offbeatHats.length).toBeGreaterThanOrEqual(16);
+  const fill = notes.filter((n) => n.beat >= 31 && norm(n.event.scaleDegree) !== 3);
+  expect(fill.length).toBeGreaterThanOrEqual(3);
+  const calm = createSongStarterMaterial(getSongMaterial("switchback"), {
+    ...starter,
+    goal: { ...starter.goal, energy: 0.2 },
+  });
+  const calmPulse = calm.patterns.find((pattern) =>
+    pattern.events.some((event) => event?.playerId === "pulse")
+  )!;
+  const calmCount = calmPulse.events.filter((event) => event !== null).length;
+  const busyCount = pulse.events.filter((event) => event !== null).length;
+  expect(busyCount).toBeGreaterThan(calmCount);
+  const again = createSongStarterMaterial(getSongMaterial("switchback"), starter);
+  expect(again.patterns).toEqual(material.patterns);
+});

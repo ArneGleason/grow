@@ -74,7 +74,9 @@ export function createSongStarterMaterial(base: SongMaterial, starter: SongLibra
     description: `${base.description} Prompt-seeded into a 32-beat voice-led draft (${connectorProfile.summary}; ${harmonyPlan.draft.summary}).`,
     ...(sectionMelody ? { sectionMelody } : {}),
     patterns: [
-      createStarterPulsePattern(effectiveStarter, harmonyPlan, seed),
+      starter.motifPlan
+        ? createStarterGroovePulsePattern(effectiveStarter, seed, starter.motifPlan.peakBar)
+        : createStarterPulsePattern(effectiveStarter, harmonyPlan, seed),
       motifRoots
         ? addBassTurnaround(forceBassRootDownbeats(createStarterBassPattern(effectiveStarter, harmonyPlan, seed), motifRoots))
         : createStarterBassPattern(effectiveStarter, harmonyPlan, seed),
@@ -1148,4 +1150,68 @@ export function shapeKeyboardCadenceAndPeak(
     return next;
   });
   return { subdivisionBeats: pattern.subdivisionBeats, events };
+}
+
+// A groove, not a metronome: kick anchors, snare answers, a hat layer breathes
+// with the energy, an open hat lifts into cadences, and a fill tumbles into the
+// loop restart. Degrees encode the kit (see pulse-drums): 0 kick, 3 closed hat,
+// 6 open hat, 1/2 high tom, 5 mid tom, 4 low tom.
+export function createStarterGroovePulsePattern(
+  starter: SongLibraryStarter,
+  seed: number,
+  peakBar: number,
+): PlayerPatternSource {
+  const enabled = isPlayerEnabled(starter, "pulse");
+  const subdivisionBeats = 0.25;
+  const slots = Math.round(STARTER_PATTERN_BEATS / subdivisionBeats);
+  const events: (PatternNoteSource | null)[] = new Array(slots).fill(null);
+  if (!enabled) return { subdivisionBeats, events };
+  const energy = clamp01(starter.goal.energy);
+  const busyHats = energy >= 0.66;
+  const sparseHats = energy < 0.38;
+  const put = (beat: number, degree: number, velocity: number, durationBeats = 0.25) => {
+    const slot = Math.round(beat / subdivisionBeats);
+    if (slot < 0 || slot >= slots) return;
+    events[slot] = createNote("pulse", degree, 2, velocity, durationBeats, {
+      tags: ["starter:voice-led-harmony", "pulse:groove"],
+    });
+  };
+
+  for (let bar = 0; bar < STARTER_PATTERN_BEATS / STARTER_BEATS_PER_BAR; bar += 1) {
+    const barStart = bar * STARTER_BEATS_PER_BAR;
+    const lastBar = bar === STARTER_PATTERN_BEATS / STARTER_BEATS_PER_BAR - 1;
+    const preCadence = bar === 2 || bar === 6;
+    // kick: downbeat always; syncopated pickup on the and-of-2 or and-of-3, seeded/energy-gated
+    put(barStart, 0, 0.8, 0.5);
+    if (energy >= 0.45 && seedBit(seed, bar * 3 + 1)) {
+      put(barStart + (seedBit(seed, bar * 5 + 2) ? 2.5 : 3.5), 0, 0.5);
+    }
+    // snare: the backbeat answers on 2 (and 4 when busy)
+    put(barStart + 2, 1 + 1, 0.66, 0.5);
+    if (busyHats && !lastBar) put(barStart + (seedBit(seed, bar * 7 + 3) ? 3 : 1), 5, 0.34);
+    // hats: offbeats when sparse, straight eighths otherwise, accented on beats
+    for (let eighth = 0; eighth < 8; eighth += 1) {
+      const beat = barStart + eighth * 0.5;
+      const onBeat = eighth % 2 === 0;
+      if (events[Math.round(beat / subdivisionBeats)]) continue;
+      if (sparseHats && onBeat) continue;
+      if (sparseHats && seedBit(seed, bar * 11 + eighth)) continue;
+      put(beat, 3, onBeat ? 0.42 : 0.3 + (seedBit(seed, bar * 13 + eighth) ? 0.06 : 0));
+    }
+    // open hat lifts into the half cadence and the home cadence
+    if (preCadence) put(barStart + 3.5, 6, 0.55);
+    // peak bar gets sixteenth hat pushes on the back half
+    if (bar === peakBar && busyHats) {
+      put(barStart + 2.25, 3, 0.3);
+      put(barStart + 3.25, 3, 0.3);
+    }
+    // the fill: tumble into the loop restart
+    if (lastBar) {
+      put(barStart + 3, 2, 0.45);
+      put(barStart + 3.25, 2, 0.5);
+      put(barStart + 3.5, 5, 0.56);
+      put(barStart + 3.75, 4, 0.62);
+    }
+  }
+  return { subdivisionBeats, events };
 }

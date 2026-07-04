@@ -80,14 +80,28 @@ const GM_DRUMS: Record<PulseDrumId, Omit<PulseDrumHit, "tags">> = {
 };
 
 export function selectPulseDrumHit(input: PulseDrumInput): PulseDrumHit {
+  const isOffbeat = Math.abs(input.absoluteBeat - Math.round(input.absoluteBeat)) > 1e-6;
   const beatInBar = positiveModulo(Math.round(input.absoluteBeat), 4);
   const degreeClass = positiveModulo(input.scaleDegree, 7);
-  const id = selectPulseDrumId(beatInBar, degreeClass, input.velocity);
+  const id = isOffbeat
+    ? selectOffbeatPulseDrumId(degreeClass)
+    : selectPulseDrumId(beatInBar, degreeClass, input.velocity);
   const hit = GM_DRUMS[id];
   return {
     ...hit,
     tags: ["pulse:drum-kit", `drum:${hit.id}`, `gm:${hit.midiNote}`],
   };
+}
+
+// Off-the-beat hits are degree-encoded only; positional kick/snare mapping
+// applies to on-the-beat hits, so a hat at the and-of-2 never becomes a snare.
+function selectOffbeatPulseDrumId(degreeClass: number): PulseDrumId {
+  if (degreeClass === 0) return "kick";
+  if (degreeClass === 1 || degreeClass === 2) return "high-tom";
+  if (degreeClass === 4) return "low-tom";
+  if (degreeClass === 5) return "mid-tom";
+  if (degreeClass === 6) return "open-hat";
+  return "closed-hat";
 }
 
 function selectPulseDrumId(beatInBar: number, degreeClass: number, velocity: number): PulseDrumId {
