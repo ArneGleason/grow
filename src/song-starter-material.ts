@@ -6,6 +6,7 @@ import {
 } from "./song-draft-plan";
 import {
   SONG_MOTIF_MOVE_ROOTS,
+  developSongMotifChorusMelodyPattern,
   developSongMotifMelodyPattern,
   expandSongMotifPlanToDraftPlan,
 } from "./song-motif-plan";
@@ -55,10 +56,20 @@ export function createSongStarterMaterial(base: SongMaterial, starter: SongLibra
       velocityScale: 0.9 + clamp01(starter.goal.energy) * 0.2,
     })
     : createStarterMelodyPattern(effectiveStarter, harmonyPlan, connectorProfile, seed);
+  const sectionMelody = starter.motifPlan
+    ? {
+      chorus: developSongMotifChorusMelodyPattern(starter.motifPlan, {
+        seed,
+        octave: starter.goal.energy > 0.7 ? 5 : 4,
+        velocityScale: 0.9 + clamp01(starter.goal.energy) * 0.2,
+      }),
+    }
+    : undefined;
   return {
     ...base,
     label: `${base.label} starter`,
     description: `${base.description} Prompt-seeded into a 32-beat voice-led draft (${connectorProfile.summary}; ${harmonyPlan.draft.summary}).`,
+    ...(sectionMelody ? { sectionMelody } : {}),
     patterns: [
       createStarterPulsePattern(effectiveStarter, harmonyPlan, seed),
       motifRoots

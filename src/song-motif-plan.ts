@@ -307,10 +307,19 @@ export function chooseSongMotifDevelopmentOps(_plan: SongMotifPlan, seed: number
   return ops;
 }
 
-export function developSongMotifWalk(plan: SongMotifPlan, seed: number): MotifWalk {
+export interface SongMotifWalkOptions {
+  chorusTransform?: SongMotifChorusTransform;
+}
+
+export function developSongMotifWalk(plan: SongMotifPlan, seed: number, walkOptions: SongMotifWalkOptions = {}): MotifWalk {
+  const chorus = walkOptions.chorusTransform;
+  const workingPlan = chorus ? transformPlanForChorus(plan, chorus) : plan;
   const roots = SONG_MOTIF_MOVE_ROOTS[plan.move];
-  const rng = mulberry32(((seed >>> 0) ^ 0x51ed2701) || 1);
-  const ops = chooseSongMotifDevelopmentOps(plan, seed);
+  const rng = mulberry32(((seed >>> 0) ^ (chorus ? 0x2c9277b5 : 0x51ed2701)) || 1);
+  const baseOps = chooseSongMotifDevelopmentOps(workingPlan, seed);
+  const ops = chorus
+    ? baseOps.map((op, bar) => (op === "breath" ? "state" : chorus === "answer" && bar % 2 === 1 && bar !== 3 && bar !== 7 ? "answer" : op))
+    : baseOps;
   const bars: MotifWalkNote[][] = [];
   let previousExit: number | undefined;
 
@@ -320,15 +329,16 @@ export function developSongMotifWalk(plan: SongMotifPlan, seed: number): MotifWa
     const op = ops[barIndex] ?? "state";
     // Phrase arc: entries rise into the peak bar and settle after it, so the
     // eight bars have a shape instead of hovering.
-    const arcBias = barIndex <= plan.peakBar
+    const arcLift = chorus ? 2 : 0;
+    const arcBias = arcLift + (barIndex <= plan.peakBar
       ? (barIndex / Math.max(1, plan.peakBar)) * 2.4
-      : 2.4 - ((barIndex - plan.peakBar) / Math.max(1, SONG_MOTIF_BAR_COUNT - 1 - plan.peakBar)) * 3.2;
+      : 2.4 - ((barIndex - plan.peakBar) / Math.max(1, SONG_MOTIF_BAR_COUNT - 1 - plan.peakBar)) * 3.2);
     const target = previousExit === undefined ? root + 2 : previousExit + (op === "sequence" ? 1 : 0);
     const entry = previousExit === undefined
       ? root + 2
       : nearestTo(chordTones.map((tone) => tone + (arcBias >= 1.2 ? 7 * Math.round((target + 2 - tone) / 7) : 7 * Math.round((target - tone) / 7))), target + arcBias * 0.5);
-    const steps = op === "answer" ? plan.cellSteps.map((step) => -step) : plan.cellSteps;
-    let rhythm = [...plan.cellRhythm];
+    const steps = op === "answer" ? workingPlan.cellSteps.map((step) => -step) : workingPlan.cellSteps;
+    let rhythm = [...workingPlan.cellRhythm];
     if (op === "vary-rhythm") {
       const longest = rhythm.indexOf(Math.max(...rhythm));
       if (rhythm[longest]! >= 1) {
@@ -336,7 +346,9 @@ export function developSongMotifWalk(plan: SongMotifPlan, seed: number): MotifWa
         rhythm.splice(longest, 1, half, half);
       }
     }
-    const displacement = op === "breath" ? (rng() < 0.5 ? 1 : 1.5) : (barIndex % 2 === 1 && rng() < 0.35 ? 0.5 : 0);
+    const displacement = chorus
+      ? 0
+      : op === "breath" ? (rng() < 0.5 ? 1 : 1.5) : (barIndex % 2 === 1 && rng() < 0.35 ? 0.5 : 0);
     const notes: MotifWalkNote[] = [];
     let degree = entry;
     let cursor = displacement;
@@ -390,12 +402,34 @@ function expandStepsForRhythm(steps: readonly number[], targetLength: number): r
   return extended;
 }
 
+function transformPlanForChorus(plan: SongMotifPlan, transform: SongMotifChorusTransform): SongMotifPlan {
+  if (transform === "invert") {
+    return { ...plan, cellSteps: plan.cellSteps.map((step) => -step) };
+  }
+  if (transform === "double-time") {
+    const halved = plan.cellRhythm.map((value) => Math.max(0.25, value / 2));
+    return {
+      ...plan,
+      cellSteps: [...plan.cellSteps, ...plan.cellSteps],
+      cellRhythm: [...halved, ...halved],
+    };
+  }
+  if (transform === "wider") {
+    return {
+      ...plan,
+      cellSteps: plan.cellSteps.map((step) => step === 0 ? 0 : Math.sign(step) * Math.min(MAX_STEP, Math.abs(step) + 1)),
+    };
+  }
+  return plan;
+}
+
 export interface SongMotifMelodyOptions {
   seed: number;
   playerId?: string;
   octave?: number;
   subdivisionBeats?: number;
   velocityScale?: number;
+  chorusTransform?: SongMotifChorusTransform;
 }
 
 export function developSongMotifMelodyPattern(
@@ -406,7 +440,7 @@ export function developSongMotifMelodyPattern(
   const playerId = options.playerId ?? "melody";
   const octave = Math.max(0, Math.min(8, Math.trunc(options.octave ?? 4)));
   const velocityScale = options.velocityScale ?? 1;
-  const walk = developSongMotifWalk(plan, options.seed);
+  const walk = developSongMotifWalk(plan, options.seed, options.chorusTransform ? { chorusTransform: options.chorusTransform } : {});
   const totalBeats = SONG_MOTIF_BAR_COUNT * BEATS_PER_BAR;
   const slots = Math.round(totalBeats / subdivisionBeats);
   const events: (PatternNoteSource | null)[] = new Array(slots).fill(null);
@@ -416,6 +450,7 @@ export function developSongMotifMelodyPattern(
       if (index < 0 || index >= slots) continue;
       const velocity = note.cadence ? 0.7 : note.strong ? 0.62 : 0.42;
       const tags = ["starter:voice-led-harmony", "melody:motif-cell"];
+      if (options.chorusTransform) tags.push("melody:section-chorus");
       if (note.strong || note.cadence) tags.push("melody:harmony-bound");
       if (note.cadence) tags.push("melody:cadence");
       events[index] = {
@@ -524,4 +559,15 @@ function mulberry32(seed: number): () => number {
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
+}
+
+export function developSongMotifChorusMelodyPattern(
+  plan: SongMotifPlan,
+  options: SongMotifMelodyOptions,
+): PlayerPatternSource {
+  return developSongMotifMelodyPattern(plan, {
+    ...options,
+    chorusTransform: plan.chorusTransform,
+    velocityScale: (options.velocityScale ?? 1) * 1.12,
+  });
 }

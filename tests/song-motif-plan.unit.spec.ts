@@ -1,6 +1,9 @@
 import { expect, test } from "@playwright/test";
+import { DEFAULT_SONG_ARRANGEMENT, arrangeSongFormPatternEvent } from "../src/song-form";
+import { createTonalContext } from "../src/tonal-context";
 import {
   SONG_MOTIF_BAR_COUNT,
+  developSongMotifChorusMelodyPattern,
   SONG_MOTIF_HARMONIC_MOVES,
   SONG_MOTIF_MOVE_ROOTS,
   createSeededSongMotifPlan,
@@ -129,5 +132,62 @@ test.describe("Song motif plan", () => {
     expect(active.length).toBeGreaterThan(SONG_MOTIF_BAR_COUNT);
     expect(active.every((event) => Number.isInteger(event!.scaleDegree))).toBe(true);
     expect(pattern.events.some((event) => event === null)).toBe(true);
+  });
+
+  test("the chorus is its own functional section: transformed cell, lifted arc, served by arrange", () => {
+    const base: SongMotifPlan = {
+      version: "grow.songMotifPlan/1",
+      source: "seeded",
+      cellSteps: [0, 2, -1, -1, 2],
+      cellRhythm: [0.5, 0.5, 0.5, 0.5, 0.5],
+      move: "lean",
+      peakBar: 5,
+      chorusTransform: "invert",
+      mood: "",
+    };
+    const verse = developSongMotifMelodyPattern(base, { seed: 4242 });
+    const firstBar = (pattern: ReturnType<typeof developSongMotifMelodyPattern>) =>
+      pattern.events.map((e, i) => e ? { b: i * pattern.subdivisionBeats, d: e.scaleDegree } : null)
+        .filter((x): x is { b: number; d: number } => x !== null && x.b < 4);
+
+    const inverted = developSongMotifChorusMelodyPattern({ ...base, chorusTransform: "invert" }, { seed: 4242 });
+    const vBar = firstBar(verse); const iBar = firstBar(inverted);
+    for (let i = 1; i < Math.min(vBar.length, iBar.length, base.cellSteps.length); i += 1) {
+      expect(iBar[i]!.d - iBar[i - 1]!.d).toBe(-(vBar[i]!.d - vBar[i - 1]!.d));
+    }
+
+    const doubled = developSongMotifChorusMelodyPattern({ ...base, chorusTransform: "double-time" }, { seed: 4242 });
+    expect(firstBar(doubled).length).toBeGreaterThan(vBar.length);
+
+    const wider = developSongMotifChorusMelodyPattern({ ...base, chorusTransform: "wider" }, { seed: 4242 });
+    const meanAbs = (bar: readonly { d: number }[]) =>
+      bar.slice(1).reduce((sum, n, i) => sum + Math.abs(n.d - bar[i]!.d), 0) / Math.max(1, bar.length - 1);
+    expect(meanAbs(firstBar(wider))).toBeGreaterThan(meanAbs(vBar));
+
+    const chorusA = developSongMotifChorusMelodyPattern(base, { seed: 4242 });
+    const chorusB = developSongMotifChorusMelodyPattern(base, { seed: 4242 });
+    expect(chorusA).toEqual(chorusB);
+    const active = chorusA.events.filter((e) => e !== null);
+    expect(active.every((e) => e!.tags?.includes("melody:section-chorus"))).toBe(true);
+
+    const song = {
+      id: "lantern" as const,
+      label: "t", description: "t",
+      patterns: [verse],
+      sectionMelody: { chorus: chorusA },
+    };
+    const tonalContext = createTonalContext("C", "mixolydian");
+    const chorusBeat = 32; // first chorus bar 0 in the default form
+    const arranged = arrangeSongFormPatternEvent({
+      song, pattern: verse, sourceEvent: verse.events[0] ?? null,
+      stepIndex: Math.round(chorusBeat / verse.subdivisionBeats),
+      absoluteBeat: chorusBeat, tonalContext, arrangement: DEFAULT_SONG_ARRANGEMENT,
+    });
+    expect(arranged?.tags).toContain("melody:section-chorus");
+    const versed = arrangeSongFormPatternEvent({
+      song, pattern: verse, sourceEvent: verse.events[0] ?? null,
+      stepIndex: 0, absoluteBeat: 0, tonalContext, arrangement: DEFAULT_SONG_ARRANGEMENT,
+    });
+    expect(versed?.tags ?? []).not.toContain("melody:section-chorus");
   });
 });

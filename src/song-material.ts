@@ -23,6 +23,11 @@ export interface SongMaterial {
   label: string;
   description: string;
   patterns: readonly PlayerPatternSource[];
+  // Per-section melody variants, keyed by section type ("chorus", "bridge",
+  // ...). The seed of an expanding set of musically functional section types:
+  // a section with a variant plays its own material instead of an arrange-time
+  // transform of the verse.
+  sectionMelody?: Readonly<Record<string, PlayerPatternSource>>;
 }
 
 export const DEFAULT_SONG_ID: SongId = "lantern";

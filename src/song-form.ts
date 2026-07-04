@@ -211,6 +211,8 @@ export function arrangeSongFormPatternEvent(
   if (playerId !== "melody") return input.sourceEvent;
 
   if (context.sectionType === "chorus") {
+    const variant = readSectionMelodyEvent(input, "chorus", context);
+    if (variant !== undefined) return variant;
     return createChorusMelodyEvent(input, context);
   }
 
@@ -289,6 +291,18 @@ function createHarmonicAccompanimentEvent(
     scaleDegree,
     octave,
   };
+}
+
+function readSectionMelodyEvent(
+  input: SongFormPatternEventInput,
+  sectionType: string,
+  context: SongSectionContext,
+): PatternNoteSource | null | undefined {
+  const variant = input.song.sectionMelody?.[sectionType];
+  if (!variant || variant.events.length === 0) return undefined;
+  const slot = Math.round(context.localBeat / variant.subdivisionBeats);
+  const event = variant.events[((slot % variant.events.length) + variant.events.length) % variant.events.length] ?? null;
+  return event ? { ...event } : null;
 }
 
 function createChorusMelodyEvent(
