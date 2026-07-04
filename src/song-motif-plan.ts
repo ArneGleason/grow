@@ -284,33 +284,78 @@ interface MotifWalk {
   bars: readonly (readonly MotifWalkNote[])[];
 }
 
+export const SONG_MOTIF_DEVELOPMENT_OPS = ["state", "sequence", "answer", "vary-rhythm", "breath"] as const;
+export type SongMotifDevelopmentOp = typeof SONG_MOTIF_DEVELOPMENT_OPS[number];
+
+// Development schedule: bar 0 states the cell; cadence bars land; the bars
+// between develop it — sequence along the phrase arc, answer it inverted,
+// split its long note, or breathe. Identity through variation, not looping.
+export function chooseSongMotifDevelopmentOps(_plan: SongMotifPlan, seed: number): readonly SongMotifDevelopmentOp[] {
+  const rng = mulberry32(((seed >>> 0) ^ 0x7f4a7c15) || 1);
+  const pool: SongMotifDevelopmentOp[] = ["sequence", "answer", "vary-rhythm", "breath", "sequence", "state"];
+  const ops: SongMotifDevelopmentOp[] = [];
+  let previous: SongMotifDevelopmentOp = "state";
+  for (let bar = 0; bar < SONG_MOTIF_BAR_COUNT; bar += 1) {
+    if (bar === 0) { ops.push("state"); previous = "state"; continue; }
+    if (bar === 3 || bar === 7) { ops.push("state"); previous = "state"; continue; }
+    if (bar === 4) { ops.push("state"); previous = "state"; continue; }
+    let op = pool[Math.floor(rng() * pool.length)] ?? "state";
+    if (op === previous && op !== "sequence") op = "state";
+    ops.push(op);
+    previous = op;
+  }
+  return ops;
+}
+
 export function developSongMotifWalk(plan: SongMotifPlan, seed: number): MotifWalk {
   const roots = SONG_MOTIF_MOVE_ROOTS[plan.move];
   const rng = mulberry32(((seed >>> 0) ^ 0x51ed2701) || 1);
+  const ops = chooseSongMotifDevelopmentOps(plan, seed);
   const bars: MotifWalkNote[][] = [];
   let previousExit: number | undefined;
 
   for (let barIndex = 0; barIndex < SONG_MOTIF_BAR_COUNT; barIndex += 1) {
     const root = roots[barIndex] ?? 0;
     const chordTones = [root, root + 2, root + 4];
+    const op = ops[barIndex] ?? "state";
+    // Phrase arc: entries rise into the peak bar and settle after it, so the
+    // eight bars have a shape instead of hovering.
+    const arcBias = barIndex <= plan.peakBar
+      ? (barIndex / Math.max(1, plan.peakBar)) * 2.4
+      : 2.4 - ((barIndex - plan.peakBar) / Math.max(1, SONG_MOTIF_BAR_COUNT - 1 - plan.peakBar)) * 3.2;
+    const target = previousExit === undefined ? root + 2 : previousExit + (op === "sequence" ? 1 : 0);
     const entry = previousExit === undefined
       ? root + 2
-      : nearestTo(chordTones, previousExit);
+      : nearestTo(chordTones.map((tone) => tone + (arcBias >= 1.2 ? 7 * Math.round((target + 2 - tone) / 7) : 7 * Math.round((target - tone) / 7))), target + arcBias * 0.5);
+    const steps = op === "answer" ? plan.cellSteps.map((step) => -step) : plan.cellSteps;
+    let rhythm = [...plan.cellRhythm];
+    if (op === "vary-rhythm") {
+      const longest = rhythm.indexOf(Math.max(...rhythm));
+      if (rhythm[longest]! >= 1) {
+        const half = rhythm[longest]! / 2;
+        rhythm.splice(longest, 1, half, half);
+      }
+    }
+    const displacement = op === "breath" ? (rng() < 0.5 ? 1 : 1.5) : (barIndex % 2 === 1 && rng() < 0.35 ? 0.5 : 0);
     const notes: MotifWalkNote[] = [];
     let degree = entry;
-    let cursor = 0;
+    let cursor = displacement;
     const isCadenceBar = barIndex === 3 || barIndex === 7;
-    for (let i = 0; i < plan.cellSteps.length; i += 1) {
-      if (i > 0) degree += plan.cellSteps[i] ?? 0;
+    const stepsForBar = op === "vary-rhythm" ? expandStepsForRhythm(steps, rhythm.length) : steps;
+    for (let i = 0; i < stepsForBar.length; i += 1) {
+      if (i > 0) degree += stepsForBar[i] ?? 0;
       degree = foldDegree(degree, entry);
-      let duration = plan.cellRhythm[i] ?? 1;
+      let duration = rhythm[i] ?? 1;
       if (cursor + duration > BEATS_PER_BAR) duration = BEATS_PER_BAR - cursor;
       if (duration < 0.25) break;
+      const strong = i === 0;
+      // articulation: inner notes detach, strong notes carry — less plunk, more speech
+      const spoken = isCadenceBar ? duration : round3(Math.max(0.25, duration * (strong ? 0.95 : 0.62)));
       notes.push({
         startBeat: barIndex * BEATS_PER_BAR + cursor,
-        durationBeats: duration,
+        durationBeats: spoken,
         degree,
-        strong: i === 0,
+        strong,
         cadence: false,
       });
       cursor += duration;
@@ -318,16 +363,15 @@ export function developSongMotifWalk(plan: SongMotifPlan, seed: number): MotifWa
     }
     if (notes.length === 0) {
       notes.push({ startBeat: barIndex * BEATS_PER_BAR, durationBeats: 1, degree: entry, strong: true, cadence: false });
-      cursor = 1;
+      cursor = displacement + 1;
     }
     if (isCadenceBar) {
       const last = notes[notes.length - 1];
-      const target = barIndex === 7 ? nearestTo([root, root + 2], last.degree) : nearestTo(chordTones, last.degree);
-      last.degree = target;
+      const target7 = barIndex === 7 ? nearestTo([root, root + 2], last.degree) : nearestTo(chordTones, last.degree);
+      last.degree = target7;
       last.durationBeats = Math.max(1, BEATS_PER_BAR - (last.startBeat - barIndex * BEATS_PER_BAR));
       last.cadence = true;
     } else if (cursor < BEATS_PER_BAR && rng() < 0.3) {
-      // occasional held tail instead of a rest, seeded, so bars breathe unevenly
       const last = notes[notes.length - 1];
       last.durationBeats = round3(last.durationBeats + Math.min(1, BEATS_PER_BAR - cursor));
     }
@@ -335,6 +379,15 @@ export function developSongMotifWalk(plan: SongMotifPlan, seed: number): MotifWa
     bars.push(notes);
   }
   return { bars };
+}
+
+function expandStepsForRhythm(steps: readonly number[], targetLength: number): readonly number[] {
+  if (targetLength <= steps.length) return steps;
+  const extended = [...steps];
+  while (extended.length < targetLength) {
+    extended.push(extended.length % 2 === 0 ? 1 : -1);
+  }
+  return extended;
 }
 
 export interface SongMotifMelodyOptions {

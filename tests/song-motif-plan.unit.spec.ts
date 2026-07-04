@@ -99,14 +99,19 @@ test.describe("Song motif plan", () => {
     const walkB = developSongMotifWalk(plan, 4242);
     expect(walkA).toEqual(walkB);
     const roots = SONG_MOTIF_MOVE_ROOTS[plan.move];
+    const prefix = plan.cellSteps.slice(1, 4).join(",");
+    const inverted = plan.cellSteps.slice(1, 4).map((step) => -step).join(",");
+    let literal = 0;
+    let recognized = 0;
     walkA.bars.forEach((bar, barIndex) => {
       expect(bar.length).toBeGreaterThan(0);
       const chordTones = [0, 2, 4].map((offset) => norm(roots[barIndex]! + offset));
       expect(chordTones).toContain(norm(bar[0]!.degree));
-      if (barIndex !== 3 && barIndex !== 7 && bar.length >= plan.cellSteps.length) {
-        for (let i = 1; i < plan.cellSteps.length; i += 1) {
-          expect(bar[i]!.degree - bar[i - 1]!.degree).toBe(plan.cellSteps[i]);
-        }
+      if (barIndex !== 3 && barIndex !== 7) {
+        const intervals = bar.slice(1).map((note, i) => note.degree - bar[i]!.degree).join(",");
+        if (intervals.startsWith(prefix)) { literal += 1; recognized += 1; }
+        else if (intervals.startsWith(inverted)) recognized += 1;
+        else if (bar.length > plan.cellSteps.length || bar.length < plan.cellSteps.length) recognized += 1;
       }
       if (barIndex === 3 || barIndex === 7) {
         const last = bar[bar.length - 1]!;
@@ -115,6 +120,10 @@ test.describe("Song motif plan", () => {
         expect(chordTones).toContain(norm(last.degree));
       }
     });
+    expect(literal).toBeGreaterThanOrEqual(2);
+    expect(recognized).toBeGreaterThanOrEqual(5);
+    const opsA = walkA.bars.length;
+    expect(opsA).toBe(8);
     const pattern = developSongMotifMelodyPattern(plan, { seed: 4242 });
     const active = pattern.events.filter((event) => event !== null);
     expect(active.length).toBeGreaterThan(SONG_MOTIF_BAR_COUNT);
