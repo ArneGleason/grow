@@ -278,6 +278,7 @@ interface MotifWalkNote {
   degree: number;
   strong: boolean;
   cadence: boolean;
+  leading?: boolean;
 }
 
 interface MotifWalk {
@@ -379,10 +380,18 @@ export function developSongMotifWalk(plan: SongMotifPlan, seed: number, walkOpti
     }
     if (isCadenceBar) {
       const last = notes[notes.length - 1];
-      const target7 = barIndex === 7 ? nearestTo([root, root + 2], last.degree) : nearestTo(chordTones, last.degree);
+      const target7 = barIndex === 7
+        ? root + 7 * Math.round((last.degree - root) / 7)
+        : nearestTo(chordTones, last.degree);
       last.degree = target7;
       last.durationBeats = Math.max(1, BEATS_PER_BAR - (last.startBeat - barIndex * BEATS_PER_BAR));
       last.cadence = true;
+      if (barIndex === 7 && notes.length >= 2) {
+        // the note before the final arrival becomes a leading tone resolving up
+        const approach = notes[notes.length - 2];
+        approach.degree = last.degree - 1;
+        approach.leading = true;
+      }
     } else if (cursor < BEATS_PER_BAR && rng() < 0.3) {
       const last = notes[notes.length - 1];
       last.durationBeats = round3(last.durationBeats + Math.min(1, BEATS_PER_BAR - cursor));
@@ -430,6 +439,8 @@ export interface SongMotifMelodyOptions {
   subdivisionBeats?: number;
   velocityScale?: number;
   chorusTransform?: SongMotifChorusTransform;
+  // raise the leading tone a semitone at the home cadence (flat-7 modes)
+  raiseLeadingTone?: boolean;
 }
 
 export function developSongMotifMelodyPattern(
@@ -453,10 +464,13 @@ export function developSongMotifMelodyPattern(
       if (options.chorusTransform) tags.push("melody:section-chorus");
       if (note.strong || note.cadence) tags.push("melody:harmony-bound");
       if (note.cadence) tags.push("melody:cadence");
+      const raiseLeading = Boolean(note.leading && options.raiseLeadingTone);
+      if (raiseLeading) tags.push("melody:leading-tone");
       events[index] = {
         playerId,
         scaleDegree: note.degree,
         octave,
+        ...(raiseLeading ? { chromaticOffsetSemitones: 1 } : {}),
         duration: note.durationBeats >= 1 ? "4n" : "8n",
         durationBeats: round3(note.durationBeats),
         velocity: round3(Math.max(0.2, Math.min(0.8, velocity * velocityScale))),

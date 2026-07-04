@@ -190,4 +190,32 @@ test.describe("Song motif plan", () => {
     });
     expect(versed?.tags ?? []).not.toContain("melody:section-chorus");
   });
+
+  test("cadence bite: home cadence approaches by leading tone, raised only in flat-7 modes", () => {
+    const plan: SongMotifPlan = {
+      version: "grow.songMotifPlan/1",
+      source: "seeded",
+      cellSteps: [0, 2, -1, -1, 2],
+      cellRhythm: [0.5, 0.5, 0.5, 0.5, 0.5],
+      move: "lean",
+      peakBar: 5,
+      chorusTransform: "wider",
+      mood: "",
+    };
+    const walk = developSongMotifWalk(plan, 4242);
+    const finalBar = walk.bars[7]!;
+    expect(finalBar.length).toBeGreaterThanOrEqual(2);
+    const approach = finalBar[finalBar.length - 2]!;
+    const arrival = finalBar[finalBar.length - 1]!;
+    expect(approach.leading).toBe(true);
+    expect(arrival.degree - approach.degree).toBe(1);
+
+    const raised = developSongMotifMelodyPattern(plan, { seed: 4242, raiseLeadingTone: true });
+    const raisedNotes = raised.events.filter((e) => e !== null && e.chromaticOffsetSemitones === 1);
+    expect(raisedNotes.length).toBeGreaterThanOrEqual(1);
+    expect(raisedNotes.every((e) => e!.tags?.includes("melody:leading-tone"))).toBe(true);
+
+    const plain = developSongMotifMelodyPattern(plan, { seed: 4242, raiseLeadingTone: false });
+    expect(plain.events.some((e) => e !== null && e.chromaticOffsetSemitones)).toBe(false);
+  });
 });

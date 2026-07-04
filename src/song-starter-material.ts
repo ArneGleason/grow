@@ -49,11 +49,13 @@ export function createSongStarterMaterial(base: SongMaterial, starter: SongLibra
   const harmonyPlan = createStarterHarmonyPlan(base, effectiveStarter, seed);
   const connectorProfile = createConnectorStarterProfile(effectiveStarter, seed);
   const motifRoots = starter.motifPlan ? SONG_MOTIF_MOVE_ROOTS[starter.motifPlan.move] : undefined;
+  const raiseLeadingTone = FLAT_SEVEN_MODES.has(starter.goal.mode);
   const melodyPattern = starter.motifPlan
     ? developSongMotifMelodyPattern(starter.motifPlan, {
       seed,
       octave: starter.goal.energy > 0.7 ? 5 : 4,
       velocityScale: 0.9 + clamp01(starter.goal.energy) * 0.2,
+      raiseLeadingTone,
     })
     : createStarterMelodyPattern(effectiveStarter, harmonyPlan, connectorProfile, seed);
   const sectionMelody = starter.motifPlan
@@ -62,6 +64,7 @@ export function createSongStarterMaterial(base: SongMaterial, starter: SongLibra
         seed,
         octave: starter.goal.energy > 0.7 ? 5 : 4,
         velocityScale: 0.9 + clamp01(starter.goal.energy) * 0.2,
+        raiseLeadingTone,
       }),
     }
     : undefined;
@@ -73,9 +76,13 @@ export function createSongStarterMaterial(base: SongMaterial, starter: SongLibra
     patterns: [
       createStarterPulsePattern(effectiveStarter, harmonyPlan, seed),
       motifRoots
-        ? forceBassRootDownbeats(createStarterBassPattern(effectiveStarter, harmonyPlan, seed), motifRoots)
+        ? addBassTurnaround(forceBassRootDownbeats(createStarterBassPattern(effectiveStarter, harmonyPlan, seed), motifRoots))
         : createStarterBassPattern(effectiveStarter, harmonyPlan, seed),
-      ...createStarterKeyboardPatterns(effectiveStarter, harmonyPlan, seed),
+      ...createStarterKeyboardPatterns(effectiveStarter, harmonyPlan, seed).map((pattern) =>
+        motifRoots && starter.motifPlan
+          ? shapeKeyboardCadenceAndPeak(pattern, motifRoots, starter.motifPlan.peakBar, raiseLeadingTone)
+          : pattern
+      ),
       melodyPattern,
     ],
   };
@@ -1089,5 +1096,56 @@ export function forceBassRootDownbeats(
       break;
     }
   }
+  return { subdivisionBeats: pattern.subdivisionBeats, events };
+}
+
+const FLAT_SEVEN_MODES = new Set(["mixolydian", "dorian", "aeolian", "phrygian"]);
+
+// The loop re-entry gets a push: a V pickup in the bass at the end of bar 8.
+export function addBassTurnaround(pattern: PlayerPatternSource): PlayerPatternSource {
+  const events = pattern.events.map((event) => (event ? { ...event } : null));
+  const beat = 31;
+  const slot = Math.round(beat / pattern.subdivisionBeats);
+  if (slot >= 0 && slot < events.length) {
+    const reference = events.find((event) => event !== null);
+    const octaveBase = reference ? Math.round((reference.scaleDegree - 4) / 7) * 7 : 0;
+    events[slot] = {
+      playerId: "bass",
+      scaleDegree: 4 + octaveBase,
+      octave: reference?.octave ?? 2,
+      duration: "8n",
+      durationBeats: 0.5,
+      velocity: 0.42,
+      tags: ["starter:voice-led-harmony", "bass:turnaround"],
+    };
+  }
+  return { subdivisionBeats: pattern.subdivisionBeats, events };
+}
+
+// Cadence bite + peak intensity for the keyboard: raise the flat seventh a
+// semitone inside dominant cadence bars (a real leading tone), and lean into
+// the peak bar.
+export function shapeKeyboardCadenceAndPeak(
+  pattern: PlayerPatternSource,
+  motifRoots: readonly number[],
+  peakBar: number,
+  raiseLeadingTone: boolean,
+): PlayerPatternSource {
+  const events = pattern.events.map((event, index) => {
+    if (!event) return null;
+    const beat = index * pattern.subdivisionBeats;
+    const bar = Math.floor(beat / STARTER_BEATS_PER_BAR);
+    const next = { ...event, tags: event.tags ? [...event.tags] : [] };
+    const isDominantCadenceBar = (bar === 6 || (bar === 3 && normalizeDegree(motifRoots[3] ?? -1) === 4));
+    if (raiseLeadingTone && isDominantCadenceBar && normalizeDegree(next.scaleDegree) === 6 && !next.chromaticOffsetSemitones) {
+      next.chromaticOffsetSemitones = 1;
+      next.tags.push("harmony:leading-tone");
+    }
+    if (bar === peakBar) {
+      next.velocity = Math.min(0.85, Math.round(next.velocity * 1.15 * 1000) / 1000);
+      next.tags.push("harmony:peak");
+    }
+    return next;
+  });
   return { subdivisionBeats: pattern.subdivisionBeats, events };
 }
