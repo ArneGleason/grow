@@ -3058,7 +3058,7 @@ test("song library creates, renames, and switches deterministic starter material
   await expect(page.getByTestId("song-starter-generated-setup")).toContainText("G Smoke");
   await expect(page.getByTestId("song-starter-generated-material")).toContainText("Switchback");
   await expect(page.getByTestId("song-starter-generated-structure")).toContainText("Wide Return");
-  await expect(page.getByTestId("song-starter-generated-structure")).toContainText("voice-led harmony draft");
+  await expect(page.getByTestId("song-starter-generated-structure")).toContainText(/motif (settle|lift|lean|fall)/);
   await expect(page.getByTestId("song-starter-generated-players")).toContainText("bass:");
   await expect(page.getByTestId("song-starter-generated-players")).toContainText("keyboard:");
   await expect(page.getByTestId("song-starter-player-bass-brief")).toHaveValue(/Direction: Walk the room/);
@@ -3118,7 +3118,7 @@ test("song library creates, renames, and switches deterministic starter material
   expect(libraryState.library?.active.starter?.baseSongId).toBe("switchback");
   expect(libraryState.library?.active.starter?.materialSeed).toEqual(expect.any(Number));
   expect(libraryState.library?.active.starter?.structureSummary).toContain("Wide Return");
-  expect(libraryState.library?.active.starter?.structureSummary).toContain("voice-led harmony draft");
+  expect(libraryState.library?.active.starter?.structureSummary).toMatch(/motif (settle|lift|lean|fall)/);
   expect(libraryState.library?.active.starter?.sourcePrompt).toContain("basement machinery");
   expect(libraryState.library?.active.starter?.playerPlans.find((plan) => plan.playerId === "bass")).toMatchObject({
     enabled: true,
@@ -3188,12 +3188,9 @@ test("song library creates, renames, and switches deterministic starter material
   expect(firstMelodySummary?.noteCount).toBeGreaterThanOrEqual(12);
   expect(firstMelodySummary?.voiceLedTagCount).toBeGreaterThanOrEqual(12);
   expect(firstMelodySummary?.harmonyBoundTagCount).toBeGreaterThan(8);
-  expect(firstMelodySummary?.resolvedConnectorTagCount).toBeGreaterThan(0);
   expect(firstMelodySummary?.longNoteCount).toBeGreaterThanOrEqual(6);
   expect(firstMelodySummary?.barCountWithNotes)
     .toBeGreaterThanOrEqual(7);
-  expect(firstMelodySummary?.chromaticCount).toBeGreaterThan(0);
-  expect(firstMelodySummary?.chromaticTagCount).toBeGreaterThan(0);
 
   await expect(page.getByTestId("song-library-edit-starter")).toBeEnabled();
   await expect(page.getByTestId("song-library-regenerate-starter")).toBeEnabled();
@@ -3580,7 +3577,16 @@ test("song starter applies bounded Ollama song intent and co-draft plan when loc
     const payload = route.request().postDataJSON();
     chatPayloads.push(payload);
     const systemPrompt = payload.request?.messages?.[0]?.content ?? "";
-    const content = systemPrompt.includes("melody/harmony draft planner")
+    const content = systemPrompt.includes("tiny musical motif")
+      ? JSON.stringify({
+        cellSteps: [0, 2, -1, 2, -2],
+        cellRhythm: [0.5, 0.5, 1, 0.5, 1.5],
+        move: "lift",
+        peakBar: 5,
+        chorusTransform: "wider",
+        mood: "glass sprint",
+      })
+      : systemPrompt.includes("melody/harmony draft planner")
       ? JSON.stringify({
         summary: "glass machine call answered by a falling bass shadow",
         bars: [
@@ -3725,7 +3731,7 @@ test("song starter applies bounded Ollama song intent and co-draft plan when loc
   await expect(page.getByTestId("song-starter-generated-setup")).toContainText("E Helium");
   await expect(page.getByTestId("song-starter-generated-setup")).toContainText("170 BPM");
   await expect(page.getByTestId("song-starter-generated-material")).toContainText("Glass");
-  await expect(page.getByTestId("song-starter-generated-structure")).toContainText("model co-draft");
+  await expect(page.getByTestId("song-starter-generated-structure")).toContainText(/model co-draft: motif lift, peak bar 6/);
   await expect(page.getByTestId("song-starter-generated-players")).toContainText("Intent: make the harmony shimmer");
 
   expect(chatPayloads).toHaveLength(2);
@@ -3733,7 +3739,7 @@ test("song starter applies bounded Ollama song intent and co-draft plan when loc
     payload.request?.messages?.[0]?.content.includes("song-intent interpreter")
   );
   const planPayload = chatPayloads.find((payload) =>
-    payload.request?.messages?.[0]?.content.includes("melody/harmony draft planner")
+    payload.request?.messages?.[0]?.content.includes("tiny musical motif")
   );
   expect(intentPayload?.request?.stream).toBe(false);
   expect(intentPayload?.request?.think).toBe(false);
@@ -3741,8 +3747,8 @@ test("song starter applies bounded Ollama song intent and co-draft plan when loc
   expect(JSON.stringify(intentPayload?.request?.format)).not.toMatch(/scaleDegree|pitch|midi|durationBeats|events/);
   expect(planPayload?.request?.stream).toBe(false);
   expect(planPayload?.request?.think).toBe(false);
-  expect(planPayload?.request?.options?.num_predict).toBeLessThanOrEqual(768);
-  expect(JSON.stringify(planPayload?.request?.format)).toContain("anchorDegrees");
+  expect(planPayload?.request?.options?.num_predict).toBeLessThanOrEqual(448);
+  expect(JSON.stringify(planPayload?.request?.format)).toContain("cellSteps");
   expect(JSON.stringify(planPayload?.request?.format)).not.toMatch(/pitch|midi|events|durationBeats|lyrics/);
 
   await page.getByTestId("song-starter-create").click();
@@ -3762,6 +3768,11 @@ test("song starter applies bounded Ollama song intent and co-draft plan when loc
           status: string;
           provider: string;
           plan?: { bars: Array<{ leader: string; rootDegree: number; anchorDegrees: number[] }> };
+        };
+        getLastSongMotifPlanTest(): {
+          status: string;
+          provider: string;
+          plan?: { move: string; peakBar: number; chorusTransform: string; cellSteps: number[] };
         };
       };
       song?: {
@@ -3788,7 +3799,7 @@ test("song starter applies bounded Ollama song intent and co-draft plan when loc
     };
     return {
       intent: appWindow.ollama?.getLastSongIntentTest(),
-      draftPlan: appWindow.ollama?.getLastSongDraftPlanTest(),
+      motifPlan: appWindow.ollama?.getLastSongMotifPlanTest(),
       appliedGoal: appWindow.songGoal?.getAppliedGoal(),
       library: appWindow.songLibrary?.getState(),
       material: appWindow.song?.getActiveMaterial(),
@@ -3804,11 +3815,12 @@ test("song starter applies bounded Ollama song intent and co-draft plan when loc
     "material-glass",
     "brief-melody",
   ]));
-  expect(state.draftPlan).toMatchObject({
+  expect(state.motifPlan).toMatchObject({
     status: "valid",
     provider: "ollama",
   });
-  expect(state.draftPlan?.plan?.bars.some((bar) => bar.leader === "answer")).toBe(true);
+  expect(state.motifPlan?.plan).toMatchObject({ move: "lift", peakBar: 5, chorusTransform: "wider" });
+  expect(state.motifPlan?.plan?.cellSteps).toEqual([0, 2, -1, 2, -2]);
   expect(state.appliedGoal).toMatchObject({
     tonic: "E",
     mode: "lydian",
@@ -3818,10 +3830,14 @@ test("song starter applies bounded Ollama song intent and co-draft plan when loc
     baseSongId: "glass",
     starter: {
       source: "model",
+      motifPlan: {
+        move: "lift",
+        chorusTransform: "wider",
+      },
       draftPlan: {
         bars: expect.arrayContaining([
-          expect.objectContaining({ leader: "melody", rootDegree: 1, anchorDegrees: [1, 3, 5] }),
-          expect.objectContaining({ leader: "answer", rootDegree: 4, anchorDegrees: [5, 3, 2] }),
+          expect.objectContaining({ barIndex: 6, rootDegree: 5 }),
+          expect.objectContaining({ barIndex: 7, rootDegree: 1, cadence: "home" }),
         ]),
       },
       goal: {
@@ -3834,10 +3850,10 @@ test("song starter applies bounded Ollama song intent and co-draft plan when loc
   });
   expect(state.library?.active.starter?.playerPlans.find((plan) => plan.playerId === "melody")?.brief)
     .toContain("Intent: leap upward like reflected light");
-  const planTaggedNotes = state.material?.patterns.flatMap((pattern) => pattern.events)
-    .filter((event) => event?.tags?.includes("song-plan:model")) ?? [];
-  expect(planTaggedNotes.length).toBeGreaterThan(10);
-  expect(planTaggedNotes.some((event) => event?.tags?.includes("plan:leader-answer"))).toBe(true);
+  const motifNotes = state.material?.patterns.flatMap((pattern) => pattern.events)
+    .filter((event) => event?.tags?.includes("melody:motif-cell")) ?? [];
+  expect(motifNotes.length).toBeGreaterThan(10);
+  expect(motifNotes.some((event) => event?.tags?.includes("melody:cadence"))).toBe(true);
 });
 
 test("sound mix controls update voices and pulse drum mapping", async ({ page }) => {

@@ -73,6 +73,7 @@ import {
   createInitialOllamaMelodyCriticTest,
   createInitialOllamaProposalTextTest,
   createInitialOllamaSongDraftPlanTest,
+  createInitialOllamaSongMotifPlanTest,
   createInitialOllamaSongIntentTest,
   createInitialOllamaThoughtTest,
   createOllamaInfluenceProbePrompt,
@@ -87,6 +88,8 @@ import {
   runOllamaMelodyCriticTest,
   runOllamaProposalTextTest,
   runOllamaSongDraftPlanTest,
+  runOllamaSongMotifPlanTest,
+  createOllamaSongMotifPlanPrompt,
   runOllamaSongIntentTest,
   runOllamaThoughtTest,
   type OllamaConfig,
@@ -96,11 +99,17 @@ import {
   type OllamaProposalTextTestResult,
   type OllamaSongDraftPlanParseResult,
   type OllamaSongDraftPlanTestResult,
+  type OllamaSongMotifPlanTestResult,
   type OllamaSongIntentParseResult,
   type OllamaSongIntentTestResult,
   type OllamaThoughtParseResult,
   type OllamaThoughtTestResult,
 } from "./ollama";
+import {
+  createSeededSongMotifPlan,
+  expandSongMotifPlanToDraftPlan,
+  type SongMotifPlan,
+} from "./song-motif-plan";
 import {
   formatPerformedTimingSnapshot,
   type PlayerPerformedTimingSnapshot,
@@ -342,6 +351,7 @@ let soundMix = cloneSoundMixSettings(DEFAULT_SOUND_MIX);
 let songGoalInterpretation = interpretSongGoal("Build a balanced modal terrarium piece.");
 let ollamaSongIntentTest = createInitialOllamaSongIntentTest(ollamaConfig, songGoalInterpretation);
 let ollamaSongDraftPlanTest = createInitialOllamaSongDraftPlanTest(ollamaConfig);
+let ollamaSongMotifPlanTest = createInitialOllamaSongMotifPlanTest(ollamaConfig);
 let appliedSongGoal: SongGoal | undefined;
 let cachedSongSketchKey = "";
 let cachedSongSketchBase: SongSketch | undefined;
@@ -554,6 +564,7 @@ interface SongStarterGeneration {
   materialSeed: number;
   structureSummary: string;
   draftPlan?: SongDraftPlan;
+  motifPlan?: SongMotifPlan;
   playerPlans: readonly SongLibraryPlayerPlan[];
 }
 const DEFAULT_INSPECTOR_WIDTH = 320;
@@ -823,6 +834,7 @@ function createSongFromStarterComposer(): SongLibrarySnapshot | undefined {
     materialSeed: generated.materialSeed,
     structureSummary: generated.structureSummary,
     draftPlan: generated.draftPlan,
+    motifPlan: generated.motifPlan,
     goal: cloneSongGoal(interpretation.goal),
     playerPlans: generated.playerPlans.map((plan) => ({ ...plan })),
   };
@@ -895,24 +907,22 @@ async function generateSongStarterSeedWithIntent(): Promise<SongStarterGeneratio
     const interpretation = application
       ? createSongStarterInterpretation(draft, materialSeed, application.interpretation)
       : fallbackInterpretation;
-    ollamaSongDraftPlanTest = {
-      ...createInitialOllamaSongDraftPlanTest(config),
+    ollamaSongMotifPlanTest = {
+      ...createInitialOllamaSongMotifPlanTest(config),
       status: "running",
       provider: "ollama",
-      message: "Sending song spine request to local Ollama",
+      message: "Sending motif request to local Ollama",
     };
     renderOllama();
-    ollamaSongDraftPlanTest = await runOllamaSongDraftPlanTest(
+    ollamaSongMotifPlanTest = await runOllamaSongMotifPlanTest(
       {
         prompt: draft.prompt,
         goal: interpretation.goal,
-        materialSeed,
-        playerPlans: draft.playerPlans,
       },
       config,
     );
-    const draftPlan = ollamaSongDraftPlanTest.status === "valid"
-      ? ollamaSongDraftPlanTest.plan
+    const motifPlan = ollamaSongMotifPlanTest.status === "valid"
+      ? ollamaSongMotifPlanTest.plan
       : undefined;
     return generateSongStarterSeedFromDraft(
       draft,
@@ -920,7 +930,8 @@ async function generateSongStarterSeedWithIntent(): Promise<SongStarterGeneratio
       interpretation,
       application?.baseSongId,
       application?.playerBriefs,
-      draftPlan,
+      undefined,
+      motifPlan,
     );
   } finally {
     songStarterGenerateInFlight = false;
@@ -942,6 +953,7 @@ function generateSongStarterSeedFromDraft(
   baseSongIdOverride?: SongId,
   playerBriefs: Readonly<Record<string, string>> = {},
   draftPlan?: SongDraftPlan,
+  motifPlan?: SongMotifPlan,
 ): SongStarterGeneration | undefined {
   if (!draft.prompt.trim()) {
     renderSongStarterPreview();
@@ -957,7 +969,9 @@ function generateSongStarterSeedFromDraft(
     return undefined;
   }
   const baseSongId = baseSongIdOverride ?? chooseStarterMaterialForPrompt(draft.prompt, interpretation.goal);
-  const structureSummary = createSongStarterStructureSummary(interpretation.goal, baseSongId, draftPlan);
+  const effectiveMotifPlan = motifPlan ?? createSeededSongMotifPlan(materialSeed, interpretation.goal);
+  const effectiveDraftPlan = draftPlan ?? expandSongMotifPlanToDraftPlan(effectiveMotifPlan, materialSeed);
+  const structureSummary = createSongStarterStructureSummary(interpretation.goal, baseSongId, effectiveDraftPlan);
   const playerPlans = createGeneratedSongStarterPlayerPlans(draft, interpretation.goal, baseSongId, playerBriefs);
   for (const plan of playerPlans) {
     getSongStarterPlayerCheckbox(plan.playerId).checked = plan.enabled;
@@ -969,7 +983,8 @@ function generateSongStarterSeedFromDraft(
     baseSongId,
     materialSeed,
     structureSummary,
-    draftPlan,
+    draftPlan: effectiveDraftPlan,
+    motifPlan: effectiveMotifPlan,
     playerPlans,
   };
   renderSongStarterPreview();
@@ -6313,6 +6328,7 @@ function setOllamaConfig(nextConfig: Partial<OllamaConfig>): OllamaConfig {
   };
   ollamaSongIntentTest = createInitialOllamaSongIntentTest(ollamaConfig, songGoalInterpretation);
   ollamaSongDraftPlanTest = createInitialOllamaSongDraftPlanTest(ollamaConfig);
+  ollamaSongMotifPlanTest = createInitialOllamaSongMotifPlanTest(ollamaConfig);
   ollamaProposalTextTest = createInitialOllamaProposalTextTest(ollamaConfig);
   resetMelodyCriticTest("Config changed; melody critic reset");
   renderOllama();
@@ -6402,6 +6418,16 @@ function getCurrentSongDraftPlanPrompt(): string {
     goal: interpretation.goal,
     materialSeed,
     playerPlans: draft.playerPlans,
+  });
+}
+
+function getCurrentSongMotifPlanPrompt(): string {
+  const draft = readSongStarterDraft();
+  const materialSeed = createSongStarterMaterialSeed(draft);
+  const interpretation = createSongStarterInterpretation(draft, materialSeed);
+  return createOllamaSongMotifPlanPrompt({
+    prompt: draft.prompt,
+    goal: interpretation.goal,
   });
 }
 
@@ -7808,6 +7834,8 @@ declare global {
       runManualProposalTextTest(): Promise<OllamaProposalTextTestResult>;
       getLastSongDraftPlanTest(): OllamaSongDraftPlanTestResult;
       getSongDraftPlanPrompt(): string;
+      getLastSongMotifPlanTest(): OllamaSongMotifPlanTestResult;
+      getSongMotifPlanPrompt(): string;
       getLastSongIntentTest(): OllamaSongIntentTestResult;
       getSongIntentPrompt(): string;
       getLastThoughtTest(): OllamaThoughtTestResult;
@@ -8095,6 +8123,8 @@ window.ollama = {
   runManualProposalTextTest: () => runManualOllamaProposalTextTest(),
   getLastSongDraftPlanTest: () => ollamaSongDraftPlanTest,
   getSongDraftPlanPrompt: () => getCurrentSongDraftPlanPrompt(),
+  getLastSongMotifPlanTest: () => ollamaSongMotifPlanTest,
+  getSongMotifPlanPrompt: () => getCurrentSongMotifPlanPrompt(),
   getLastSongIntentTest: () => ollamaSongIntentTest,
   getSongIntentPrompt: () => getCurrentSongIntentPrompt(),
   getLastThoughtTest: () => ollamaThoughtTest,

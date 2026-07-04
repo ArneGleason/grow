@@ -4,6 +4,11 @@ import {
   createVoiceLedHarmonyDraftFromSongDraftPlan,
   getSongDraftPlanLeaderAtBar,
 } from "./song-draft-plan";
+import {
+  SONG_MOTIF_MOVE_ROOTS,
+  developSongMotifMelodyPattern,
+  expandSongMotifPlanToDraftPlan,
+} from "./song-motif-plan";
 import type { SongLibraryStarter } from "./song-library";
 import { createTonalContext } from "./tonal-context";
 import {
@@ -34,17 +39,33 @@ const MODE_ROOT_CYCLES = {
 
 export function createSongStarterMaterial(base: SongMaterial, starter: SongLibraryStarter): SongMaterial {
   const seed = starter.materialSeed ?? hashStarterMaterialKey(`${starter.sourcePrompt}:${base.id}`);
-  const harmonyPlan = createStarterHarmonyPlan(base, starter, seed);
-  const connectorProfile = createConnectorStarterProfile(starter, seed);
+  // A motif plan owns the song's spine: expand it into the draft-plan contract so
+  // every existing harmony/keyboard/leadership consumer reads a functional
+  // sentence, and develop the melody from the cell itself.
+  const effectiveStarter: SongLibraryStarter = starter.motifPlan
+    ? { ...starter, draftPlan: expandSongMotifPlanToDraftPlan(starter.motifPlan, seed) }
+    : starter;
+  const harmonyPlan = createStarterHarmonyPlan(base, effectiveStarter, seed);
+  const connectorProfile = createConnectorStarterProfile(effectiveStarter, seed);
+  const motifRoots = starter.motifPlan ? SONG_MOTIF_MOVE_ROOTS[starter.motifPlan.move] : undefined;
+  const melodyPattern = starter.motifPlan
+    ? developSongMotifMelodyPattern(starter.motifPlan, {
+      seed,
+      octave: starter.goal.energy > 0.7 ? 5 : 4,
+      velocityScale: 0.9 + clamp01(starter.goal.energy) * 0.2,
+    })
+    : createStarterMelodyPattern(effectiveStarter, harmonyPlan, connectorProfile, seed);
   return {
     ...base,
     label: `${base.label} starter`,
     description: `${base.description} Prompt-seeded into a 32-beat voice-led draft (${connectorProfile.summary}; ${harmonyPlan.draft.summary}).`,
     patterns: [
-      createStarterPulsePattern(starter, harmonyPlan, seed),
-      createStarterBassPattern(starter, harmonyPlan, seed),
-      ...createStarterKeyboardPatterns(starter, harmonyPlan, seed),
-      createStarterMelodyPattern(starter, harmonyPlan, connectorProfile, seed),
+      createStarterPulsePattern(effectiveStarter, harmonyPlan, seed),
+      motifRoots
+        ? forceBassRootDownbeats(createStarterBassPattern(effectiveStarter, harmonyPlan, seed), motifRoots)
+        : createStarterBassPattern(effectiveStarter, harmonyPlan, seed),
+      ...createStarterKeyboardPatterns(effectiveStarter, harmonyPlan, seed),
+      melodyPattern,
     ],
   };
 }
@@ -1030,4 +1051,32 @@ function hashStarterMaterialKey(key: string): number {
     hash = Math.imul(hash, 16777619);
   }
   return hash >>> 0;
+}
+
+// With a motif plan, the harmonic sentence only lands if the ear's
+// root-detector hears it: pin each bar's first bass note to the plan root
+// (register-preserving), keeping the late-bar approach/answer figures.
+export function forceBassRootDownbeats(
+  pattern: PlayerPatternSource,
+  motifRoots: readonly number[],
+): PlayerPatternSource {
+  const beatsPerBar = 4;
+  const events = pattern.events.map((event) => (event ? { ...event } : null));
+  for (let bar = 0; bar < motifRoots.length; bar += 1) {
+    const barStartSlot = Math.round((bar * beatsPerBar) / pattern.subdivisionBeats);
+    const barEndSlot = Math.round(((bar + 1) * beatsPerBar) / pattern.subdivisionBeats);
+    for (let slot = barStartSlot; slot < Math.min(barEndSlot, events.length); slot += 1) {
+      const event = events[slot];
+      if (!event) continue;
+      const root = motifRoots[bar] ?? 0;
+      const octaveShift = Math.round((event.scaleDegree - root) / 7) * 7;
+      events[slot] = {
+        ...event,
+        scaleDegree: root + octaveShift,
+        tags: [...(event.tags ?? []), "bass:root-downbeat"],
+      };
+      break;
+    }
+  }
+  return { subdivisionBeats: pattern.subdivisionBeats, events };
 }

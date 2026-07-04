@@ -6,6 +6,7 @@ import {
 } from "./song-material";
 import type { PlayerRole } from "./players";
 import { normalizeStoredSongDraftPlan, type SongDraftPlan } from "./song-draft-plan";
+import { normalizeStoredSongMotifPlan, type SongMotifPlan } from "./song-motif-plan";
 import { validateSongGoal, type SongGoal } from "./song-goal";
 
 export const SONG_LIBRARY_STORAGE_KEY = "grow.songLibrary.v1";
@@ -37,6 +38,7 @@ export interface SongLibraryStarter {
   materialSeed?: number;
   structureSummary?: string;
   draftPlan?: SongDraftPlan;
+  motifPlan?: SongMotifPlan;
   goal: SongGoal;
   playerPlans: readonly SongLibraryPlayerPlan[];
 }
@@ -273,6 +275,9 @@ export function cloneSongLibraryStarter(starter: SongLibraryStarter | undefined)
     materialSeed: starter.materialSeed,
     structureSummary: starter.structureSummary,
     draftPlan: cloneSongDraftPlan(starter.draftPlan),
+    motifPlan: starter.motifPlan
+      ? { ...starter.motifPlan, cellSteps: [...starter.motifPlan.cellSteps], cellRhythm: [...starter.motifPlan.cellRhythm] }
+      : undefined,
     goal: {
       ...starter.goal,
       dispositionBias: { ...starter.goal.dispositionBias },
@@ -294,6 +299,7 @@ function readSongLibraryStarter(candidate: unknown): SongLibraryStarter | undefi
     : [];
   const validation = validateSongGoal(raw.goal);
   const draftPlan = normalizeStoredSongDraftPlan(raw.draftPlan);
+  const motifPlan = normalizeStoredSongMotifPlan(raw.motifPlan);
   return {
     source,
     sourcePrompt,
@@ -303,6 +309,7 @@ function readSongLibraryStarter(candidate: unknown): SongLibraryStarter | undefi
       ? raw.structureSummary.replace(/\s+/g, " ").trim().slice(0, 240)
       : undefined,
     draftPlan,
+    motifPlan,
     goal: validation.goal,
     playerPlans,
   };

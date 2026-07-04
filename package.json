@@ -19,6 +19,7 @@
     "unit:phrase-candidate-genome": "playwright test tests/phrase-candidate-genome.unit.spec.ts --config=playwright.unit.config.ts",
     "unit:song-goal": "playwright test tests/song-goal.unit.spec.ts --config=playwright.unit.config.ts",
     "unit:song-draft-plan": "playwright test tests/song-draft-plan.unit.spec.ts --config=playwright.unit.config.ts",
+    "unit:song-motif-plan": "playwright test tests/song-motif-plan.unit.spec.ts --config=playwright.unit.config.ts",
     "unit:song-intent": "playwright test tests/song-intent.unit.spec.ts --config=playwright.unit.config.ts",
     "unit:song-library": "playwright test tests/song-library.unit.spec.ts --config=playwright.unit.config.ts",
     "unit:song-starter-material": "playwright test tests/song-starter-material.unit.spec.ts --config=playwright.unit.config.ts",

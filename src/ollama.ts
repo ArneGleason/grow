@@ -56,6 +56,15 @@ import {
   type SongDraftPlanPromptInput,
   type SongDraftPlanValidationResult,
 } from "./song-draft-plan";
+import {
+  SONG_MOTIF_PLAN_RESPONSE_FORMAT,
+  createSongMotifPlanPrimer,
+  createSongMotifPlanPrompt,
+  parseSongMotifPlanResponse,
+  type SongMotifPlan,
+  type SongMotifPlanPromptInput,
+  type SongMotifPlanValidationResult,
+} from "./song-motif-plan";
 import type { SongGoalInterpretation } from "./song-goal";
 
 export interface OllamaConfig {
@@ -1641,4 +1650,124 @@ function stableHash(value: string): number {
     hash = ((hash << 5) - hash + value.charCodeAt(index)) | 0;
   }
   return Math.abs(hash);
+}
+
+// ---- Song motif plan protocol ------------------------------------------------
+
+export interface OllamaSongMotifPlanTestResult {
+  status: "idle" | "running" | "valid" | "invalid" | "failed";
+  provider: "none" | "ollama" | "mock-fallback";
+  model: string;
+  baseUrl: string;
+  promptProtocol: "song-motif-plan";
+  latencyMs?: number;
+  rawResponse: string;
+  validation: SongMotifPlanValidationResult;
+  plan?: SongMotifPlan;
+  message: string;
+}
+
+export function createInitialOllamaSongMotifPlanTest(config: OllamaConfig): OllamaSongMotifPlanTestResult {
+  return {
+    status: "idle",
+    provider: "none",
+    model: config.model,
+    baseUrl: config.baseUrl,
+    promptProtocol: "song-motif-plan",
+    rawResponse: "",
+    validation: { valid: false, errors: [], warnings: [], clamps: [] },
+    message: "No song motif plan sent",
+  };
+}
+
+function createFailedSongMotifPlanTest(
+  config: OllamaConfig,
+  latencyMs: number,
+  message: string,
+): OllamaSongMotifPlanTestResult {
+  return {
+    status: "failed",
+    provider: "mock-fallback",
+    model: config.model,
+    baseUrl: config.baseUrl,
+    promptProtocol: "song-motif-plan",
+    latencyMs,
+    rawResponse: "",
+    validation: { valid: false, errors: [message], warnings: [], clamps: [] },
+    message: "Ollama unavailable; seeded motif fallback is active",
+  };
+}
+
+export function createOllamaSongMotifPlanPrimer(): string {
+  return createSongMotifPlanPrimer();
+}
+
+export function createOllamaSongMotifPlanPrompt(input: SongMotifPlanPromptInput): string {
+  return createSongMotifPlanPrompt(input);
+}
+
+export async function runOllamaSongMotifPlanTest(
+  input: SongMotifPlanPromptInput,
+  config: OllamaConfig,
+  options: OllamaThoughtRunOptions = {},
+): Promise<OllamaSongMotifPlanTestResult> {
+  const startedAt = Date.now();
+  const ollamaRequest: OllamaChatRequest = {
+    model: config.model,
+    messages: [
+      { role: "system", content: createSongMotifPlanPrimer() },
+      { role: "user", content: createSongMotifPlanPrompt(input) },
+    ],
+    stream: false,
+    format: SONG_MOTIF_PLAN_RESPONSE_FORMAT,
+    think: false,
+    options: {
+      temperature: 0.7,
+      num_predict: 220,
+    },
+  };
+
+  try {
+    const response = await fetchWithTimeout(
+      createOllamaProxyUrl("chat", config),
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          baseUrl: sanitizeBaseUrl(config.baseUrl),
+          request: ollamaRequest,
+        } satisfies OllamaProxyChatRequest),
+      },
+      config.timeoutMs,
+      options.signal,
+    );
+    const latencyMs = Date.now() - startedAt;
+    if (!response.ok) {
+      return createFailedSongMotifPlanTest(config, latencyMs, `HTTP ${response.status}`);
+    }
+
+    const payload = await response.json() as OllamaChatResponse;
+    const rawResponse = getOllamaResponseText(payload);
+    const validation = parseSongMotifPlanResponse(rawResponse);
+    return {
+      status: validation.valid ? "valid" : "invalid",
+      provider: "ollama",
+      model: config.model,
+      baseUrl: config.baseUrl,
+      promptProtocol: "song-motif-plan",
+      latencyMs,
+      rawResponse,
+      validation,
+      plan: validation.plan,
+      message: validation.valid
+        ? "Ollama returned a valid song motif plan"
+        : "Ollama responded, but the motif plan did not validate",
+    };
+  } catch (error) {
+    return createFailedSongMotifPlanTest(
+      config,
+      Date.now() - startedAt,
+      getErrorMessage(error),
+    );
+  }
 }
