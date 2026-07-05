@@ -7,6 +7,8 @@ import {
   chooseSongMotifDevelopmentOps,
   developSongMotifChorusMelodyPattern,
   SONG_MOTIF_HARMONIC_MOVES,
+  SONG_MOTIF_MOVE_BRIDGE_ROOTS,
+  SONG_MOTIF_MOVE_CHORUS_ROOTS,
   SONG_MOTIF_MOVE_ROOTS,
   createSeededSongMotifPlan,
   developSongMotifMelodyPattern,
@@ -302,5 +304,32 @@ test.describe("Song motif plan", () => {
     expect(sawRetro).toBe(true);
     expect(sawRun).toBe(true);
     expect(sawOctave).toBe(true);
+  });
+
+  test("sections carry composed harmonic identities: chorus lifts, bridge departs and hangs on V", () => {
+    for (const move of SONG_MOTIF_HARMONIC_MOVES) {
+      const verse = SONG_MOTIF_MOVE_ROOTS[move];
+      const chorus = SONG_MOTIF_MOVE_CHORUS_ROOTS[move];
+      const bridge = SONG_MOTIF_MOVE_BRIDGE_ROOTS[move];
+      for (const plan of [verse, chorus, bridge]) {
+        expect(plan).toHaveLength(8);
+        for (const root of plan) {
+          expect(Number.isInteger(root)).toBe(true);
+          expect(root).toBeGreaterThanOrEqual(0);
+          expect(root).toBeLessThanOrEqual(6);
+        }
+      }
+      // the chorus shares the pillars (home entry, V->I exit) and carries its
+      // lift in the middle bars
+      expect(chorus[0]).toBe(0);
+      expect(chorus[6]).toBe(4);
+      expect(chorus[7]).toBe(0);
+      expect(chorus.filter((root, bar) => root !== verse[bar]).length).toBeGreaterThanOrEqual(3);
+      // the bridge is a true departure: no tonic bar anywhere, and it hangs on
+      // V so the next section's downbeat is the resolution
+      expect(bridge.includes(0)).toBe(false);
+      expect(bridge[7]).toBe(4);
+      expect(bridge.filter((root, bar) => root !== verse[bar]).length).toBeGreaterThanOrEqual(4);
+    }
   });
 });

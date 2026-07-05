@@ -32,6 +32,10 @@ export interface SongMaterial {
   // present, the arrange layer follows it instead of guessing roots from the
   // bass pattern — the performed harmony IS the composed harmony.
   rootPlan?: readonly number[];
+  // Per-section harmonic sentences keyed by section type. A section with its
+  // own plan is performed over that harmony (chorus lift, bridge departure);
+  // sections without one fall back to rootPlan.
+  sectionRootPlans?: Readonly<Record<string, readonly number[]>>;
 }
 
 export const DEFAULT_SONG_ID: SongId = "lantern";

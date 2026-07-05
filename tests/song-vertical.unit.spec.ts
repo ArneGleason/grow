@@ -63,11 +63,22 @@ test("the performed verticality is clean: harmony follows the sentence, no unint
   // relational rails: the arranged bass walks the composed sentence, and
   // sustained harsh intervals (m2/M7/tritone held >= 0.75 beat) stay rare
   expect(material.rootPlan?.length).toBe(8);
-  expect(clashes.length).toBeLessThanOrEqual(2);
+  if (clashes.length > 2) {
+    throw new Error(
+      `sustained harshness above threshold (seed ${probeSeed}): ` + JSON.stringify(byPair) + " " +
+        JSON.stringify(clashes.map((c) => `${c.section}@${c.at.toFixed(2)} ${c.what} ${c.kind} x${c.overlap.toFixed(2)}`)),
+    );
+  }
   const bassNotes = notes.filter((n) => n.p === "bass");
   expect(bassNotes.length).toBeGreaterThan(20);
   if (byPair["bass+keyboard m2/M7"] || byPair["bass+keyboard tritone"]) {
-    throw new Error("bass and keyboard disagree about the harmony: " + JSON.stringify(byPair));
+    const detail = clashes
+      .filter((c) => c.pair === "bass+keyboard")
+      .map((c) => `${c.section}@${c.at.toFixed(2)} ${c.what} x${c.overlap.toFixed(2)}`);
+    throw new Error(
+      `bass and keyboard disagree about the harmony (seed ${probeSeed}): ` +
+        JSON.stringify(byPair) + " " + JSON.stringify(detail),
+    );
   }
   void bySection;
   }

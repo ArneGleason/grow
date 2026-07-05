@@ -5,6 +5,8 @@ import {
   getSongDraftPlanLeaderAtBar,
 } from "./song-draft-plan";
 import {
+  SONG_MOTIF_MOVE_BRIDGE_ROOTS,
+  SONG_MOTIF_MOVE_CHORUS_ROOTS,
   SONG_MOTIF_MOVE_ROOTS,
   developSongMotifBridgeMelodyPattern,
   developSongMotifChorusMelodyPattern,
@@ -81,6 +83,14 @@ export function createSongStarterMaterial(base: SongMaterial, starter: SongLibra
     description: `${base.description} Prompt-seeded into a 32-beat voice-led draft (${connectorProfile.summary}; ${harmonyPlan.draft.summary}).`,
     ...(sectionMelody ? { sectionMelody } : {}),
     ...(motifRoots ? { rootPlan: [...motifRoots] } : {}),
+    ...(starter.motifPlan
+      ? {
+        sectionRootPlans: {
+          chorus: [...SONG_MOTIF_MOVE_CHORUS_ROOTS[starter.motifPlan.move]],
+          bridge: [...SONG_MOTIF_MOVE_BRIDGE_ROOTS[starter.motifPlan.move]],
+        },
+      }
+      : {}),
     patterns: [
       starter.motifPlan
         ? createStarterGroovePulsePattern(effectiveStarter, seed, starter.motifPlan.peakBar)

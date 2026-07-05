@@ -31,6 +31,25 @@ export const SONG_MOTIF_MOVE_ROOTS: Record<SongMotifHarmonicMove, readonly numbe
   fall: [0, 4, 5, 2, 3, 0, 4, 0],
 };
 
+// Section harmony shares the verse's pillars (home entry, V->I exit) but the
+// middle bars carry the away-from-home weight that makes a chorus lift.
+export const SONG_MOTIF_MOVE_CHORUS_ROOTS: Record<SongMotifHarmonicMove, readonly number[]> = {
+  settle: [0, 3, 5, 3, 0, 3, 4, 0],
+  lift: [0, 5, 3, 4, 5, 3, 4, 0],
+  lean: [0, 3, 5, 0, 3, 5, 4, 0],
+  fall: [0, 5, 3, 5, 2, 3, 4, 0],
+};
+
+// The bridge is a true departure: no tonic bar at all, a two-bar harmonic
+// rhythm, and a half-cadence exit — the hanging V resolves on the next
+// section's downbeat instead of inside the bridge.
+export const SONG_MOTIF_MOVE_BRIDGE_ROOTS: Record<SongMotifHarmonicMove, readonly number[]> = {
+  settle: [5, 5, 3, 3, 1, 1, 4, 4],
+  lift: [3, 3, 5, 5, 1, 1, 4, 4],
+  lean: [5, 5, 1, 1, 3, 3, 4, 4],
+  fall: [2, 2, 5, 5, 3, 3, 4, 4],
+};
+
 export interface SongMotifPlan {
   version: "grow.songMotifPlan/1";
   source: "model" | "seeded";
@@ -352,12 +371,14 @@ export function chooseSongMotifDevelopmentOps(plan: SongMotifPlan, seed: number)
 
 export interface SongMotifWalkOptions {
   chorusTransform?: SongMotifChorusTransform;
+  // develop against a section's own harmony instead of the verse sentence
+  roots?: readonly number[];
 }
 
 export function developSongMotifWalk(plan: SongMotifPlan, seed: number, walkOptions: SongMotifWalkOptions = {}): MotifWalk {
   const chorus = walkOptions.chorusTransform;
   const workingPlan = chorus ? transformPlanForChorus(plan, chorus) : plan;
-  const roots = SONG_MOTIF_MOVE_ROOTS[plan.move];
+  const roots = walkOptions.roots ?? SONG_MOTIF_MOVE_ROOTS[plan.move];
   const rng = mulberry32(((seed >>> 0) ^ (chorus ? 0x2c9277b5 : 0x51ed2701)) || 1);
   const baseOps = chooseSongMotifDevelopmentOps(workingPlan, seed);
   const ops = chorus
@@ -482,6 +503,18 @@ export function developSongMotifWalk(plan: SongMotifPlan, seed: number, walkOpti
         last.durationBeats = round3(last.durationBeats + Math.min(1, BEATS_PER_BAR - cursor));
       }
     }
+    // A note may ring past the barline only as a common tone of the next
+    // bar's chord; anything else is clipped at the change — the pickup note
+    // sustained a second against the new chord is the classic giveaway.
+    const barEndBeat = (barIndex + 1) * BEATS_PER_BAR;
+    const nextRoot = roots[barIndex + 1];
+    if (nextRoot !== undefined) {
+      for (const note of notes) {
+        if (note.startBeat + note.durationBeats <= barEndBeat + 0.01) continue;
+        if (isChordTone(note.degree, nextRoot)) continue;
+        note.durationBeats = round3(Math.max(0.25, barEndBeat - note.startBeat));
+      }
+    }
     previousExit = notes[notes.length - 1]?.degree;
     bars.push(notes);
   }
@@ -527,6 +560,8 @@ export interface SongMotifMelodyOptions {
   chorusTransform?: SongMotifChorusTransform;
   // raise the leading tone a semitone at the home cadence (flat-7 modes)
   raiseLeadingTone?: boolean;
+  // develop against a section's own harmony instead of the verse sentence
+  roots?: readonly number[];
 }
 
 export function developSongMotifMelodyPattern(
@@ -537,7 +572,10 @@ export function developSongMotifMelodyPattern(
   const playerId = options.playerId ?? "melody";
   const octave = Math.max(0, Math.min(8, Math.trunc(options.octave ?? 4)));
   const velocityScale = options.velocityScale ?? 1;
-  const walk = developSongMotifWalk(plan, options.seed, options.chorusTransform ? { chorusTransform: options.chorusTransform } : {});
+  const walk = developSongMotifWalk(plan, options.seed, {
+    ...(options.chorusTransform ? { chorusTransform: options.chorusTransform } : {}),
+    ...(options.roots ? { roots: options.roots } : {}),
+  });
   const totalBeats = SONG_MOTIF_BAR_COUNT * BEATS_PER_BAR;
   const slots = Math.round(totalBeats / subdivisionBeats);
   const events: (PatternNoteSource | null)[] = new Array(slots).fill(null);
@@ -668,6 +706,7 @@ export function developSongMotifChorusMelodyPattern(
   return developSongMotifMelodyPattern(plan, {
     ...options,
     chorusTransform: plan.chorusTransform,
+    roots: SONG_MOTIF_MOVE_CHORUS_ROOTS[plan.move],
     velocityScale: (options.velocityScale ?? 1) * 1.12,
   });
 }
@@ -726,6 +765,7 @@ export function developSongMotifBridgeMelodyPattern(
   };
   return developSongMotifMelodyPattern(bridgePlan, {
     ...options,
+    roots: SONG_MOTIF_MOVE_BRIDGE_ROOTS[plan.move],
     velocityScale: (options.velocityScale ?? 1) * 0.88,
   });
 }

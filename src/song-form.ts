@@ -1,4 +1,5 @@
 import type { TonalContext } from "./listening";
+import { MODE_INTERVALS } from "./tonal-context";
 import type { PatternNoteSource, PlayerPatternSource, SongMaterial } from "./song-material";
 
 export type SongSectionType = "verse" | "chorus" | "bridge";
@@ -181,13 +182,17 @@ export function getSongHarmonicContext(
   const section = sectionAtBeat(absoluteBeat, arrangement);
   const sectionId = getHarmonicSectionId(section.sectionType);
   if (song.rootPlan && song.rootPlan.length > 0) {
-    const bar = Math.floor(absoluteBeat / 4);
-    const planIndex = ((bar % song.rootPlan.length) + song.rootPlan.length) % song.rootPlan.length;
+    // The section's own sentence when it has one (chorus lift, bridge
+    // departure), the song sentence otherwise — indexed by the bar within
+    // the section so every section starts its plan from the top.
+    const plan = song.sectionRootPlans?.[section.sectionType] ?? song.rootPlan;
+    const bar = Math.floor(section.localBeat / 4);
+    const planIndex = ((bar % plan.length) + plan.length) % plan.length;
     return {
       sectionId,
       label: sectionId === "gather" ? "Gather" : sectionId === "answer" ? "Answer" : "Bridge",
-      rootDegree: song.rootPlan[planIndex] ?? 0,
-      rootDegrees: song.rootPlan,
+      rootDegree: plan[planIndex] ?? 0,
+      rootDegrees: plan,
       rootIndex: planIndex,
       rootSpanBeats: 4,
       strategy: "modal-root-recolor",
@@ -218,10 +223,12 @@ export function arrangeSongFormPatternEvent(
   const playerId = getPatternPlayerId(input.pattern) ?? input.sourceEvent?.playerId;
   const harmony = getSongHarmonicContext(input.song, input.absoluteBeat, input.arrangement);
   if (playerId === "pulse" || playerId === "bass") {
-    return createHarmonicAccompanimentEvent(input.sourceEvent, playerId, harmony, input.song);
+    return createHarmonicAccompanimentEvent(input.sourceEvent, playerId, harmony, input.song, input.tonalContext);
   }
 
-  if (playerId !== "melody") return input.sourceEvent;
+  if (playerId !== "melody") {
+    return recolorSectionHarmonyEvent(input, context, harmony);
+  }
 
   if (context.sectionType === "chorus") {
     const variant = readSectionMelodyEvent(input, "chorus", context);
@@ -284,17 +291,36 @@ export function deriveSongSectionRootPlans(song: SongMaterial): Record<SongHarmo
   };
 }
 
+// Every mode has one degree whose triad is diminished (ii in aeolian, vii in
+// ionian, ...). Sustained accompaniment never voices that naked tritone: the
+// would-be fifth falls back to the third (bass) or lifts to the sixth
+// (keyboard) — the arranger's standard treatment of a diminished pad chord.
+function hasDiminishedFifth(tonalContext: TonalContext | undefined, root: number): boolean {
+  if (!tonalContext) return false;
+  const intervals = (MODE_INTERVALS as Record<string, readonly number[]>)[tonalContext.mode];
+  if (!intervals) return false;
+  const rootClass = normalizeDegree(root);
+  const fifthClass = (rootClass + 4) % 7;
+  const semis = ((intervals[fifthClass] ?? 0) + (fifthClass < rootClass ? 12 : 0) - (intervals[rootClass] ?? 0) + 12) % 12;
+  return semis === 6;
+}
+
 function createHarmonicAccompanimentEvent(
   sourceEvent: PatternNoteSource | null,
   playerId: string,
   harmony: SongHarmonicContext,
   song: SongMaterial,
+  tonalContext: TonalContext,
 ): PatternNoteSource | null {
   if (!sourceEvent) return null;
   const baseRoot = deriveSongRootDegrees(song)[0] ?? 0;
+  let chordOffset = getBassChordOffset(sourceEvent.scaleDegree - baseRoot);
+  if (chordOffset === 4 && hasDiminishedFifth(tonalContext, harmony.rootDegree)) {
+    chordOffset = 2;
+  }
   const scaleDegree = playerId === "pulse"
     ? harmony.rootDegree
-    : harmony.rootDegree + getBassChordOffset(sourceEvent.scaleDegree - baseRoot);
+    : harmony.rootDegree + chordOffset;
   const octave = playerId === "pulse" ? sourceEvent.octave : clampInteger(
     sourceEvent.octave + getOctaveNudge(sourceEvent.scaleDegree, scaleDegree),
     1,
@@ -306,6 +332,54 @@ function createHarmonicAccompanimentEvent(
     scaleDegree,
     octave,
   };
+}
+
+// Keyboards are composed against the song sentence (rootPlan). When the
+// current section performs its own sentence, shift the voicing by the folded
+// interval between the two roots for this bar — identical harmony gives an
+// identity shift, so verses (and songs without section plans) are untouched.
+// A shifted note that rings past the barline may hold only as a common tone
+// of the next bar's chord; otherwise it is lifted at the change, the way a
+// player lifts a pad chord. Purely composed overhangs (no section shift on
+// either side of the barline) are the composer's stated intent and ring on.
+function recolorSectionHarmonyEvent(
+  input: SongFormPatternEventInput,
+  context: SongSectionContext,
+  harmony: SongHarmonicContext,
+): PatternNoteSource | null {
+  const sourceEvent = input.sourceEvent;
+  const song = input.song;
+  if (!sourceEvent) return null;
+  if (!song.rootPlan || song.rootPlan.length === 0) return sourceEvent;
+  const planLength = song.rootPlan.length;
+  const composedRootAt = (localBeat: number): number =>
+    song.rootPlan?.[((Math.floor(localBeat / 4) % planLength) + planLength) % planLength] ?? 0;
+  let delta = harmony.rootDegree - composedRootAt(context.localBeat);
+  while (delta > 3) delta -= 7;
+  while (delta < -3) delta += 7;
+  let scaleDegree = sourceEvent.scaleDegree + delta;
+  if (normalizeDegree(scaleDegree - harmony.rootDegree) === 4 && hasDiminishedFifth(input.tonalContext, harmony.rootDegree)) {
+    scaleDegree += 1;
+  }
+  const arrangement = input.arrangement ?? DEFAULT_SONG_ARRANGEMENT;
+  const barEndBeat = (Math.floor(input.absoluteBeat / arrangement.beatsPerBar) + 1) * arrangement.beatsPerBar;
+  const ringsAcross = input.absoluteBeat + sourceEvent.durationBeats > barEndBeat + 0.01;
+  let durationBeats = sourceEvent.durationBeats;
+  let duration = sourceEvent.duration;
+  if (ringsAcross) {
+    const nextSection = sectionAtBeat(barEndBeat, arrangement);
+    const nextHarmony = getSongHarmonicContext(song, barEndBeat, arrangement);
+    const sectionShifted = delta !== 0 || nextHarmony.rootDegree !== composedRootAt(nextSection.localBeat);
+    const rel = (((scaleDegree - nextHarmony.rootDegree) % 7) + 7) % 7;
+    const commonTone = rel === 0 || rel === 2 ||
+      (rel === 4 && !hasDiminishedFifth(input.tonalContext, nextHarmony.rootDegree));
+    if (sectionShifted && !commonTone) {
+      durationBeats = Math.max(0.25, roundBeat(barEndBeat - input.absoluteBeat));
+      duration = durationBeats >= 2 ? "2n" : durationBeats >= 1 ? "4n" : durationBeats >= 0.5 ? "8n" : "16n";
+    }
+  }
+  if (delta === 0 && durationBeats === sourceEvent.durationBeats) return sourceEvent;
+  return { ...sourceEvent, scaleDegree, durationBeats, duration };
 }
 
 function readSectionMelodyEvent(
