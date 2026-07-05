@@ -1,4 +1,17 @@
 import { expect, test, type Page } from "@playwright/test";
+
+// The app health-checks Ollama automatically when a generate begins, and a
+// real local Ollama may be running on the dev machine. Default every page to
+// "unavailable" so un-mocked tests stay deterministic; tests that mock
+// /api/ollama routes themselves register later and take precedence.
+test.beforeEach(async ({ page }) => {
+  await page.route("**/api/ollama/tags**", (route) =>
+    route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({ error: "ollama unavailable in tests" }),
+    }));
+});
 import {
   assertValidCandidate,
   scopeCandidateInputForBranch,

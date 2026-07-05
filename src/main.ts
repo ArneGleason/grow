@@ -87,7 +87,6 @@ import {
   parseOllamaThoughtResponse,
   runOllamaMelodyCriticTest,
   runOllamaProposalTextTest,
-  runOllamaSongDraftPlanTest,
   runOllamaSongMotifPlanTest,
   createOllamaSongMotifPlanPrompt,
   runOllamaSongIntentTest,
@@ -870,6 +869,12 @@ async function generateSongStarterSeedWithIntent(): Promise<SongStarterGeneratio
   const draft = readSongStarterDraft();
   const materialSeed = createSongStarterMaterialSeed(draft);
   const fallbackInterpretation = createSongStarterInterpretation(draft, materialSeed);
+  // Health starts "unknown" on every page load and after config edits, and the
+  // model gate treats unknown as unavailable — so without this check a generate
+  // lands on the seeded fallback even when local Ollama is up.
+  if (ollamaHealth.status === "unknown" && fallbackInterpretation.validation.valid) {
+    await runOllamaHealthCheck();
+  }
   if (!shouldTrySongIntentModel(fallbackInterpretation)) {
     return generateSongStarterSeedFromDraft(draft, materialSeed, fallbackInterpretation);
   }
@@ -6895,41 +6900,48 @@ async function regenerateActiveLibrarySongStarter(): Promise<SongLibrarySnapshot
     Date.now(),
     "regenerate",
   ].join("|"));
-  let draftPlan: SongDraftPlan | undefined;
+  let motifPlan: SongMotifPlan | undefined;
+  if (active.starter.source === "model" && ollamaHealth.status === "unknown") {
+    await runOllamaHealthCheck();
+  }
   if (active.starter.source === "model" && ollamaHealth.status === "ready") {
     const config = {
       ...readOllamaConfigFromInputs(),
       timeoutMs: Math.min(ollamaConfig.timeoutMs, 8_000),
     };
     ollamaRequestInFlight = true;
-    ollamaSongDraftPlanTest = {
-      ...createInitialOllamaSongDraftPlanTest(config),
+    ollamaSongMotifPlanTest = {
+      ...createInitialOllamaSongMotifPlanTest(config),
       status: "running",
       provider: "ollama",
-      message: "Sending fresh song spine request to local Ollama",
+      message: "Sending fresh motif request to local Ollama",
     };
     renderOllama();
     try {
-      ollamaSongDraftPlanTest = await runOllamaSongDraftPlanTest(
+      ollamaSongMotifPlanTest = await runOllamaSongMotifPlanTest(
         {
           prompt: active.starter.sourcePrompt,
           goal: active.starter.goal,
-          materialSeed: nextSeed,
-          playerPlans: active.starter.playerPlans,
         },
         config,
       );
-      draftPlan = ollamaSongDraftPlanTest.status === "valid"
-        ? ollamaSongDraftPlanTest.plan
+      motifPlan = ollamaSongMotifPlanTest.status === "valid"
+        ? ollamaSongMotifPlanTest.plan
         : undefined;
     } finally {
       ollamaRequestInFlight = false;
       renderOllama();
     }
   }
+  // Same choke point as fresh generation: a regenerate gets a fresh coherent
+  // spine (model motif when available, seeded otherwise) instead of re-rolling
+  // development dice on the cloned stale plan via the retired draft protocol.
+  const effectiveMotifPlan = motifPlan ?? createSeededSongMotifPlan(nextSeed, active.starter.goal);
+  const draftPlan = expandSongMotifPlanToDraftPlan(effectiveMotifPlan, nextSeed);
   const starter = {
     ...cloneSongLibraryStarter(active.starter)!,
     materialSeed: nextSeed,
+    motifPlan: effectiveMotifPlan,
     draftPlan,
     structureSummary: createSongStarterStructureSummary(
       active.starter.goal,
