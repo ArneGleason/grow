@@ -386,6 +386,13 @@ export function developSongMotifWalk(plan: SongMotifPlan, seed: number, walkOpti
     : baseOps;
   const bars: MotifWalkNote[][] = [];
   let previousExit: number | undefined;
+  // The melody is a voice, not a set of positions: it lives in a tessitura
+  // (a band around its opening note) and a leap gets answered by a step back
+  // the other way. The band is established by the first entry, so a chorus
+  // walk with arc lift sits in a higher band — register lift without lurches.
+  let bandLow: number | undefined;
+  let bandHigh: number | undefined;
+  let previousInterval = 0;
 
   for (let barIndex = 0; barIndex < SONG_MOTIF_BAR_COUNT; barIndex += 1) {
     const root = roots[barIndex] ?? 0;
@@ -397,10 +404,16 @@ export function developSongMotifWalk(plan: SongMotifPlan, seed: number, walkOpti
     const arcBias = arcLift + (barIndex <= plan.peakBar
       ? (barIndex / Math.max(1, plan.peakBar)) * 2.4
       : 2.4 - ((barIndex - plan.peakBar) / Math.max(1, SONG_MOTIF_BAR_COUNT - 1 - plan.peakBar)) * 3.2);
-    const octaveShift = op === "octave-shift" ? (arcBias >= 1.2 ? 7 : -7) : 0;
-    const entry = previousExit === undefined
+    // register shift is a color inside the band, not an octave lurch
+    const octaveShift = op === "octave-shift" ? (arcBias >= 1.2 ? 4 : -4) : 0;
+    let entry = previousExit === undefined
       ? root + 2
-      : chooseBoundedEntry(chordTones, previousExit + octaveShift, arcBias, op === "sequence");
+      : chooseBoundedEntry(chordTones, previousExit + octaveShift, arcBias, op === "sequence", previousInterval);
+    if (bandLow === undefined || bandHigh === undefined) {
+      bandLow = entry - 4;
+      bandHigh = entry + 6;
+    }
+    entry = foldIntoBand(entry, bandLow, bandHigh);
     let steps: readonly number[] = workingPlan.cellSteps;
     let rhythm = [...workingPlan.cellRhythm];
     if (op === "answer") {
@@ -455,13 +468,14 @@ export function developSongMotifWalk(plan: SongMotifPlan, seed: number, walkOpti
     for (let i = 0; i < stepsForBar.length; i += 1) {
       if (i > 0) degree += stepsForBar[i] ?? 0;
       degree = foldDegree(degree, entry);
+      degree = foldIntoBand(degree, bandLow, bandHigh);
       let duration = rhythm[i] ?? 1;
       if (cursor + duration > BEATS_PER_BAR) duration = BEATS_PER_BAR - cursor;
       if (duration < 0.25) break;
       const strong = i === 0;
       // long notes belong to the chord; short notes are free to pass
       if (duration >= 0.75 && !isChordTone(degree, root)) {
-        degree = nearestTo(chordToneWindow(chordTones, degree), degree);
+        degree = foldIntoBand(nearestTo(chordToneWindow(chordTones, degree), degree), bandLow, bandHigh);
       }
       // articulation: inner notes detach, strong notes carry — less plunk, more speech
       const spoken = isCadenceBar ? duration : round3(Math.max(0.25, duration * (strong ? 0.95 : 0.62)));
@@ -515,6 +529,9 @@ export function developSongMotifWalk(plan: SongMotifPlan, seed: number, walkOpti
         note.durationBeats = round3(Math.max(0.25, barEndBeat - note.startBeat));
       }
     }
+    previousInterval = notes.length >= 2
+      ? (notes[notes.length - 1]?.degree ?? 0) - (notes[notes.length - 2]?.degree ?? 0)
+      : entry - (previousExit ?? entry);
     previousExit = notes[notes.length - 1]?.degree;
     bars.push(notes);
   }
@@ -716,6 +733,17 @@ function normalizeRunDirection(entry: number, nextRoot: number): 1 | -1 {
   return target >= entry ? 1 : -1;
 }
 
+// Fold a degree into the melody's tessitura by octaves — the degree class
+// (and so its chord-tone status) is preserved. Band width is 11 > 7, so a
+// fold always resolves.
+function foldIntoBand(degree: number, low: number | undefined, high: number | undefined): number {
+  if (low === undefined || high === undefined) return degree;
+  let folded = degree;
+  while (folded > high) folded -= 7;
+  while (folded < low) folded += 7;
+  return folded;
+}
+
 function isChordTone(degree: number, root: number): boolean {
   const rel = (((degree - root) % 7) + 7) % 7;
   return rel === 0 || rel === 2 || rel === 4;
@@ -729,22 +757,29 @@ function chordToneWindow(chordTones: readonly number[], around: number): readonl
 }
 
 // Prefer the chord tone nearest the previous exit, nudged by the phrase arc,
-// with leaps capped at a fifth (4 scale steps).
+// with leaps capped at a fifth (4 scale steps) and strongly discouraged past
+// a third. After a leap, the line answers with a step back the other way
+// (gap-fill) — the oldest rule of melodic writing.
 function chooseBoundedEntry(
   chordTones: readonly number[],
   previousExit: number,
   arcBias: number,
   sequencing: boolean,
+  previousInterval = 0,
 ): number {
   const direction = arcBias >= 1.2 ? 1 : arcBias <= 0.4 ? -1 : 0;
-  const preferred = previousExit + (sequencing ? 1 : 0) + direction;
+  const gapFill = Math.abs(previousInterval) >= 3 ? -Math.sign(previousInterval) : 0;
+  const preferred = previousExit + (gapFill !== 0 ? gapFill : (sequencing ? 1 : 0) + direction);
   const candidates = chordToneWindow(chordTones, previousExit);
   let best = candidates[0] ?? previousExit;
   let bestScore = Number.POSITIVE_INFINITY;
   for (const candidate of candidates) {
     const leap = Math.abs(candidate - previousExit);
     if (leap > 4) continue;
-    const score = Math.abs(candidate - preferred) + (leap > 2 ? 0.5 : 0);
+    const wrongWay = gapFill !== 0 && Math.sign(candidate - previousExit) === -gapFill;
+    const score = Math.abs(candidate - preferred) +
+      (leap > 2 ? 1.2 : leap > 1 ? 0.2 : 0) +
+      (wrongWay ? 1 : 0);
     if (score < bestScore || (score === bestScore && candidate < best)) {
       best = candidate;
       bestScore = score;

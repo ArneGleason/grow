@@ -306,6 +306,26 @@ test.describe("Song motif plan", () => {
     expect(sawOctave).toBe(true);
   });
 
+  test("the melody is a voice: tessitura holds, big leaps are rare", () => {
+    for (const seed of [1, 7, 42, 99, 424242, 90210, 555, 31337]) {
+      const plan = createSeededSongMotifPlan(seed, { energy: 0.5, brightness: 0.5, surpriseTarget: 0.5 });
+      const walk = developSongMotifWalk(plan, seed);
+      const degrees = walk.bars
+        .flat()
+        .sort((a, b) => a.startBeat - b.startBeat)
+        .map((note) => note.degree);
+      expect(degrees.length).toBeGreaterThan(20);
+      // the whole song's melody lives inside a singable band
+      expect(Math.max(...degrees) - Math.min(...degrees)).toBeLessThanOrEqual(11);
+      const intervals = degrees.slice(1).map((degree, i) => degree - degrees[i]!);
+      // mostly stepwise; leaps are the exception, octave lurches are gone
+      const stepwise = intervals.filter((interval) => Math.abs(interval) <= 2).length / intervals.length;
+      expect(stepwise).toBeGreaterThanOrEqual(0.65);
+      expect(intervals.filter((interval) => Math.abs(interval) >= 4).length).toBeLessThanOrEqual(6);
+      expect(intervals.filter((interval) => Math.abs(interval) >= 6).length).toBeLessThanOrEqual(1);
+    }
+  });
+
   test("sections carry composed harmonic identities: chorus lifts, bridge departs and hangs on V", () => {
     for (const move of SONG_MOTIF_HARMONIC_MOVES) {
       const verse = SONG_MOTIF_MOVE_ROOTS[move];
