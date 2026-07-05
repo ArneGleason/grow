@@ -24,7 +24,7 @@ test("the performed verticality is clean: harmony follows the sentence, no unint
   const semi = (pitch: string) => { const m = /^([A-G][#b]?)(-?\d+)$/.exec(pitch); return m ? PC[m[1]]! + 12 * (parseInt(m[2]) + 1) : null; };
   type N = { p: string; b: number; d: number; s: number; pitch: string };
   const notes: N[] = [];
-  const totalBeats = 192;
+  const totalBeats = 384; // two passes: structural dynamics stay clash-clean too
   for (const pattern of material.patterns) {
     const len = pattern.events.length;
     for (let step = 0; step * pattern.subdivisionBeats < totalBeats; step += 1) {

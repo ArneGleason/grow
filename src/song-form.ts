@@ -221,6 +221,9 @@ export function arrangeSongFormPatternEvent(
 ): PatternNoteSource | null {
   const context = sectionAtBeat(input.absoluteBeat, input.arrangement);
   const playerId = getPatternPlayerId(input.pattern) ?? input.sourceEvent?.playerId;
+  const passArrangement = input.arrangement ?? DEFAULT_SONG_ARRANGEMENT;
+  const passIndex = Math.floor(Math.max(0, input.absoluteBeat) / Math.max(1, passArrangement.totalBeats));
+  if (!performsInPass(playerId, context, passIndex, input.song)) return null;
   const harmony = getSongHarmonicContext(input.song, input.absoluteBeat, input.arrangement);
   if (playerId === "pulse" || playerId === "bass") {
     return createHarmonicAccompanimentEvent(input.sourceEvent, playerId, harmony, input.song, input.tonalContext);
@@ -332,6 +335,38 @@ function createHarmonicAccompanimentEvent(
     scaleDegree,
     octave,
   };
+}
+
+// The form means something different each time through: the first pass opens
+// as a duet and builds to the first chorus; later passes redistribute weight.
+// Subtraction only — dropping composed events is bounded and cannot create a
+// wrong note. The melody is never dropped: it is the song's identity and the
+// thread the listener follows through the changes. Songs without a composed
+// sentence (no rootPlan) keep their historical every-pass-identical behavior.
+function performsInPass(
+  playerId: string | undefined,
+  context: SongSectionContext,
+  passIndex: number,
+  song: SongMaterial,
+): boolean {
+  if (!song.rootPlan || song.rootPlan.length === 0) return true;
+  if (playerId === "melody" || playerId === undefined) return true;
+  // duet opening: the first verse ever is melody and bass alone
+  if (passIndex === 0 && context.sectionType === "verse" && context.occurrence === 1) {
+    return playerId === "bass";
+  }
+  // alternate-pass bridge breakdown: the drums sit out
+  if (context.sectionType === "bridge" && passIndex % 2 === 1 && playerId === "pulse") {
+    return false;
+  }
+  // after the first pass, second verses thin: keyboards out
+  if (
+    passIndex >= 1 && context.sectionType === "verse" && context.occurrence === 2 &&
+    playerId !== "bass" && playerId !== "pulse"
+  ) {
+    return false;
+  }
+  return true;
 }
 
 // Keyboards are composed against the song sentence (rootPlan). When the
