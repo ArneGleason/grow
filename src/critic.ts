@@ -361,6 +361,27 @@ export function logitOfFeatures(features: readonly number[], weights: CriticWeig
   return forward(features, weights).logit;
 }
 
+// Apply d(loss)/d(logit) through the net for one example. With BCE+sigmoid
+// that gradient is simply (output - label); with a preference pair it is the
+// pair probability error, signed per side.
+function applyLogitGradient(
+  weights: MutableCriticWeights,
+  features: readonly number[],
+  hidden: readonly number[],
+  dLogit: number,
+  learningRate: number,
+): void {
+  for (let h = 0; h < weights.w2.length; h += 1) {
+    const dHidden = dLogit * weights.w2[h]! * (1 - hidden[h]! * hidden[h]!);
+    weights.w2[h] = weights.w2[h]! - learningRate * dLogit * hidden[h]!;
+    for (let i = 0; i < features.length; i += 1) {
+      weights.w1[h]![i] = weights.w1[h]![i]! - learningRate * dHidden * (features[i] ?? 0);
+    }
+    weights.b1[h] = weights.b1[h]! - learningRate * dHidden;
+  }
+  weights.b2 -= learningRate * dLogit;
+}
+
 // One SGD step on binary cross-entropy; returns the pre-step prediction.
 export function trainCriticStep(
   weights: MutableCriticWeights,
@@ -369,17 +390,98 @@ export function trainCriticStep(
   learningRate = 0.05,
 ): number {
   const { hidden, output } = forward(features, weights);
-  const dOut = output - label;
-  for (let h = 0; h < weights.w2.length; h += 1) {
-    const dHidden = dOut * weights.w2[h]! * (1 - hidden[h]! * hidden[h]!);
-    weights.w2[h] = weights.w2[h]! - learningRate * dOut * hidden[h]!;
-    for (let i = 0; i < features.length; i += 1) {
-      weights.w1[h]![i] = weights.w1[h]![i]! - learningRate * dHidden * (features[i] ?? 0);
-    }
-    weights.b1[h] = weights.b1[h]! - learningRate * dHidden;
-  }
-  weights.b2 -= learningRate * dOut;
+  applyLogitGradient(weights, features, hidden, output - label, learningRate);
   return output;
+}
+
+// ---- taste: the personal net that learns from preferences --------------------
+//
+// Two nets, so learning taste cannot break grammar: the shipped grammar
+// critic stays frozen; a small taste net starts near-neutral and learns only
+// from preference pairs ("this development over that one"). The combined
+// opinion is the sum of their logits.
+
+export function createTasteWeights(seed = 0x7a57e): MutableCriticWeights {
+  const weights = createCriticWeights(seed);
+  weights.version = "grow.criticTaste/1";
+  // zero-init the output layer only: the taste opinion starts EXACTLY neutral
+  // (logit 0, ranking untouched) while the hidden layer keeps healthy random
+  // weights so gradients flow from the first preference pair.
+  for (let h = 0; h < weights.w2.length; h += 1) weights.w2[h] = 0;
+  return weights;
+}
+
+let activeTasteWeights: MutableCriticWeights | null = null;
+
+// The app registers the listener's local taste profile here; ranking then
+// hears grammar + taste. Tests and headless runs leave it unset (grammar
+// only), which keeps material generation deterministic for them.
+export function setActiveTasteWeights(weights: MutableCriticWeights | null): void {
+  activeTasteWeights = weights;
+}
+
+export function getActiveTasteWeights(): MutableCriticWeights | null {
+  return activeTasteWeights;
+}
+
+function combinedLogit(features: readonly number[], weights: CriticWeightsData, taste: CriticWeightsData | null): number {
+  const grammar = forward(features, weights).logit;
+  return taste ? grammar + forward(features, taste).logit : grammar;
+}
+
+// RankNet-style step: nudge the taste net so the preferred side wins the
+// pair. Gradient flows ONLY into taste — grammar is frozen. Returns the
+// pre-step probability that the preferred side wins.
+export function trainTastePreferenceStep(
+  taste: MutableCriticWeights,
+  preferredFeatures: readonly number[],
+  otherFeatures: readonly number[],
+  grammar: CriticWeightsData = CRITIC_WEIGHTS,
+  learningRate = 0.15,
+): number {
+  const preferred = forward(preferredFeatures, taste);
+  const other = forward(otherFeatures, taste);
+  const delta = (forward(preferredFeatures, grammar).logit + preferred.logit) -
+    (forward(otherFeatures, grammar).logit + other.logit);
+  const p = 1 / (1 + Math.exp(-delta));
+  const dLogit = p - 1;
+  applyLogitGradient(taste, preferredFeatures, preferred.hidden, dLogit, learningRate);
+  applyLogitGradient(taste, otherFeatures, other.hidden, -dLogit, learningRate);
+  return p;
+}
+
+// Teach a preference between two developments of the same plan.
+export function teachPreferenceForPlan(
+  taste: MutableCriticWeights,
+  plan: SongMotifPlan,
+  preferredSeed: number,
+  otherSeed: number,
+  grammar: CriticWeightsData = CRITIC_WEIGHTS,
+): number {
+  const roots = SONG_MOTIF_MOVE_ROOTS[plan.move];
+  const preferredFeatures = featurizeWalkNotes(flattenWalk(developSongMotifWalk(plan, preferredSeed)), roots);
+  const otherFeatures = featurizeWalkNotes(flattenWalk(developSongMotifWalk(plan, otherSeed)), roots);
+  return trainTastePreferenceStep(taste, preferredFeatures, otherFeatures, grammar);
+}
+
+export function serializeTasteWeights(taste: MutableCriticWeights): string {
+  return JSON.stringify(taste);
+}
+
+export function deserializeTasteWeights(raw: string): MutableCriticWeights | null {
+  try {
+    const parsed = JSON.parse(raw) as MutableCriticWeights;
+    if (parsed?.version !== "grow.criticTaste/1") return null;
+    if (!Array.isArray(parsed.w1) || parsed.w1.length === 0) return null;
+    if (parsed.w1.some((row) => !Array.isArray(row) || row.length !== CRITIC_FEATURE_COUNT)) return null;
+    if (!Array.isArray(parsed.w2) || parsed.w2.length !== parsed.w1.length) return null;
+    if (!Array.isArray(parsed.b1) || parsed.b1.length !== parsed.w1.length) return null;
+    if (typeof parsed.b2 !== "number" || !Number.isFinite(parsed.b2)) return null;
+    if (!Array.isArray(parsed.featureMeans)) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
 }
 
 // ---- reactions ---------------------------------------------------------------
@@ -431,9 +533,11 @@ export function rankWalkCandidates(
   weights: CriticWeightsData = CRITIC_WEIGHTS,
 ): CriticCandidate[] {
   const roots = SONG_MOTIF_MOVE_ROOTS[plan.move];
+  const taste = activeTasteWeights;
   const scored = candidateSeeds.map((seed) => {
     const features = featurizeWalkNotes(flattenWalk(developSongMotifWalk(plan, seed)), roots);
-    return { seed, score: scoreFeatures(features, weights), logit: logitOfFeatures(features, weights) };
+    const logit = combinedLogit(features, weights, taste);
+    return { seed, score: 1 / (1 + Math.exp(-logit)), logit };
   });
   // ranked in logit space (sigmoid saturates for anything music-shaped);
   // stable: ties keep candidate order, so the material seed wins when equal

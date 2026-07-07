@@ -1,5 +1,15 @@
 import { CRITIC_WEIGHTS } from "./critic-weights";
-import { createCriticReport } from "./critic";
+import {
+  chooseCriticDevelopmentSeed,
+  createCriticReport,
+  createTasteWeights,
+  deriveCandidateSeeds,
+  deserializeTasteWeights,
+  serializeTasteWeights,
+  setActiveTasteWeights,
+  teachPreferenceForPlan,
+  type MutableCriticWeights,
+} from "./critic";
 import "./style.css";
 import type { Anchor, AnchorPhrase, AnchorPhraseSegment, Connector } from "./anchor-phrase";
 import {
@@ -691,6 +701,114 @@ function persistSongLibraryState(): void {
   }
 }
 
+const CRITIC_TASTE_STORAGE_KEY = "grow.criticTaste/1";
+const BEST_MOMENTS_STORAGE_KEY = "grow.bestMoments/1";
+
+interface BestMomentRecord {
+  at: string;
+  songId: string;
+  title: string;
+  seed: number | null;
+  move: string | null;
+}
+
+let criticTaste: MutableCriticWeights | null = loadCriticTaste();
+let criticTastePairsTaught = loadCriticTastePairsTaught();
+let bestMoments: BestMomentRecord[] = loadBestMoments();
+if (criticTaste) setActiveTasteWeights(criticTaste);
+
+function loadCriticTaste(): MutableCriticWeights | null {
+  try {
+    const raw = window.localStorage.getItem(CRITIC_TASTE_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { weights?: unknown };
+    return parsed?.weights ? deserializeTasteWeights(JSON.stringify(parsed.weights)) : null;
+  } catch (error) {
+    console.warn("[grow] failed to load critic taste", error);
+    return null;
+  }
+}
+
+function loadCriticTastePairsTaught(): number {
+  try {
+    const raw = window.localStorage.getItem(CRITIC_TASTE_STORAGE_KEY);
+    if (!raw) return 0;
+    const parsed = JSON.parse(raw) as { pairsTaught?: unknown };
+    return typeof parsed?.pairsTaught === "number" ? parsed.pairsTaught : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function persistCriticTaste(): void {
+  try {
+    if (!criticTaste) {
+      window.localStorage.removeItem(CRITIC_TASTE_STORAGE_KEY);
+      return;
+    }
+    window.localStorage.setItem(CRITIC_TASTE_STORAGE_KEY, JSON.stringify({
+      weights: JSON.parse(serializeTasteWeights(criticTaste)),
+      pairsTaught: criticTastePairsTaught,
+      updatedAt: new Date().toISOString(),
+    }));
+  } catch (error) {
+    console.warn("[grow] failed to persist critic taste", error);
+  }
+}
+
+function loadBestMoments(): BestMomentRecord[] {
+  try {
+    const raw = window.localStorage.getItem(BEST_MOMENTS_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.slice(-50) : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistBestMoments(): void {
+  try {
+    window.localStorage.setItem(BEST_MOMENTS_STORAGE_KEY, JSON.stringify(bestMoments.slice(-50)));
+  } catch (error) {
+    console.warn("[grow] failed to persist best moments", error);
+  }
+}
+
+// The vision's "lightweight best-moments capture", wired as the critic's ear:
+// keeping a moment logs it AND teaches the taste net that this song's chosen
+// development beats the four alternatives it was auditioned against.
+function captureBestMoment(): { kept: boolean; taughtPairs: number } {
+  const active = getActiveSongLibraryEntry();
+  const starter = active.starter;
+  bestMoments = [...bestMoments.slice(-49), {
+    at: new Date().toISOString(),
+    songId: active.id,
+    title: active.title,
+    seed: starter?.materialSeed ?? null,
+    move: starter?.motifPlan?.move ?? null,
+  }];
+  persistBestMoments();
+  let taughtPairs = 0;
+  if (starter?.motifPlan && typeof starter.materialSeed === "number") {
+    if (!criticTaste) criticTaste = createTasteWeights();
+    const chosen = chooseCriticDevelopmentSeed(starter.motifPlan, starter.materialSeed);
+    const others = deriveCandidateSeeds(starter.materialSeed).filter((seed) => seed !== chosen);
+    // a capture should audibly move the needle: several interleaved rounds
+    // over the alternatives, still microseconds of work
+    for (let round = 0; round < 6; round += 1) {
+      for (const other of others) {
+        teachPreferenceForPlan(criticTaste, starter.motifPlan, chosen, other);
+      }
+    }
+    taughtPairs = others.length;
+    criticTastePairsTaught += taughtPairs;
+    setActiveTasteWeights(criticTaste);
+    persistCriticTaste();
+  }
+  return { kept: true, taughtPairs };
+}
+
 function getDefaultSongStarterPlayerBrief(player: Player): string {
   if (player.id === "keyboard") {
     return "Voice the chords in warm, steady shapes; leave the vocal lane open.";
@@ -1346,6 +1464,15 @@ ${timingFeelControls}
           type="button"
         >
           Start
+        </button>
+        <button
+          class="mini-button"
+          id="keep-moment"
+          data-testid="keep-moment"
+          type="button"
+          title="Keep this moment — logs it and teaches the critic your taste"
+        >
+          Keep this
         </button>
         <output
           class="status-line"
@@ -7594,6 +7721,15 @@ ollamaModelInput.addEventListener("change", () => {
   setOllamaConfig({ model: ollamaModelInput.value.trim() || ollamaConfig.model });
 });
 
+const keepMomentButton = requireElement<HTMLButtonElement>("[data-testid='keep-moment']");
+keepMomentButton.addEventListener("click", () => {
+  const result = captureBestMoment();
+  keepMomentButton.textContent = result.taughtPairs > 0 ? "Kept — critic taught" : "Kept";
+  window.setTimeout(() => {
+    keepMomentButton.textContent = "Keep this";
+  }, 1400);
+});
+
 ollamaHealthButton.addEventListener("click", () => {
   void runOllamaHealthCheck();
 });
@@ -7839,6 +7975,12 @@ declare global {
     critic?: {
       version: string;
       report: (candidateCount?: number) => unknown;
+      keep: () => { kept: boolean; taughtPairs: number };
+      moments: () => unknown[];
+      taste: () => { active: boolean; pairsTaught: number };
+      exportTaste: () => string | null;
+      importTaste: (raw: string) => boolean;
+      resetTaste: () => void;
     };
     ollama?: {
       getConfig(): OllamaConfig;
@@ -8133,6 +8275,27 @@ window.critic = {
     const starter = getActiveSongLibraryEntry().starter;
     if (!starter?.motifPlan) return { message: "active song has no motif plan" };
     return createCriticReport(starter.motifPlan, starter.materialSeed ?? 0, candidateCount);
+  },
+  keep: () => captureBestMoment(),
+  moments: () => bestMoments.map((moment) => ({ ...moment })),
+  taste: () => ({
+    active: criticTaste !== null,
+    pairsTaught: criticTastePairsTaught,
+  }),
+  exportTaste: () => (criticTaste ? serializeTasteWeights(criticTaste) : null),
+  importTaste: (raw: string) => {
+    const weights = deserializeTasteWeights(raw);
+    if (!weights) return false;
+    criticTaste = weights;
+    setActiveTasteWeights(criticTaste);
+    persistCriticTaste();
+    return true;
+  },
+  resetTaste: () => {
+    criticTaste = null;
+    criticTastePairsTaught = 0;
+    setActiveTasteWeights(null);
+    persistCriticTaste();
   },
 };
 

@@ -9,11 +9,17 @@ import {
   WALK_FEATURE_EXTRACTORS,
   chooseCriticDevelopmentSeed,
   createCriticReport,
+  createTasteWeights,
   deriveCandidateSeeds,
+  deserializeTasteWeights,
   featurizeWalkNotes,
   flattenWalk,
+  rankWalkCandidates,
   reactToWalk,
   scoreFeatures,
+  serializeTasteWeights,
+  setActiveTasteWeights,
+  teachPreferenceForPlan,
   type CriticNote,
 } from "../src/critic";
 import { CRITIC_WEIGHTS } from "../src/critic-weights";
@@ -101,6 +107,40 @@ test.describe("Critic", () => {
     const cleanScore = scoreFeatures(featurizeWalkNotes(notes, roots));
     const wreckedScore = scoreFeatures(featurizeWalkNotes(wrecked, roots));
     expect(wreckedScore).toBeLessThan(cleanScore);
+  });
+
+  test("taste starts near-neutral, learns preferences, and can flip the critic's pick", () => {
+    const plan = createSeededSongMotifPlan(FRESH_SEEDS[3]!, GOAL);
+    try {
+      // near-neutral: a fresh taste net does not change the grammar ranking
+      const grammarChoice = chooseCriticDevelopmentSeed(plan, 777001);
+      setActiveTasteWeights(createTasteWeights());
+      expect(chooseCriticDevelopmentSeed(plan, 777001)).toBe(grammarChoice);
+
+      // teach: prefer a candidate the grammar critic did NOT choose
+      const candidates = deriveCandidateSeeds(777001);
+      const underdog = candidates.find((seed) => seed !== grammarChoice)!;
+      const taste = createTasteWeights();
+      let probability = 0;
+      for (let step = 0; step < 60; step += 1) {
+        probability = teachPreferenceForPlan(taste, plan, underdog, grammarChoice);
+      }
+      expect(probability).toBeGreaterThan(0.5);
+      // the taught preference holds pairwise: the underdog now outranks the
+      // old favorite (taste GENERALIZES, so the overall winner may be a third
+      // candidate that shares the underdog's qualities — that is the point)
+      setActiveTasteWeights(taste);
+      const positionOf = (seed: number) => rankWalkCandidates(plan, candidates).findIndex((c) => c.seed === seed);
+      expect(positionOf(underdog)).toBeLessThan(positionOf(grammarChoice));
+
+      // taste survives a serialize round-trip
+      const revived = deserializeTasteWeights(serializeTasteWeights(taste));
+      expect(revived).not.toBeNull();
+      setActiveTasteWeights(revived);
+      expect(positionOf(underdog)).toBeLessThan(positionOf(grammarChoice));
+    } finally {
+      setActiveTasteWeights(null);
+    }
   });
 
   test("the development seam is deterministic and chooses from the audition table", () => {
