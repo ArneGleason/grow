@@ -15,6 +15,7 @@ import {
 } from "./song-motif-plan";
 import type { SongLibraryStarter } from "./song-library";
 import { createTonalContext } from "./tonal-context";
+import { chooseCriticDevelopmentSeed } from "./critic";
 import {
   generateVoiceLedHarmonyDraft,
   type HarmonyChordEvent,
@@ -53,9 +54,13 @@ export function createSongStarterMaterial(base: SongMaterial, starter: SongLibra
   const connectorProfile = createConnectorStarterProfile(effectiveStarter, seed);
   const motifRoots = starter.motifPlan ? SONG_MOTIF_MOVE_ROOTS[starter.motifPlan.move] : undefined;
   const raiseLeadingTone = FLAT_SEVEN_MODES.has(starter.goal.mode);
+  // The critic auditions a handful of developments of the plan and the song
+  // performs the one it prefers — critic, not composer: every candidate is
+  // rule-generated, the net only ranks. Deterministic per material seed.
+  const developmentSeed = starter.motifPlan ? chooseCriticDevelopmentSeed(starter.motifPlan, seed) : seed;
   const melodyPattern = starter.motifPlan
     ? developSongMotifMelodyPattern(starter.motifPlan, {
-      seed,
+      seed: developmentSeed,
       octave: starter.goal.energy > 0.7 ? 5 : 4,
       velocityScale: 0.9 + clamp01(starter.goal.energy) * 0.2,
       raiseLeadingTone,
@@ -64,13 +69,13 @@ export function createSongStarterMaterial(base: SongMaterial, starter: SongLibra
   const sectionMelody = starter.motifPlan
     ? {
       chorus: developSongMotifChorusMelodyPattern(starter.motifPlan, {
-        seed,
+        seed: developmentSeed,
         octave: starter.goal.energy > 0.7 ? 5 : 4,
         velocityScale: 0.9 + clamp01(starter.goal.energy) * 0.2,
         raiseLeadingTone,
       }),
       bridge: developSongMotifBridgeMelodyPattern(starter.motifPlan, {
-        seed,
+        seed: developmentSeed,
         octave: starter.goal.energy > 0.7 ? 5 : 4,
         velocityScale: 0.9 + clamp01(starter.goal.energy) * 0.2,
         raiseLeadingTone,

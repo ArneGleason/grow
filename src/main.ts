@@ -1,3 +1,5 @@
+import { CRITIC_WEIGHTS } from "./critic-weights";
+import { createCriticReport } from "./critic";
 import "./style.css";
 import type { Anchor, AnchorPhrase, AnchorPhraseSegment, Connector } from "./anchor-phrase";
 import {
@@ -7834,6 +7836,10 @@ declare global {
       runCandidateCycle(options: CandidateCycleOptions): Promise<CandidateCycleResult>;
       runEvolution(options: CandidateEvolutionOptions): Promise<CandidateEvolutionResult>;
     };
+    critic?: {
+      version: string;
+      report: (candidateCount?: number) => unknown;
+    };
     ollama?: {
       getConfig(): OllamaConfig;
       setConfig(config: Partial<OllamaConfig>): OllamaConfig;
@@ -8118,6 +8124,16 @@ window.persistence = {
   developCandidate: (options) => persistence.developCandidate(options),
   runCandidateCycle: (options) => runCandidateCycle(options, persistence),
   runEvolution: (options) => runEvolution(options, persistence),
+};
+
+window.critic = {
+  version: CRITIC_WEIGHTS.version,
+  // the critic's full take on the active song: audition table + worded reaction
+  report: (candidateCount = 5) => {
+    const starter = getActiveSongLibraryEntry().starter;
+    if (!starter?.motifPlan) return { message: "active song has no motif plan" };
+    return createCriticReport(starter.motifPlan, starter.materialSeed ?? 0, candidateCount);
+  },
 };
 
 window.ollama = {

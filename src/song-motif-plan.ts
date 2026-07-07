@@ -291,7 +291,7 @@ export function expandSongMotifPlanToDraftPlan(plan: SongMotifPlan, seed: number
 
 // ---- Development: the cell becomes the tune --------------------------------
 
-interface MotifWalkNote {
+export interface MotifWalkNote {
   startBeat: number;
   durationBeats: number;
   degree: number;
@@ -300,7 +300,7 @@ interface MotifWalkNote {
   leading?: boolean;
 }
 
-interface MotifWalk {
+export interface MotifWalk {
   bars: readonly (readonly MotifWalkNote[])[];
 }
 
