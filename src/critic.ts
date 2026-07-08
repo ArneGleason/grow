@@ -464,6 +464,17 @@ export function teachPreferenceForPlan(
   return trainTastePreferenceStep(taste, preferredFeatures, otherFeatures, grammar);
 }
 
+export function cloneCriticWeights(weights: CriticWeightsData): MutableCriticWeights {
+  return {
+    version: weights.version,
+    w1: weights.w1.map((row) => [...row]),
+    b1: [...weights.b1],
+    w2: [...weights.w2],
+    b2: weights.b2,
+    featureMeans: [...weights.featureMeans],
+  };
+}
+
 export function serializeTasteWeights(taste: MutableCriticWeights): string {
   return JSON.stringify(taste);
 }
@@ -471,7 +482,7 @@ export function serializeTasteWeights(taste: MutableCriticWeights): string {
 export function deserializeTasteWeights(raw: string): MutableCriticWeights | null {
   try {
     const parsed = JSON.parse(raw) as MutableCriticWeights;
-    if (parsed?.version !== "grow.criticTaste/1") return null;
+    if (parsed?.version !== "grow.criticTaste/1" && parsed?.version !== "grow.criticJudgment/1") return null;
     if (!Array.isArray(parsed.w1) || parsed.w1.length === 0) return null;
     if (parsed.w1.some((row) => !Array.isArray(row) || row.length !== CRITIC_FEATURE_COUNT)) return null;
     if (!Array.isArray(parsed.w2) || parsed.w2.length !== parsed.w1.length) return null;

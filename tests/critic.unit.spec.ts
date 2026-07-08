@@ -14,6 +14,7 @@ import {
   deserializeTasteWeights,
   featurizeWalkNotes,
   flattenWalk,
+  logitOfFeatures,
   rankWalkCandidates,
   reactToWalk,
   scoreFeatures,
@@ -23,6 +24,9 @@ import {
   type CriticNote,
 } from "../src/critic";
 import { CRITIC_WEIGHTS } from "../src/critic-weights";
+import { CRITIC_JUDGMENT_WEIGHTS } from "../src/critic-judgment-weights";
+import { JUDGMENT_LABELS } from "../scripts/judgment-labels";
+import { judgmentGoalForSeed } from "../scripts/judgment-shared";
 
 const GOAL = { energy: 0.5, brightness: 0.5, surpriseTarget: 0.5 };
 
@@ -107,6 +111,25 @@ test.describe("Critic", () => {
     const cleanScore = scoreFeatures(featurizeWalkNotes(notes, roots));
     const wreckedScore = scoreFeatures(featurizeWalkNotes(wrecked, roots));
     expect(wreckedScore).toBeLessThan(cleanScore);
+  });
+
+  test("the judgment head agrees with its teacher well above chance", () => {
+    // grammar alone scored ~0.43 on these near-tie pairs (guessing); the
+    // shipped judgment head must keep most of its distilled agreement
+    let wins = 0;
+    for (const label of JUDGMENT_LABELS) {
+      const plan = createSeededSongMotifPlan(label.planSeed, judgmentGoalForSeed(label.planSeed));
+      const roots = SONG_MOTIF_MOVE_ROOTS[plan.move];
+      const combinedLogitFor = (seed: number) => {
+        const features = featurizeWalkNotes(flattenWalk(developSongMotifWalk(plan, seed)), roots);
+        return logitOfFeatures(features) + logitOfFeatures(features, CRITIC_JUDGMENT_WEIGHTS);
+      };
+      const a = combinedLogitFor(label.aSeed);
+      const b = combinedLogitFor(label.bSeed);
+      if ((label.preferred === "A") === (a > b)) wins += 1;
+    }
+    expect(JUDGMENT_LABELS.length).toBeGreaterThanOrEqual(150);
+    expect(wins / JUDGMENT_LABELS.length).toBeGreaterThanOrEqual(0.66);
   });
 
   test("taste starts near-neutral, learns preferences, and can flip the critic's pick", () => {

@@ -20,6 +20,7 @@
     "unit:song-goal": "playwright test tests/song-goal.unit.spec.ts --config=playwright.unit.config.ts",
     "unit:song-draft-plan": "playwright test tests/song-draft-plan.unit.spec.ts --config=playwright.unit.config.ts",
     "unit:critic": "playwright test tests/critic.unit.spec.ts --config=playwright.unit.config.ts",
+    "train:judgment": "tsx scripts/train-judgment.ts",
     "train:critic": "tsx scripts/train-critic.ts",
     "unit:song-structure": "playwright test tests/song-structure.unit.spec.ts --config=playwright.unit.config.ts",
     "unit:song-vertical": "playwright test tests/song-vertical.unit.spec.ts --config=playwright.unit.config.ts",

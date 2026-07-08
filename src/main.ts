@@ -1,8 +1,9 @@
 import { CRITIC_WEIGHTS } from "./critic-weights";
+import { CRITIC_JUDGMENT_WEIGHTS } from "./critic-judgment-weights";
 import {
   chooseCriticDevelopmentSeed,
+  cloneCriticWeights,
   createCriticReport,
-  createTasteWeights,
   deriveCandidateSeeds,
   deserializeTasteWeights,
   serializeTasteWeights,
@@ -712,10 +713,12 @@ interface BestMomentRecord {
   move: string | null;
 }
 
-let criticTaste: MutableCriticWeights | null = loadCriticTaste();
+// Every listener starts from the judgment head (a strong model's distilled
+// musical judgment); personal captures fine-tune their own copy of it.
+let criticTaste: MutableCriticWeights | null = loadCriticTaste() ?? cloneCriticWeights(CRITIC_JUDGMENT_WEIGHTS);
 let criticTastePairsTaught = loadCriticTastePairsTaught();
 let bestMoments: BestMomentRecord[] = loadBestMoments();
-if (criticTaste) setActiveTasteWeights(criticTaste);
+setActiveTasteWeights(criticTaste);
 
 function loadCriticTaste(): MutableCriticWeights | null {
   try {
@@ -791,7 +794,7 @@ function captureBestMoment(): { kept: boolean; taughtPairs: number } {
   persistBestMoments();
   let taughtPairs = 0;
   if (starter?.motifPlan && typeof starter.materialSeed === "number") {
-    if (!criticTaste) criticTaste = createTasteWeights();
+    if (!criticTaste) criticTaste = cloneCriticWeights(CRITIC_JUDGMENT_WEIGHTS);
     const chosen = chooseCriticDevelopmentSeed(starter.motifPlan, starter.materialSeed);
     const others = deriveCandidateSeeds(starter.materialSeed).filter((seed) => seed !== chosen);
     // a capture should audibly move the needle: several interleaved rounds
@@ -8280,6 +8283,7 @@ window.critic = {
   moments: () => bestMoments.map((moment) => ({ ...moment })),
   taste: () => ({
     active: criticTaste !== null,
+    base: criticTaste?.version ?? null,
     pairsTaught: criticTastePairsTaught,
   }),
   exportTaste: () => (criticTaste ? serializeTasteWeights(criticTaste) : null),
@@ -8292,9 +8296,9 @@ window.critic = {
     return true;
   },
   resetTaste: () => {
-    criticTaste = null;
+    criticTaste = cloneCriticWeights(CRITIC_JUDGMENT_WEIGHTS);
     criticTastePairsTaught = 0;
-    setActiveTasteWeights(null);
+    setActiveTasteWeights(criticTaste);
     persistCriticTaste();
   },
 };
