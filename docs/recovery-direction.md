@@ -191,3 +191,25 @@ Things that would make it stranger and more alive, none required for the spike.
 - Pretrained CLAP and MuQ-MuLan embeddings compared against human similarity judgments (arXiv 2601.19109, January 2026).
 - MERT-v2 (non-commercial license) and AllMusicCaps CLAP (512-dimensional, 24 kHz mono) as local embedding options.
 - Ollama audio input remains an open feature request; the ears must run outside Ollama, in Python.
+
+---
+
+## Addendum, later the same day
+
+Arne chose the fresh repository. Grow 2 lives at
+[ArneGleason/grow-2](https://github.com/ArneGleason/grow-2). Two decisions in
+this document changed on the way there:
+
+- **Renderer.** Csound rather than SuperCollider for the first bodies: one
+  binary, one text file holding both instrument and score, offline render in
+  a single command, and local models have seen a lot of it. SuperCollider
+  non-real-time needs a second runtime to compile synth definitions and a
+  binary score. DawDreamer (Faust plus hosted plugins) remains the
+  larger-ceiling option for a later body type.
+- **Search library.** The first map is a sixty-line MAP-Elites grid in plain
+  numpy rather than pyribs, so the mechanism is readable in one sitting.
+  pyribs becomes worth it when the map needs CMA-style emitters.
+
+What carried over is `LESSONS.md` in the new repository, a distilled version
+of Parts 1 and 2 above, and the four salvage files remain available here
+whenever a sequencer body is wanted. This repository is now an archive.
